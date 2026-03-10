@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório de Arquitetura - Belezza.ai</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; line-height: 1.6; color: #333; max-width: 210mm; margin: 0 auto; padding: 20mm; background: #fff; }
+        @media print { body { padding: 15mm; } .page-break { page-break-before: always; } }
+        .header { text-align: center; border-bottom: 3px solid #8B5CF6; padding-bottom: 20px; margin-bottom: 30px; }
+        .header h1 { color: #8B5CF6; font-size: 28px; margin-bottom: 10px; }
+        .header .subtitle { color: #666; font-size: 14px; }
+        .header .date { color: #999; font-size: 12px; margin-top: 5px; }
+        h2 { color: #8B5CF6; font-size: 18px; margin: 25px 0 15px 0; padding-bottom: 8px; border-bottom: 2px solid #E9D5FF; }
+        h3 { color: #6D28D9; font-size: 14px; margin: 15px 0 10px 0; }
+        .question-box { background: #F5F3FF; border-left: 4px solid #8B5CF6; padding: 15px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+        .question-box .question { font-weight: bold; color: #5B21B6; margin-bottom: 8px; }
+        .question-box .answer { color: #1F2937; font-size: 16px; font-weight: bold; }
+        .question-box .details { color: #4B5563; font-size: 13px; margin-top: 8px; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 13px; }
+        th, td { border: 1px solid #E5E7EB; padding: 10px 12px; text-align: left; }
+        th { background: #8B5CF6; color: white; font-weight: 600; }
+        tr:nth-child(even) { background: #F9FAFB; }
+        .architecture-diagram { background: #1F2937; color: #E5E7EB; padding: 15px; border-radius: 8px; font-family: 'Consolas', monospace; font-size: 12px; margin: 15px 0; white-space: pre; }
+        .tech-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 15px 0; }
+        .tech-card { background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 15px; }
+        .tech-card h4 { color: #8B5CF6; font-size: 13px; margin-bottom: 10px; text-transform: uppercase; }
+        .tech-card ul { list-style: none; font-size: 12px; }
+        .tech-card li { padding: 3px 0; color: #4B5563; }
+        .tech-card li::before { content: "•"; color: #8B5CF6; margin-right: 8px; }
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
+        .badge-yes { background: #D1FAE5; color: #065F46; }
+        .badge-hybrid { background: #FEF3C7; color: #92400E; }
+        .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #E5E7EB; text-align: center; color: #9CA3AF; font-size: 11px; }
+        .plans-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 15px 0; }
+        .plan-card { border: 2px solid #E5E7EB; border-radius: 8px; padding: 12px; text-align: center; }
+        .plan-card.pro { border-color: #8B5CF6; background: #F5F3FF; }
+        .plan-card h4 { font-size: 14px; margin-bottom: 8px; }
+        .plan-card ul { list-style: none; font-size: 11px; color: #6B7280; }
+        .plan-card li { padding: 2px 0; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Belezza.ai</h1>
+        <div class="subtitle">Relatório de Arquitetura e Tecnologias do Sistema</div>
+        <div class="date">Gerado em: 15 de Fevereiro de 2026</div>
+    </div>
+
+    <h2>1. Questionário de Arquitetura</h2>
+
+    <div class="question-box">
+        <div class="question">O sistema atual é monolítico ou modular?</div>
+        <div class="answer"><span class="badge badge-hybrid">HÍBRIDO MODULAR</span></div>
+        <div class="details">Backend: Aplicação Spring Boot monolítica com organização interna modular por domínios<br>Frontend: Aplicação Next.js separada comunicando via REST API</div>
+    </div>
+
+    <div class="question-box">
+        <div class="question">Já usa Spring Boot?</div>
+        <div class="answer"><span class="badge badge-yes">SIM</span></div>
+        <div class="details">Versão: Spring Boot 3.2.2 com Java 21<br>Componentes: Web, Security, Data JPA, Quartz, Cache, Actuator, WebFlux</div>
+    </div>
+
+    <div class="question-box">
+        <div class="question">Já existe autenticação JWT?</div>
+        <div class="answer"><span class="badge badge-yes">SIM</span></div>
+        <div class="details">Biblioteca: JJWT 0.12.3<br>Access tokens (15 min) + Refresh tokens (7 dias)<br>Blacklist de tokens para logout | Claims: userId, role, plan, name</div>
+    </div>
+
+    <div class="question-box">
+        <div class="question">O banco é PostgreSQL?</div>
+        <div class="answer"><span class="badge badge-yes">SIM</span></div>
+        <div class="details">Driver PostgreSQL com HikariCP (Connection Pool)<br>Migrações: Flyway 10.7.1 | ORM: Hibernate/JPA</div>
+    </div>
+
+    <div class="question-box">
+        <div class="question">Existe separação por módulos/domínios?</div>
+        <div class="answer"><span class="badge badge-yes">SIM - FORTE SEPARAÇÃO</span></div>
+        <div class="details">Domínios: Agendamento, Profissional, Serviço, Cliente, Post, Pagamento, Imagem, WhatsApp, Métricas</div>
+    </div>
+
+    <div class="question-box">
+        <div class="question">O frontend é Angular ou React?</div>
+        <div class="answer"><span class="badge badge-yes">REACT (Next.js)</span></div>
+        <div class="details">Next.js 16.1.6 | React 19.2.3 | TypeScript 5<br>Tailwind CSS 4 | Zustand | React Query | PWA habilitado</div>
+    </div>
+
+    <div class="question-box">
+        <div class="question">O sistema atual é SaaS multi-tenant ou single-tenant?</div>
+        <div class="answer"><span class="badge badge-yes">MULTI-TENANT (por Salão)</span></div>
+        <div class="details">Cada usuário ADMIN possui um Salão (1:1)<br>Isolamento de dados por salon_id em todas as entidades</div>
+    </div>
+
+    <h2>2. Arquitetura Multi-Tenant</h2>
+
+    <div class="architecture-diagram">Usuario (ADMIN)
+  └── Salon (1:1)
+       ├── Profissionais (1:N)
+       ├── Serviços (1:N)
+       ├── Agendamentos (1:N)
+       ├── Clientes (1:N)
+       ├── Posts (1:N)
+       └── Pagamentos (1:N)</div>
+
+    <h3>Planos de Assinatura</h3>
+    <div class="plans-grid">
+        <div class="plan-card">
+            <h4>FREE</h4>
+            <ul>
+                <li>1 profissional</li>
+                <li>50 agendamentos/mês</li>
+                <li>5 posts/mês</li>
+                <li>500MB storage</li>
+            </ul>
+        </div>
+        <div class="plan-card pro">
+            <h4>PRO</h4>
+            <ul>
+                <li>5 profissionais</li>
+                <li>Agendamentos ilimitados</li>
+                <li>30 posts/mês</li>
+                <li>5GB storage</li>
+            </ul>
+        </div>
+        <div class="plan-card">
+            <h4>PREMIUM</h4>
+            <ul>
+                <li>Profissionais ilimitados</li>
+                <li>Agendamentos ilimitados</li>
+                <li>Posts ilimitados</li>
+                <li>50GB storage</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2>3. Estrutura de Pacotes (Backend)</h2>
+
+    <table>
+        <tr><th>Pacote</th><th>Responsabilidade</th><th>Quantidade</th></tr>
+        <tr><td>entity/</td><td>Entidades de domínio (modelos JPA)</td><td>29 classes</td></tr>
+        <tr><td>service/</td><td>Lógica de negócio</td><td>18 serviços</td></tr>
+        <tr><td>controller/</td><td>Endpoints REST</td><td>21 controllers</td></tr>
+        <tr><td>repository/</td><td>Acesso a dados (Spring Data JPA)</td><td>~20 repositórios</td></tr>
+        <tr><td>dto/</td><td>Objetos de transferência de dados</td><td>Organizado por domínio</td></tr>
+        <tr><td>mapper/</td><td>Conversão DTO ↔ Entity (MapStruct)</td><td>~10 mappers</td></tr>
+        <tr><td>security/</td><td>Autenticação e autorização</td><td>JWT, Filtros, Configs</td></tr>
+        <tr><td>integration/</td><td>Clientes de APIs externas</td><td>OpenAI, Meta, WhatsApp</td></tr>
+    </table>
+
+    <h2>4. Stack Tecnológico Completo</h2>
+
+    <div class="tech-grid">
+        <div class="tech-card">
+            <h4>Backend</h4>
+            <ul>
+                <li>Spring Boot 3.2.2</li>
+                <li>Java 21</li>
+                <li>Maven</li>
+                <li>Spring Security 6.x</li>
+                <li>Spring Data JPA</li>
+            </ul>
+        </div>
+        <div class="tech-card">
+            <h4>Banco de Dados</h4>
+            <ul>
+                <li>PostgreSQL</li>
+                <li>Flyway 10.7.1</li>
+                <li>HikariCP</li>
+                <li>Redis (Cache)</li>
+            </ul>
+        </div>
+        <div class="tech-card">
+            <h4>Frontend</h4>
+            <ul>
+                <li>Next.js 16.1.6</li>
+                <li>React 19.2.3</li>
+                <li>TypeScript 5</li>
+                <li>Tailwind CSS 4</li>
+                <li>Zustand 5.0.10</li>
+            </ul>
+        </div>
+        <div class="tech-card">
+            <h4>Autenticação</h4>
+            <ul>
+                <li>JWT (JJWT 0.12.3)</li>
+                <li>BCrypt (12 rounds)</li>
+                <li>Token Blacklisting</li>
+                <li>Role-based Access</li>
+            </ul>
+        </div>
+        <div class="tech-card">
+            <h4>Integrações IA</h4>
+            <ul>
+                <li>OpenAI GPT-4o-mini</li>
+                <li>Replicate (GFPGAN)</li>
+                <li>Replicate (Real-ESRGAN)</li>
+                <li>Replicate (Rembg)</li>
+            </ul>
+        </div>
+        <div class="tech-card">
+            <h4>Integrações Social</h4>
+            <ul>
+                <li>Meta Graph API</li>
+                <li>Instagram API</li>
+                <li>WhatsApp Cloud API</li>
+            </ul>
+        </div>
+        <div class="tech-card">
+            <h4>Cloud & Storage</h4>
+            <ul>
+                <li>AWS S3 SDK 2.23.0</li>
+                <li>AWS CloudFront (CDN)</li>
+                <li>Docker</li>
+                <li>docker-compose</li>
+            </ul>
+        </div>
+        <div class="tech-card">
+            <h4>Monitoramento</h4>
+            <ul>
+                <li>Spring Actuator</li>
+                <li>Prometheus</li>
+                <li>Zipkin (Tracing)</li>
+                <li>Micrometer</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2>5. Tabela Resumo</h2>
+
+    <table>
+        <tr><th>Pergunta</th><th>Resposta</th></tr>
+        <tr><td>Monolítico/Modular</td><td>Híbrido: Backend monolítico com organização por domínios</td></tr>
+        <tr><td>Spring Boot</td><td>Sim, versão 3.2.2 com Java 21</td></tr>
+        <tr><td>JWT Auth</td><td>Sim, JJWT 0.12.3 com token blacklisting</td></tr>
+        <tr><td>PostgreSQL</td><td>Sim, com Flyway migrations e HikariCP</td></tr>
+        <tr><td>Separação por Módulos</td><td>Sim, por domínio (Agendamento, Profissional, Serviço, etc.)</td></tr>
+        <tr><td>Frontend</td><td>React com Next.js 16.1.6</td></tr>
+        <tr><td>Multi-Tenant</td><td>Sim, modelo SaaS com isolamento por salão</td></tr>
+        <tr><td>Funcionalidades</td><td>IA, Social Media, Gestão de Salões, Analytics, Imagens</td></tr>
+    </table>
+
+    <div class="footer">
+        <p>Belezza.ai - Sistema de Gestão para Salões de Beleza</p>
+        <p>Documento gerado automaticamente | 2026</p>
+    </div>
+</body>
+</html>

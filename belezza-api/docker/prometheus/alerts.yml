@@ -1,0 +1,113 @@
+# Prometheus Alert Rules for Belezza API
+# Define conditions that trigger alerts
+
+groups:
+  - name: belezza_api_alerts
+    interval: 30s
+    rules:
+      # API is down
+      - alert: BelezzaAPIDown
+        expr: up{job="belezza-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: api
+        annotations:
+          summary: "Belezza API is down"
+          description: "The Belezza API has been down for more than 1 minute."
+
+      # High error rate (T10.4.9: Errors 5xx > 1%)
+      - alert: HighErrorRate5xx
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+            /
+            sum(rate(http_server_requests_seconds_count[5m]))
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "High 5xx error rate detected"
+          description: "5xx error rate is {{ $value | humanizePercentage }} (threshold: 1%)."
+
+      # High response time (T10.4.10: Latency p99 > 2s)
+      - alert: HighResponseTimeP99
+        expr: histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket[5m])) by (le)) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "High API response time (p99)"
+          description: "99th percentile response time is {{ $value }}s over the last 5 minutes."
+
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: system_cpu_usage > 0.80
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      # High memory usage (T10.4.8: Memory > 80%)
+      - alert: HighMemoryUsage
+        expr: (jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"}) > 0.80
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "High memory usage detected"
+          description: "JVM heap usage is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      # Database connection pool exhausted
+      - alert: DatabaseConnectionPoolExhausted
+        expr: hikaricp_connections_active / hikaricp_connections_max > 0.90
+        for: 2m
+        labels:
+          severity: critical
+          service: database
+        annotations:
+          summary: "Database connection pool near exhaustion"
+          description: "Connection pool is {{ $value | humanizePercentage }} full."
+
+      # Too many failed database queries
+      - alert: HighDatabaseErrorRate
+        expr: rate(spring_data_repository_invocations_seconds_count{exception!="None"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: database
+        annotations:
+          summary: "High database error rate"
+          description: "Database error rate is {{ $value }} over the last 5 minutes."
+
+  - name: business_metrics_alerts
+    interval: 1m
+    rules:
+      # Low appointment creation rate (potential issue)
+      - alert: LowAppointmentCreationRate
+        expr: rate(appointments_created_total[1h]) < 0.01
+        for: 30m
+        labels:
+          severity: info
+          service: business
+        annotations:
+          summary: "Low appointment creation rate"
+          description: "Only {{ $value }} appointments created per second in the last hour."
+
+      # High appointment cancellation rate
+      - alert: HighCancellationRate
+        expr: (rate(appointments_cancelled_total[1h]) / rate(appointments_created_total[1h])) > 0.20
+        for: 30m
+        labels:
+          severity: warning
+          service: business
+        annotations:
+          summary: "High appointment cancellation rate"
+          description: "Cancellation rate is {{ $value | humanizePercentage }} over the last hour."

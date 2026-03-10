@@ -1,0 +1,102 @@
+# Belezza API - Local Profile
+# Uses H2 in-memory database (no Docker required)
+# Run with: mvnw spring-boot:run -Dspring-boot.run.profiles=local
+
+spring:
+  # Disable mail
+  mail:
+    enabled: false
+
+  # H2 In-Memory Database (PostgreSQL compatibility mode)
+  datasource:
+    url: jdbc:h2:mem:belezza_local;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  # JPA/Hibernate
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  # Disable Flyway (using ddl-auto instead)
+  flyway:
+    enabled: false
+
+  # H2 Console (access at http://localhost:8080/h2-console)
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: true
+
+  # Disable Redis completely
+  data:
+    redis:
+      enabled: false
+      host: localhost
+      port: 6379
+
+  # Use simple cache instead of Redis
+  cache:
+    type: simple
+
+  # Exclude Redis auto-configuration
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
+# Application settings
+belezza:
+  # Disable rate limiting
+  rate-limit:
+    enabled: false
+
+  # CORS for local development
+  cors:
+    allowed-origins: http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000
+
+  # Disable backup
+  backup:
+    enabled: false
+
+  # Disable WhatsApp
+  whatsapp:
+    retry:
+      enabled: false
+    lembretes:
+      enabled: false
+
+# Swagger enabled
+springdoc:
+  swagger-ui:
+    enabled: true
+
+# Actuator - show all but disable Redis health check
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+  health:
+    redis:
+      enabled: false
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.belezza: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG

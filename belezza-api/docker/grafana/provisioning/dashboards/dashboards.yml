@@ -1,0 +1,16 @@
+# Grafana Dashboard Provisioning Configuration
+# Automatically loads dashboards from the specified folder
+
+apiVersion: 1
+
+providers:
+  - name: 'Belezza Dashboards'
+    orgId: 1
+    folder: 'Belezza'
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

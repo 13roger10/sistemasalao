@@ -1,0 +1,157 @@
+# Alertmanager Configuration for Belezza API
+# This configuration defines how alerts are routed and sent to receivers
+
+global:
+  # ResolveTimeout is the time after which an alert is declared resolved
+  # if it has not been updated.
+  resolve_timeout: 5m
+
+  # SMTP settings for email notifications
+  smtp_smarthost: '${SMTP_HOST}:${SMTP_PORT}'
+  smtp_from: 'alertmanager@belezza.ai'
+  smtp_auth_username: '${SMTP_USERNAME}'
+  smtp_auth_password: '${SMTP_PASSWORD}'
+  smtp_require_tls: true
+
+  # Slack API URL (if using Slack)
+  slack_api_url: '${SLACK_WEBHOOK_URL}'
+
+# The root route on which each incoming alert enters.
+route:
+  # The default receiver
+  receiver: 'default-receiver'
+
+  # Group alerts by alertname, environment, and service
+  group_by: ['alertname', 'environment', 'service']
+
+  # How long to initially wait to send a notification for a group
+  group_wait: 30s
+
+  # How long to wait before sending a notification about new alerts
+  # that are added to a group of alerts for which an initial
+  # notification has already been sent.
+  group_interval: 5m
+
+  # How long to wait before sending a notification again if it has
+  # already been sent successfully for an alert.
+  repeat_interval: 4h
+
+  # Child routes
+  routes:
+    # Critical alerts - immediate notification
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 10s
+      repeat_interval: 1h
+      continue: true
+
+    # Warning alerts - less urgent
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      group_wait: 1m
+      repeat_interval: 4h
+
+    # Info alerts - for tracking only
+    - match:
+        severity: info
+      receiver: 'info-alerts'
+      group_wait: 5m
+      repeat_interval: 12h
+
+    # Business metrics alerts
+    - match:
+        service: business
+      receiver: 'business-alerts'
+      group_wait: 5m
+      repeat_interval: 6h
+
+# Inhibition rules allow to mute a set of alerts given that another alert is firing.
+inhibit_rules:
+  # Inhibit warning alerts if critical alert is firing for same alertname
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'environment']
+
+  # Inhibit info alerts if warning or critical alert is firing
+  - source_match_re:
+      severity: 'critical|warning'
+    target_match:
+      severity: 'info'
+    equal: ['alertname', 'environment']
+
+# Receivers define notification channels
+receivers:
+  # Default receiver - Slack channel
+  - name: 'default-receiver'
+    slack_configs:
+      - channel: '#belezza-alerts'
+        send_resolved: true
+        icon_emoji: ':warning:'
+        title: '{{ template "slack.default.title" . }}'
+        text: '{{ template "slack.default.text" . }}'
+
+  # Critical alerts - multiple channels
+  - name: 'critical-alerts'
+    slack_configs:
+      - channel: '#belezza-alerts-critical'
+        send_resolved: true
+        icon_emoji: ':rotating_light:'
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+        title: '[CRITICAL] {{ .GroupLabels.alertname }}'
+        text: |
+          *Environment:* {{ .CommonLabels.environment }}
+          *Service:* {{ .CommonLabels.service }}
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+    email_configs:
+      - to: 'oncall@belezza.ai'
+        send_resolved: true
+        html: '{{ template "email.default.html" . }}'
+
+  # Warning alerts
+  - name: 'warning-alerts'
+    slack_configs:
+      - channel: '#belezza-alerts'
+        send_resolved: true
+        icon_emoji: ':warning:'
+        color: '{{ if eq .Status "firing" }}warning{{ else }}good{{ end }}'
+        title: '[WARNING] {{ .GroupLabels.alertname }}'
+        text: |
+          *Environment:* {{ .CommonLabels.environment }}
+          *Service:* {{ .CommonLabels.service }}
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+
+  # Info alerts
+  - name: 'info-alerts'
+    slack_configs:
+      - channel: '#belezza-alerts-info'
+        send_resolved: false
+        icon_emoji: ':information_source:'
+        color: '#36a64f'
+        title: '[INFO] {{ .GroupLabels.alertname }}'
+
+  # Business metrics alerts
+  - name: 'business-alerts'
+    slack_configs:
+      - channel: '#belezza-business'
+        send_resolved: true
+        icon_emoji: ':chart_with_upwards_trend:'
+        title: '[BUSINESS] {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Details:* {{ .Annotations.description }}
+          {{ end }}
+
+# Templates for formatting notifications
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'

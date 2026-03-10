@@ -1,0 +1,50 @@
+{
+  "name": "belezza-api",
+  "version": "1.0.0",
+  "description": "Backend API for Belezza.ai - Social Studio for Beauty Salons",
+  "private": true,
+  "scripts": {
+    "start": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd spring-boot:run -Dspring-boot.run.profiles=local -DskipTests",
+    "dev": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd spring-boot:run -Dspring-boot.run.profiles=local -DskipTests",
+    "build": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd clean package -DskipTests",
+    "build:prod": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd clean package -Pprod -DskipTests",
+    "test": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd test",
+    "test:unit": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd test -Dtest=*Test",
+    "test:integration": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd verify -DskipUnitTests",
+    "test:coverage": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd test jacoco:report",
+    "clean": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd clean",
+    "compile": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd compile",
+    "install": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd install -DskipTests",
+    "verify": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd verify",
+    "dependency:tree": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd dependency:tree",
+    "dependency:check": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd org.owasp:dependency-check-maven:check",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:build": "docker-compose build",
+    "docker:logs": "docker-compose logs -f",
+    "docker:prod": "docker-compose -f docker-compose.prod.yml up -d",
+    "docker:staging": "docker-compose -f docker-compose.staging.yml up -d",
+    "db:migrate": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd flyway:migrate",
+    "db:info": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd flyway:info",
+    "db:clean": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd flyway:clean",
+    "db:repair": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd flyway:repair",
+    "gatling": "tools\\apache-maven-3.9.6\\bin\\mvn.cmd gatling:test",
+    "docs": "start http://localhost:8080/swagger-ui.html"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/belezza/belezza-api.git"
+  },
+  "keywords": [
+    "belezza",
+    "beauty-salon",
+    "spring-boot",
+    "java",
+    "api"
+  ],
+  "author": "Belezza Team",
+  "license": "UNLICENSED"
+}

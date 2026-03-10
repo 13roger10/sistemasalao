@@ -1,0 +1,72 @@
+# Docker ignore file for Belezza API
+
+# Build artifacts
+target/
+build/
+*.jar
+*.war
+*.ear
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+.settings/
+.project
+.classpath
+*.code-workspace
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+docs/
+*.md
+!README.md
+LICENSE
+
+# Test files
+src/test/
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker files (don't include in build context)
+docker-compose*.yml
+.docker/
+
+# Environment files
+.env
+.env.*
+*.env
+
+# Maven wrapper (will be copied explicitly)
+# !.mvn
+# !mvnw
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+Jenkinsfile
+
+# Coverage reports
+coverage/
+jacoco/

@@ -1,0 +1,88 @@
+# Belezza API - Development Profile
+# Active with: --spring.profiles.active=dev
+
+spring:
+  # Database Configuration
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/belezza_dev}
+    username: ${DATABASE_USERNAME:belezza}
+    password: ${DATABASE_PASSWORD:belezza_dev}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: BelezzaHikariPool-Dev
+      maximum-pool-size: 5
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  # JPA Configuration for Development
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        generate_statistics: true
+
+  # Redis Configuration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      enabled: ${REDIS_ENABLED:true}
+
+  # Mail Configuration (MailHog for development)
+  mail:
+    enabled: ${MAIL_ENABLED:false}
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+  # Flyway
+  flyway:
+    clean-disabled: false
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    com.belezza: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.flywaydb: DEBUG
+
+# Development-specific settings
+belezza:
+  # Relaxed CORS for development
+  cors:
+    allowed-origins: http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000
+
+  # Rate limiting disabled for development
+  rate-limit:
+    enabled: false
+
+# Swagger enabled in dev
+springdoc:
+  swagger-ui:
+    enabled: true
+
+# Actuator - expose all endpoints in dev
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always

@@ -1,0 +1,267 @@
+# Belezza API - Common Configuration
+# Profile-specific configurations in application-{profile}.yml
+
+spring:
+  application:
+    name: belezza-api
+
+  # JPA / Hibernate
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          time_zone: America/Sao_Paulo
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+
+  # Flyway Migrations
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
+
+  # Jackson JSON Configuration
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+      fail-on-empty-beans: false
+    deserialization:
+      fail-on-unknown-properties: false
+    time-zone: America/Sao_Paulo
+    date-format: yyyy-MM-dd HH:mm:ss
+
+  # Servlet Configuration
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 20MB
+
+  # Cache
+  cache:
+    type: redis
+
+  # Redis
+  data:
+    redis:
+      timeout: 2000ms
+
+  # Mail Configuration
+  mail:
+    enabled: ${MAIL_ENABLED:true}
+    from: ${MAIL_FROM:noreply@belezza.ai}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            trust: "*"
+
+# Application Frontend URL
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+
+# Server Configuration
+server:
+  port: 8080
+  servlet:
+    context-path: /
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/plain
+  error:
+    include-message: always
+    include-binding-errors: always
+
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env,loggers,httptrace,threaddump,heapdump
+      base-path: /actuator
+    jmx:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: when_authorized
+      show-components: when_authorized
+      probes:
+        enabled: true
+    prometheus:
+      enabled: true
+  info:
+    env:
+      enabled: true
+    git:
+      mode: full
+    build:
+      enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+    db:
+      enabled: true
+    redis:
+      enabled: true
+    diskspace:
+      enabled: true
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+    tags:
+      application: ${spring.application.name}
+      environment: ${spring.profiles.active:default}
+    export:
+      prometheus:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}
+
+# SpringDoc / Swagger Configuration
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    operations-sorter: alpha
+    tags-sorter: alpha
+    disable-swagger-default-url: true
+    url: /v3/api-docs
+  show-actuator: false
+
+# Application Custom Configuration
+belezza:
+  # JWT Configuration
+  jwt:
+    secret: ${JWT_SECRET:belezza-dev-secret-key-change-in-production-min-256-bits-required}
+    access-token-expiration: 900000 # 15 minutes in milliseconds
+    refresh-token-expiration: 604800000 # 7 days in milliseconds
+    issuer: belezza-api
+
+  # CORS Configuration
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
+    allowed-methods: GET,POST,PUT,DELETE,PATCH,OPTIONS
+    allowed-headers: "*"
+    exposed-headers: Authorization,X-Request-Id
+    allow-credentials: true
+    max-age: 3600
+
+  # Rate Limiting
+  rate-limit:
+    enabled: true
+    requests-per-minute: 60
+
+  # AWS S3 Configuration
+  aws:
+    s3:
+      bucket: ${AWS_S3_BUCKET:belezza-images}
+      region: ${AWS_S3_REGION:sa-east-1}
+      access-key: ${AWS_ACCESS_KEY_ID:}
+      secret-key: ${AWS_SECRET_ACCESS_KEY:}
+      cloudfront-domain: ${AWS_CLOUDFRONT_DOMAIN:}
+      presigned-url-expiration: 3600 # 1 hour
+
+  # WhatsApp Configuration (Meta Cloud API)
+  whatsapp:
+    phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:}
+    business-account-id: ${WHATSAPP_BUSINESS_ACCOUNT_ID:}
+    access-token: ${WHATSAPP_ACCESS_TOKEN:}
+    webhook-verify-token: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN:}
+    api-version: v18.0
+    api-url: https://graph.facebook.com
+    retry:
+      enabled: ${WHATSAPP_RETRY_ENABLED:true}
+    lembretes:
+      enabled: ${WHATSAPP_LEMBRETES_ENABLED:true}
+
+  # Web Push Notification (VAPID)
+  push:
+    vapid-public-key: ${VAPID_PUBLIC_KEY:}
+    vapid-private-key: ${VAPID_PRIVATE_KEY:}
+    vapid-subject: ${VAPID_SUBJECT:mailto:contato@belezza.ai}
+
+  # Meta Graph API Configuration (Instagram/Facebook)
+  meta:
+    app-id: ${META_APP_ID:}
+    app-secret: ${META_APP_SECRET:}
+    webhook-verify-token: ${META_WEBHOOK_VERIFY_TOKEN:}
+    api-version: v19.0
+    api-url: https://graph.facebook.com
+
+  # AI Services Configuration
+  ai:
+    # OpenAI for text generation
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      model: gpt-4o-mini
+      api-url: https://api.openai.com/v1
+
+    # Replicate for image processing
+    replicate:
+      api-token: ${REPLICATE_API_TOKEN:}
+      api-url: https://api.replicate.com/v1
+      models:
+        enhance: tencentarc/gfpgan
+        remove-bg: cjwbw/rembg
+        upscale: nightmareai/real-esrgan
+
+  # Backup Configuration
+  backup:
+    enabled: ${BACKUP_ENABLED:true}
+    directory: ${BACKUP_DIRECTORY:./backups}
+    retention-days: ${BACKUP_RETENTION_DAYS:30}
+    compress: ${BACKUP_COMPRESS:true}
+    pg-dump-path: ${PG_DUMP_PATH:pg_dump}
+    schedule: ${BACKUP_SCHEDULE:0 0 3 * * ?}  # Every day at 3:00 AM
+    cleanup-schedule: ${BACKUP_CLEANUP_SCHEDULE:0 0 4 ? * SUN}  # Every Sunday at 4:00 AM
+
+  # Plan Limits Configuration
+  plans:
+    free:
+      max-professionals: 1
+      max-appointments-month: 50
+      max-posts-month: 5
+      max-whatsapp-messages: 0
+      max-storage-mb: 500
+      max-ai-processing: 0
+      max-instagram-accounts: 0
+      max-facebook-accounts: 0
+    pro:
+      max-professionals: 5
+      max-appointments-month: -1 # unlimited
+      max-posts-month: 30
+      max-whatsapp-messages: 500
+      max-storage-mb: 5120
+      max-ai-processing: 100
+      max-instagram-accounts: 1
+      max-facebook-accounts: 1
+    premium:
+      max-professionals: -1 # unlimited
+      max-appointments-month: -1 # unlimited
+      max-posts-month: -1 # unlimited
+      max-whatsapp-messages: 5000
+      max-storage-mb: 51200
+      max-ai-processing: 500
+      max-instagram-accounts: 3
+      max-facebook-accounts: 3

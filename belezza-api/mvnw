@@ -1,0 +1,21 @@
+#!/bin/sh
+# Maven Wrapper script for Unix
+
+# Detect the project base directory
+if [ -z "$BASEDIR" ]; then
+  BASEDIR=$(cd "$(dirname "$0")"; pwd)
+fi
+
+# Download Maven Wrapper if not present
+WRAPPER_JAR="$BASEDIR/.mvn/wrapper/maven-wrapper.jar"
+if [ ! -f "$WRAPPER_JAR" ]; then
+  echo "Downloading Maven Wrapper..."
+  WRAPPER_URL=$(grep -m 1 "wrapperUrl=" "$BASEDIR/.mvn/wrapper/maven-wrapper.properties" | cut -d'=' -f2)
+  mkdir -p "$BASEDIR/.mvn/wrapper"
+  curl -o "$WRAPPER_JAR" "$WRAPPER_URL" 2>/dev/null || wget -O "$WRAPPER_JAR" "$WRAPPER_URL" 2>/dev/null
+fi
+
+# Execute Maven
+exec java $MAVEN_OPTS \
+  -classpath "$WRAPPER_JAR" \
+  org.apache.maven.wrapper.MavenWrapperMain "$@"
