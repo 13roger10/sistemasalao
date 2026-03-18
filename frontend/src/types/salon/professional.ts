@@ -48,18 +48,19 @@ export interface Professional extends Timestamps, SoftDelete {
 
 export interface ProfessionalCreateInput {
   userId?: ID;
-  name: string;
-  email: string;
-  phone: string;
+  name?: string;
+  email?: string;
+  phone?: string;
   avatar?: string;
   bio?: string;
   serviceIds?: ID[];
   specialties?: string[];
-  commissionType: CommissionType;
-  commissionValue: number;
+  specialty?: string;
+  commissionType?: CommissionType;
+  commissionValue?: number;
   schedule?: WeekSchedule;
-  unitIds: ID[];
-  primaryUnitId: ID;
+  unitIds?: ID[];
+  primaryUnitId?: ID;
   acceptsOnlineBooking?: boolean;
   color?: string;
 }
@@ -67,6 +68,7 @@ export interface ProfessionalCreateInput {
 export interface ProfessionalUpdateInput extends Partial<ProfessionalCreateInput> {
   status?: Status;
   showInPublicProfile?: boolean;
+  specialty?: string;
 }
 
 export interface ProfessionalFilters {

@@ -18,6 +18,8 @@ public interface ProfissionalRepository extends JpaRepository<Profissional, Long
 
     List<Profissional> findBySalonIdAndAtivoTrue(Long salonId);
 
+    List<Profissional> findBySalonIdAndAtivoFalse(Long salonId);
+
     List<Profissional> findBySalonId(Long salonId);
 
     boolean existsByUsuarioId(Long usuarioId);

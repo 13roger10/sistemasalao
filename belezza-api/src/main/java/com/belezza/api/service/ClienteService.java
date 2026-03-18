@@ -118,8 +118,11 @@ public class ClienteService {
         return listarPorSalon(salonId, null, null, null);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<ClienteResponse> listarPorSalon(Long salonId, String search, String status, String loyaltyLevel) {
+        // Sincronizar usuários CLIENTE que ainda não estão vinculados a este salão
+        sincronizarUsuariosCliente(salonId);
+
         List<Cliente> clientes = clienteRepository.findBySalonIdAndAtivoTrue(salonId);
 
         // Aplicar filtros
@@ -303,5 +306,32 @@ public class ClienteService {
         return clienteRepository.findById(id)
                 .filter(Cliente::isAtivo)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", id));
+    }
+
+    /**
+     * Sincroniza usuários com role CLIENTE que ainda não estão vinculados ao salão.
+     * Cria automaticamente a entrada na tabela de clientes para esses usuários.
+     */
+    @Transactional
+    public void sincronizarUsuariosCliente(Long salonId) {
+        List<Usuario> usuariosNaoVinculados = usuarioRepository.findClientesNaoVinculadosAoSalon(salonId);
+
+        if (usuariosNaoVinculados.isEmpty()) {
+            return;
+        }
+
+        Salon salon = salonService.getSalonEntity(salonId);
+
+        for (Usuario usuario : usuariosNaoVinculados) {
+            Cliente cliente = Cliente.builder()
+                    .usuario(usuario)
+                    .salon(salon)
+                    .aceitaMarketing(true)
+                    .aceitaWhatsApp(true)
+                    .aceitaEmail(true)
+                    .build();
+            clienteRepository.save(cliente);
+            log.info("Cliente sincronizado: usuário {} vinculado ao salão {}", usuario.getId(), salonId);
+        }
     }
 }

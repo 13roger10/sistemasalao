@@ -33,6 +33,8 @@ import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
 import { DataTable, ActionMenuItem, Column } from "@/components/ui/DataTable";
 import { appointmentService } from "@/services/salon/appointmentService";
+import { serviceService } from "@/services/salon/serviceService";
+import { professionalService } from "@/services/salon/professionalService";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import type {
   Appointment,
@@ -544,14 +546,16 @@ export default function AppointmentsPage() {
 
   const loadProfessionals = useCallback(async () => {
     try {
-      // Mock data para desenvolvimento
+      const data = await professionalService.getAll({ salonId: '1' });
+      setProfessionals(data);
+    } catch (error) {
+      console.error("Erro ao carregar profissionais:", error);
+      // Mock data como fallback
       setProfessionals([
         { id: "1", userId: "1", name: "Carlos", email: "carlos@salon.com", phone: "(11) 88888-1111", status: "active", serviceIds: ["1", "2"], specialties: ["Corte"], commissionType: "percentage", commissionValue: 50, schedule: { days: [] }, averageRating: 4.8, totalReviews: 50, totalAppointments: 200, totalRevenue: 10000, unitIds: ["1"], primaryUnitId: "1", acceptsOnlineBooking: true, showInPublicProfile: true, color: "#8B5CF6", createdAt: new Date(), updatedAt: new Date() },
         { id: "2", userId: "2", name: "Ana", email: "ana@salon.com", phone: "(11) 88888-2222", status: "active", serviceIds: ["1", "3"], specialties: ["Estética"], commissionType: "percentage", commissionValue: 40, schedule: { days: [] }, averageRating: 4.9, totalReviews: 80, totalAppointments: 300, totalRevenue: 15000, unitIds: ["1"], primaryUnitId: "1", acceptsOnlineBooking: true, showInPublicProfile: true, color: "#EC4899", createdAt: new Date(), updatedAt: new Date() },
         { id: "3", userId: "3", name: "Roberto", email: "roberto@salon.com", phone: "(11) 88888-3333", status: "active", serviceIds: ["1", "2"], specialties: ["Barba"], commissionType: "percentage", commissionValue: 50, schedule: { days: [] }, averageRating: 4.7, totalReviews: 30, totalAppointments: 150, totalRevenue: 8000, unitIds: ["1"], primaryUnitId: "1", acceptsOnlineBooking: true, showInPublicProfile: true, color: "#10B981", createdAt: new Date(), updatedAt: new Date() },
       ]);
-    } catch (error) {
-      console.error("Erro ao carregar profissionais:", error);
     }
   }, []);
 
@@ -570,15 +574,17 @@ export default function AppointmentsPage() {
 
   const loadServices = useCallback(async () => {
     try {
-      // Mock data para desenvolvimento
+      const data = await serviceService.getAll({ salonId: '1' });
+      setServices(data);
+    } catch (error) {
+      console.error("Erro ao carregar serviços:", error);
+      // Mock data como fallback
       setServices([
         { id: "1", name: "Corte Masculino", description: "Corte tradicional", categoryId: "1", price: 50, durationMinutes: 30, commissionPercentage: 50, status: "active", showInOnlineBooking: true, requiresConfirmation: false, usesStock: false, loyaltyPointsEarned: 10, unitIds: [], totalBookings: 150, averageRating: 4.8, createdAt: new Date(), updatedAt: new Date() },
         { id: "2", name: "Barba", description: "Barba com navalha", categoryId: "2", price: 35, durationMinutes: 25, commissionPercentage: 50, status: "active", showInOnlineBooking: true, requiresConfirmation: false, usesStock: false, loyaltyPointsEarned: 8, unitIds: [], totalBookings: 120, averageRating: 4.9, createdAt: new Date(), updatedAt: new Date() },
         { id: "3", name: "Limpeza de Pele", description: "Limpeza facial profunda", categoryId: "3", price: 120, durationMinutes: 60, commissionPercentage: 40, status: "active", showInOnlineBooking: true, requiresConfirmation: true, usesStock: true, loyaltyPointsEarned: 20, unitIds: [], totalBookings: 45, averageRating: 4.7, createdAt: new Date(), updatedAt: new Date() },
         { id: "4", name: "Corte + Barba", description: "Combo completo", categoryId: "1", price: 75, promotionalPrice: 70, durationMinutes: 50, commissionPercentage: 50, status: "active", showInOnlineBooking: true, requiresConfirmation: false, usesStock: false, loyaltyPointsEarned: 15, unitIds: [], totalBookings: 200, averageRating: 4.9, createdAt: new Date(), updatedAt: new Date() },
       ] as Service[]);
-    } catch (error) {
-      console.error("Erro ao carregar serviços:", error);
     }
   }, []);
 

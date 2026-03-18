@@ -44,9 +44,11 @@ public class ProfissionalController {
     }
 
     @GetMapping("/salon/{salonId}")
-    @Operation(summary = "Listar por salão", description = "Lista profissionais ativos de um salão")
-    public ResponseEntity<List<ProfissionalResponse>> listarPorSalon(@PathVariable Long salonId) {
-        List<ProfissionalResponse> response = profissionalService.listarPorSalon(salonId);
+    @Operation(summary = "Listar por salão", description = "Lista profissionais de um salão. Use ativo=true/false para filtrar, ou omita para listar todos.")
+    public ResponseEntity<List<ProfissionalResponse>> listarPorSalon(
+            @PathVariable Long salonId,
+            @RequestParam(required = false) Boolean ativo) {
+        List<ProfissionalResponse> response = profissionalService.listarPorSalon(salonId, ativo);
         return ResponseEntity.ok(response);
     }
 
@@ -82,6 +84,16 @@ public class ProfissionalController {
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails userDetails) {
         profissionalService.desativar(id, userDetails.getUsername());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/reativar")
+    @AdminOnly
+    @Operation(summary = "Reativar profissional", description = "Reativa um profissional que foi desativado")
+    public ResponseEntity<Void> reativar(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        profissionalService.reativar(id, userDetails.getUsername());
         return ResponseEntity.noContent().build();
     }
 }

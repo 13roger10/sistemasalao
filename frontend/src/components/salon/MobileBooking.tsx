@@ -92,7 +92,15 @@ export function MobileBooking({
         setServices(servicesList);
       } catch (err) {
         console.error('[MobileBooking] Erro ao carregar servicos:', err);
-        setError('Erro ao carregar servicos. Verifique sua conexao.');
+        // Mensagem de erro mais detalhada
+        const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+        if (errorMessage.includes('500') || errorMessage.includes('interno')) {
+          setError('Erro no servidor ao carregar serviços. O backend pode estar com problemas.');
+        } else if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+          setError('Acesso negado. Verifique se você está autenticado.');
+        } else {
+          setError(`Erro ao carregar serviços: ${errorMessage}`);
+        }
       } finally {
         setIsLoading(false);
       }

@@ -17,6 +17,11 @@ import {
   XCircle,
   Layers,
   Copy,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  Sparkles,
+  Settings,
 } from "lucide-react";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { DataTable, ActionMenuItem, Column } from "@/components/ui/DataTable";
@@ -180,6 +185,9 @@ export default function ServicesPage() {
     loyaltyPointsEarned: 10,
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  // Wizard states para serviço
+  const [serviceWizardStep, setServiceWizardStep] = useState<1 | 2 | 3>(1);
 
   // Estados do formulário - Categoria
   const [categoryFormData, setCategoryFormData] = useState<CategoryCreateInput>({
@@ -617,6 +625,50 @@ export default function ServicesPage() {
     });
     setFormErrors({});
     setSelectedService(null);
+    setServiceWizardStep(1);
+  };
+
+  // Funções de navegação do Wizard
+  const handleServiceWizardNext = () => {
+    if (serviceWizardStep === 1) {
+      // Validar etapa 1
+      const errors: Record<string, string> = {};
+      if (!formData.name.trim()) errors.name = "Nome é obrigatório";
+      if (!formData.categoryId) errors.categoryId = "Categoria é obrigatória";
+      if (Object.keys(errors).length > 0) {
+        setFormErrors(errors);
+        return;
+      }
+      setFormErrors({});
+      setServiceWizardStep(2);
+    } else if (serviceWizardStep === 2) {
+      // Validar etapa 2
+      const errors: Record<string, string> = {};
+      if (formData.price <= 0) errors.price = "Preço deve ser maior que zero";
+      if (formData.durationMinutes <= 0) errors.durationMinutes = "Duração deve ser maior que zero";
+      if (Object.keys(errors).length > 0) {
+        setFormErrors(errors);
+        return;
+      }
+      setFormErrors({});
+      setServiceWizardStep(3);
+    }
+  };
+
+  const handleServiceWizardPrev = () => {
+    if (serviceWizardStep > 1) {
+      setServiceWizardStep((serviceWizardStep - 1) as 1 | 2 | 3);
+    }
+  };
+
+  // Helper para cor da categoria
+  const getCategoryColor = (categoryName: string) => {
+    const colors: Record<string, string> = {
+      Cabelo: "violet",
+      Barba: "amber",
+      Estética: "pink",
+    };
+    return colors[categoryName] || "gray";
   };
 
   const resetCategoryForm = () => {
@@ -857,333 +909,13 @@ export default function ServicesPage() {
     },
   ];
 
-  // Formulário de Serviço
-  const ServiceForm = () => (
-    <div className="space-y-6">
-      {formErrors.submit && (
-        <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
-          {formErrors.submit}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Input
-          label="Nome do Serviço *"
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          error={formErrors.name}
-          placeholder="Ex: Corte Masculino"
-        />
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Categoria *
-          </label>
-          <select
-            value={formData.categoryId}
-            onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-            className={`w-full rounded-lg border px-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 dark:text-white ${
-              formErrors.categoryId
-                ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
-                : "border-gray-300 focus:border-violet-500 focus:ring-violet-500/20 dark:border-gray-600"
-            } bg-white dark:bg-gray-700`}
-          >
-            <option value="">Selecione uma categoria</option>
-            {categories.map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
-              </option>
-            ))}
-          </select>
-          {formErrors.categoryId && (
-            <p className="mt-1 text-sm text-red-500">{formErrors.categoryId}</p>
-          )}
-        </div>
-      </div>
-
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Descrição
-        </label>
-        <textarea
-          value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          placeholder="Descreva o serviço..."
-          rows={2}
-          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Valor (R$) *
-          </label>
-          <div className="relative">
-            <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={formData.price}
-              onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-              className={`w-full rounded-lg border pl-10 pr-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 dark:text-white ${
-                formErrors.price
-                  ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
-                  : "border-gray-300 focus:border-violet-500 focus:ring-violet-500/20 dark:border-gray-600"
-              } bg-white dark:bg-gray-700`}
-            />
-          </div>
-          {formErrors.price && (
-            <p className="mt-1 text-sm text-red-500">{formErrors.price}</p>
-          )}
-        </div>
-
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Valor Promocional (R$)
-          </label>
-          <div className="relative">
-            <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={formData.promotionalPrice || ""}
-              onChange={(e) => setFormData({ ...formData, promotionalPrice: e.target.value ? parseFloat(e.target.value) : undefined })}
-              placeholder="Opcional"
-              className="w-full rounded-lg border border-gray-300 bg-white pl-10 pr-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Tempo Estimado (min) *
-          </label>
-          <div className="relative">
-            <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              type="number"
-              min="5"
-              step="5"
-              value={formData.durationMinutes}
-              onChange={(e) => setFormData({ ...formData, durationMinutes: parseInt(e.target.value) || 30 })}
-              className={`w-full rounded-lg border pl-10 pr-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 dark:text-white ${
-                formErrors.durationMinutes
-                  ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
-                  : "border-gray-300 focus:border-violet-500 focus:ring-violet-500/20 dark:border-gray-600"
-              } bg-white dark:bg-gray-700`}
-            />
-          </div>
-          {formErrors.durationMinutes && (
-            <p className="mt-1 text-sm text-red-500">{formErrors.durationMinutes}</p>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Comissão (%)
-          </label>
-          <div className="relative">
-            <Percent className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              type="number"
-              min="0"
-              max="100"
-              value={formData.commissionPercentage}
-              onChange={(e) => setFormData({ ...formData, commissionPercentage: parseInt(e.target.value) || 0 })}
-              className={`w-full rounded-lg border pl-10 pr-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 dark:text-white ${
-                formErrors.commissionPercentage
-                  ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
-                  : "border-gray-300 focus:border-violet-500 focus:ring-violet-500/20 dark:border-gray-600"
-              } bg-white dark:bg-gray-700`}
-            />
-          </div>
-          {formErrors.commissionPercentage && (
-            <p className="mt-1 text-sm text-red-500">{formErrors.commissionPercentage}</p>
-          )}
-        </div>
-
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Pontos de Fidelidade
-          </label>
-          <input
-            type="number"
-            min="0"
-            value={formData.loyaltyPointsEarned}
-            onChange={(e) => setFormData({ ...formData, loyaltyPointsEarned: parseInt(e.target.value) || 0 })}
-            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-          />
-        </div>
-      </div>
-
-      <div className="flex items-center gap-4">
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={formData.showInOnlineBooking}
-            onChange={(e) => setFormData({ ...formData, showInOnlineBooking: e.target.checked })}
-            className="h-4 w-4 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
-          />
-          <span className="text-sm text-gray-700 dark:text-gray-300">Disponível para agendamento online</span>
-        </label>
-      </div>
-    </div>
-  );
-
-  // Formulário de Categoria
-  const CategoryForm = () => (
-    <div className="space-y-4">
-      <Input
-        label="Nome da Categoria *"
-        value={categoryFormData.name}
-        onChange={(e) => setCategoryFormData({ ...categoryFormData, name: e.target.value })}
-        error={formErrors.categoryName}
-        placeholder="Ex: Cabelo, Barba, Estética"
-      />
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Descrição
-        </label>
-        <textarea
-          value={categoryFormData.description}
-          onChange={(e) => setCategoryFormData({ ...categoryFormData, description: e.target.value })}
-          placeholder="Descrição da categoria..."
-          rows={2}
-          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
-        />
-      </div>
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Cor
-        </label>
-        <input
-          type="color"
-          value={categoryFormData.color}
-          onChange={(e) => setCategoryFormData({ ...categoryFormData, color: e.target.value })}
-          className="h-10 w-20 cursor-pointer rounded-lg border border-gray-300 dark:border-gray-600"
-        />
-      </div>
-    </div>
-  );
-
-  // Formulário de Combo
-  const ComboForm = () => {
-    const selectedServices = services.filter((s) => comboFormData.serviceIds.includes(s.id));
-    const regularPrice = selectedServices.reduce((acc, s) => acc + s.price, 0);
-    const totalDuration = selectedServices.reduce((acc, s) => acc + s.durationMinutes, 0);
-    const discount = regularPrice > 0 && comboFormData.comboPrice > 0
-      ? Math.round(((regularPrice - comboFormData.comboPrice) / regularPrice) * 100)
-      : 0;
-
-    return (
-      <div className="space-y-4">
-        <Input
-          label="Nome do Combo *"
-          value={comboFormData.name}
-          onChange={(e) => setComboFormData({ ...comboFormData, name: e.target.value })}
-          error={formErrors.comboName}
-          placeholder="Ex: Dia do Noivo"
-        />
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Descrição
-          </label>
-          <textarea
-            value={comboFormData.description}
-            onChange={(e) => setComboFormData({ ...comboFormData, description: e.target.value })}
-            placeholder="Descrição do combo..."
-            rows={2}
-            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
-          />
-        </div>
-
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Serviços Incluídos *
-          </label>
-          <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-gray-300 p-3 dark:border-gray-600">
-            {services.filter(s => s.status === "active").map((service) => (
-              <label key={service.id} className="flex items-center gap-3 rounded-lg p-2 hover:bg-gray-50 dark:hover:bg-gray-800">
-                <input
-                  type="checkbox"
-                  checked={comboFormData.serviceIds.includes(service.id)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setComboFormData({
-                        ...comboFormData,
-                        serviceIds: [...comboFormData.serviceIds, service.id],
-                      });
-                    } else {
-                      setComboFormData({
-                        ...comboFormData,
-                        serviceIds: comboFormData.serviceIds.filter((id) => id !== service.id),
-                      });
-                    }
-                  }}
-                  className="h-4 w-4 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
-                />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">{service.name}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {formatCurrency(service.price)} • {formatDuration(service.durationMinutes)}
-                  </p>
-                </div>
-              </label>
-            ))}
-          </div>
-          {formErrors.comboServices && (
-            <p className="mt-1 text-sm text-red-500">{formErrors.comboServices}</p>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Valor do Combo (R$) *
-            </label>
-            <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={comboFormData.comboPrice}
-                onChange={(e) => setComboFormData({ ...comboFormData, comboPrice: parseFloat(e.target.value) || 0 })}
-                className="w-full rounded-lg border border-gray-300 bg-white pl-10 pr-4 py-2.5 text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              />
-            </div>
-          </div>
-          <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
-            <p className="text-xs text-gray-500 dark:text-gray-400">Resumo</p>
-            <p className="text-sm">
-              <span className="text-gray-400 line-through">{formatCurrency(regularPrice)}</span>
-              <span className="ml-2 font-semibold text-green-600 dark:text-green-400">
-                {formatCurrency(comboFormData.comboPrice)}
-              </span>
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {discount > 0 && <span className="text-green-600 dark:text-green-400">-{discount}% </span>}
-              • {formatDuration(totalDuration)}
-            </p>
-          </div>
-        </div>
-
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={comboFormData.showInOnlineBooking}
-            onChange={(e) => setComboFormData({ ...comboFormData, showInOnlineBooking: e.target.checked })}
-            className="h-4 w-4 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
-          />
-          <span className="text-sm text-gray-700 dark:text-gray-300">Disponível para agendamento online</span>
-        </label>
-      </div>
-    );
-  };
+  // Calculando valores para o formulário de combo
+  const comboSelectedServices = services.filter((s) => comboFormData.serviceIds.includes(s.id));
+  const comboRegularPrice = comboSelectedServices.reduce((acc, s) => acc + s.price, 0);
+  const comboTotalDuration = comboSelectedServices.reduce((acc, s) => acc + s.durationMinutes, 0);
+  const comboDiscount = comboRegularPrice > 0 && comboFormData.comboPrice > 0
+    ? Math.round(((comboRegularPrice - comboFormData.comboPrice) / comboRegularPrice) * 100)
+    : 0;
 
   return (
     <SalonLayout requiredRole={["ADMIN", "RECEPCIONIST"]} pageTitle="Serviços">
@@ -1433,7 +1165,7 @@ export default function ServicesPage() {
         )}
       </div>
 
-      {/* Modal de Criar/Editar Serviço */}
+      {/* Modal de Criar/Editar Serviço - Wizard */}
       <Modal
         isOpen={isCreateModalOpen || isEditModalOpen}
         onClose={() => {
@@ -1442,29 +1174,403 @@ export default function ServicesPage() {
           resetForm();
         }}
         title={isEditModalOpen ? "Editar Serviço" : "Novo Serviço"}
-        size="lg"
+        size="xl"
         footer={
           <>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setIsCreateModalOpen(false);
-                setIsEditModalOpen(false);
-                resetForm();
-              }}
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={isEditModalOpen ? handleUpdateService : handleCreateService}
-              isLoading={isSubmitting}
-            >
-              {isEditModalOpen ? "Salvar Alterações" : "Criar Serviço"}
-            </Button>
+            {serviceWizardStep === 1 ? (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setIsCreateModalOpen(false);
+                    setIsEditModalOpen(false);
+                    resetForm();
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleServiceWizardNext}
+                  rightIcon={<ChevronRight className="h-4 w-4" />}
+                >
+                  Próximo
+                </Button>
+              </>
+            ) : serviceWizardStep === 2 ? (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={handleServiceWizardPrev}
+                  leftIcon={<ChevronLeft className="h-4 w-4" />}
+                >
+                  Voltar
+                </Button>
+                <Button
+                  onClick={handleServiceWizardNext}
+                  rightIcon={<ChevronRight className="h-4 w-4" />}
+                >
+                  Próximo
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={handleServiceWizardPrev}
+                  leftIcon={<ChevronLeft className="h-4 w-4" />}
+                >
+                  Voltar
+                </Button>
+                <Button
+                  onClick={isEditModalOpen ? handleUpdateService : handleCreateService}
+                  isLoading={isSubmitting}
+                >
+                  {isEditModalOpen ? "Salvar Alterações" : "Criar Serviço"}
+                </Button>
+              </>
+            )}
           </>
         }
       >
-        <ServiceForm />
+        {/* Progress Indicator */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${
+                serviceWizardStep >= 1 ? "bg-violet-500 text-white" : "bg-gray-200 text-gray-500 dark:bg-gray-700"
+              }`}>
+                {serviceWizardStep > 1 ? <Check className="h-4 w-4" /> : <Scissors className="h-4 w-4" />}
+              </div>
+              <span className={`text-sm font-medium hidden sm:block ${serviceWizardStep >= 1 ? "text-violet-600 dark:text-violet-400" : "text-gray-500"}`}>
+                Dados Básicos
+              </span>
+            </div>
+            <div className="mx-2 h-0.5 flex-1 bg-gray-200 dark:bg-gray-700">
+              <div className={`h-full transition-all ${serviceWizardStep >= 2 ? "w-full bg-violet-500" : "w-0"}`} />
+            </div>
+            <div className="flex items-center gap-2">
+              <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${
+                serviceWizardStep >= 2 ? "bg-violet-500 text-white" : "bg-gray-200 text-gray-500 dark:bg-gray-700"
+              }`}>
+                {serviceWizardStep > 2 ? <Check className="h-4 w-4" /> : <DollarSign className="h-4 w-4" />}
+              </div>
+              <span className={`text-sm font-medium hidden sm:block ${serviceWizardStep >= 2 ? "text-violet-600 dark:text-violet-400" : "text-gray-500"}`}>
+                Preços
+              </span>
+            </div>
+            <div className="mx-2 h-0.5 flex-1 bg-gray-200 dark:bg-gray-700">
+              <div className={`h-full transition-all ${serviceWizardStep >= 3 ? "w-full bg-violet-500" : "w-0"}`} />
+            </div>
+            <div className="flex items-center gap-2">
+              <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${
+                serviceWizardStep >= 3 ? "bg-violet-500 text-white" : "bg-gray-200 text-gray-500 dark:bg-gray-700"
+              }`}>
+                <Settings className="h-4 w-4" />
+              </div>
+              <span className={`text-sm font-medium hidden sm:block ${serviceWizardStep >= 3 ? "text-violet-600 dark:text-violet-400" : "text-gray-500"}`}>
+                Configurações
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {formErrors.submit && (
+          <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+            {formErrors.submit}
+          </div>
+        )}
+
+        {/* Step 1: Dados Básicos */}
+        {serviceWizardStep === 1 && (
+          <div className="space-y-6">
+            <Input
+              label="Nome do Serviço *"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              error={formErrors.name}
+              placeholder="Ex: Corte Masculino"
+              leftIcon={<Scissors className="h-4 w-4" />}
+            />
+
+            <div>
+              <label className="mb-3 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Categoria *
+              </label>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {categories.map((cat) => {
+                  const colorMap: Record<string, { bg: string; border: string; text: string; icon: string }> = {
+                    Cabelo: {
+                      bg: "bg-violet-50 dark:bg-violet-900/20",
+                      border: "border-violet-500",
+                      text: "text-violet-700 dark:text-violet-300",
+                      icon: "text-violet-500",
+                    },
+                    Barba: {
+                      bg: "bg-amber-50 dark:bg-amber-900/20",
+                      border: "border-amber-500",
+                      text: "text-amber-700 dark:text-amber-300",
+                      icon: "text-amber-500",
+                    },
+                    Estética: {
+                      bg: "bg-pink-50 dark:bg-pink-900/20",
+                      border: "border-pink-500",
+                      text: "text-pink-700 dark:text-pink-300",
+                      icon: "text-pink-500",
+                    },
+                  };
+                  const colors = colorMap[cat.name] || {
+                    bg: "bg-gray-50 dark:bg-gray-800",
+                    border: "border-gray-500",
+                    text: "text-gray-700 dark:text-gray-300",
+                    icon: "text-gray-500",
+                  };
+                  const isSelected = formData.categoryId === cat.id;
+
+                  return (
+                    <button
+                      key={cat.id}
+                      onClick={() => setFormData({ ...formData, categoryId: cat.id })}
+                      className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all hover:shadow-md ${
+                        isSelected
+                          ? `${colors.bg} ${colors.border}`
+                          : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800"
+                      }`}
+                    >
+                      <div
+                        className={`flex h-12 w-12 items-center justify-center rounded-full ${
+                          isSelected ? colors.bg : "bg-gray-100 dark:bg-gray-700"
+                        }`}
+                        style={{ backgroundColor: isSelected ? `${cat.color}20` : undefined }}
+                      >
+                        <Tag className={`h-6 w-6 ${isSelected ? colors.icon : "text-gray-400"}`} style={{ color: isSelected ? cat.color : undefined }} />
+                      </div>
+                      <div className="text-center">
+                        <p className={`font-medium ${isSelected ? colors.text : "text-gray-900 dark:text-white"}`}>
+                          {cat.name}
+                        </p>
+                        {cat.description && (
+                          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
+                            {cat.description}
+                          </p>
+                        )}
+                      </div>
+                      {isSelected && (
+                        <Check className={`h-5 w-5 ${colors.icon}`} style={{ color: cat.color }} />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              {formErrors.categoryId && (
+                <p className="mt-2 text-sm text-red-500">{formErrors.categoryId}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Descrição
+              </label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Descreva o serviço em detalhes..."
+                rows={3}
+                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Preços */}
+        {serviceWizardStep === 2 && (
+          <div className="space-y-6">
+            {/* Card resumo do serviço */}
+            <div className="rounded-xl border-2 border-violet-200 bg-violet-50 p-4 dark:border-violet-800 dark:bg-violet-900/20">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-violet-500 text-white">
+                  <Scissors className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="font-semibold text-violet-900 dark:text-violet-100">{formData.name || "Novo Serviço"}</p>
+                  <p className="text-sm text-violet-700 dark:text-violet-300">
+                    {categories.find(c => c.id === formData.categoryId)?.name || "Sem categoria"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                <div className="mb-3 flex items-center gap-2">
+                  <DollarSign className="h-5 w-5 text-green-500" />
+                  <label className="font-medium text-gray-900 dark:text-white">Valor Regular *</label>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.price}
+                    onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+                    className={`w-full rounded-lg border pl-12 pr-4 py-3 text-xl font-semibold focus:outline-none focus:ring-2 ${
+                      formErrors.price
+                        ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
+                        : "border-gray-300 focus:border-violet-500 focus:ring-violet-500/20 dark:border-gray-600"
+                    } bg-white text-gray-900 dark:bg-gray-700 dark:text-white`}
+                  />
+                </div>
+                {formErrors.price && (
+                  <p className="mt-2 text-sm text-red-500">{formErrors.price}</p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                <div className="mb-3 flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-amber-500" />
+                  <label className="font-medium text-gray-900 dark:text-white">Valor Promocional</label>
+                  <span className="text-xs text-gray-500">(opcional)</span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.promotionalPrice || ""}
+                    onChange={(e) => setFormData({ ...formData, promotionalPrice: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    placeholder="0,00"
+                    className="w-full rounded-lg border border-gray-300 bg-white pl-12 pr-4 py-3 text-xl font-semibold text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  />
+                </div>
+                {formData.promotionalPrice && formData.promotionalPrice < formData.price && (
+                  <p className="mt-2 text-sm text-green-600 dark:text-green-400">
+                    Desconto de {Math.round(((formData.price - formData.promotionalPrice) / formData.price) * 100)}%
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <div className="mb-3 flex items-center gap-2">
+                <Clock className="h-5 w-5 text-blue-500" />
+                <label className="font-medium text-gray-900 dark:text-white">Tempo Estimado *</label>
+              </div>
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min="5"
+                  max="180"
+                  step="5"
+                  value={formData.durationMinutes}
+                  onChange={(e) => setFormData({ ...formData, durationMinutes: parseInt(e.target.value) })}
+                  className="flex-1 accent-violet-500"
+                />
+                <div className="flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 dark:bg-gray-700">
+                  <span className="text-xl font-semibold text-gray-900 dark:text-white">
+                    {formatDuration(formData.durationMinutes)}
+                  </span>
+                </div>
+              </div>
+              {formErrors.durationMinutes && (
+                <p className="mt-2 text-sm text-red-500">{formErrors.durationMinutes}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Configurações */}
+        {serviceWizardStep === 3 && (
+          <div className="space-y-6">
+            {/* Card resumo */}
+            <div className="rounded-xl border-2 border-violet-200 bg-violet-50 p-4 dark:border-violet-800 dark:bg-violet-900/20">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-violet-500 text-white">
+                    <Scissors className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-violet-900 dark:text-violet-100">{formData.name}</p>
+                    <p className="text-sm text-violet-700 dark:text-violet-300">
+                      {categories.find(c => c.id === formData.categoryId)?.name} • {formatDuration(formData.durationMinutes)}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  {formData.promotionalPrice ? (
+                    <>
+                      <p className="text-sm text-gray-400 line-through">{formatCurrency(formData.price)}</p>
+                      <p className="text-xl font-bold text-green-600 dark:text-green-400">{formatCurrency(formData.promotionalPrice)}</p>
+                    </>
+                  ) : (
+                    <p className="text-xl font-bold text-violet-600 dark:text-violet-400">{formatCurrency(formData.price)}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                <div className="mb-3 flex items-center gap-2">
+                  <Percent className="h-5 w-5 text-orange-500" />
+                  <label className="font-medium text-gray-900 dark:text-white">Comissão do Profissional</label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={formData.commissionPercentage}
+                    onChange={(e) => setFormData({ ...formData, commissionPercentage: parseInt(e.target.value) })}
+                    className="flex-1 accent-violet-500"
+                  />
+                  <div className="flex items-center gap-1 rounded-lg bg-orange-100 px-3 py-1.5 dark:bg-orange-900/30">
+                    <span className="text-lg font-semibold text-orange-700 dark:text-orange-400">
+                      {formData.commissionPercentage}%
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                  Valor: {formatCurrency((formData.promotionalPrice || formData.price) * (formData.commissionPercentage || 0) / 100)}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                <div className="mb-3 flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-yellow-500" />
+                  <label className="font-medium text-gray-900 dark:text-white">Pontos de Fidelidade</label>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  value={formData.loyaltyPointsEarned}
+                  onChange={(e) => setFormData({ ...formData, loyaltyPointsEarned: parseInt(e.target.value) || 0 })}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                />
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                  Pontos que o cliente ganha ao realizar este serviço
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800">
+              <label className="flex items-center gap-4">
+                <input
+                  type="checkbox"
+                  checked={formData.showInOnlineBooking}
+                  onChange={(e) => setFormData({ ...formData, showInOnlineBooking: e.target.checked })}
+                  className="h-5 w-5 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
+                />
+                <div>
+                  <span className="font-medium text-gray-900 dark:text-white">Disponível para agendamento online</span>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Permite que clientes agendem este serviço pela internet
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Modal de Excluir Serviço */}
@@ -1508,7 +1614,38 @@ export default function ServicesPage() {
           </>
         }
       >
-        <CategoryForm />
+        <div className="space-y-4">
+          <Input
+            label="Nome da Categoria *"
+            value={categoryFormData.name}
+            onChange={(e) => setCategoryFormData({ ...categoryFormData, name: e.target.value })}
+            error={formErrors.categoryName}
+            placeholder="Ex: Cabelo, Barba, Estética"
+          />
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Descrição
+            </label>
+            <textarea
+              value={categoryFormData.description}
+              onChange={(e) => setCategoryFormData({ ...categoryFormData, description: e.target.value })}
+              placeholder="Descrição da categoria..."
+              rows={2}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Cor
+            </label>
+            <input
+              type="color"
+              value={categoryFormData.color}
+              onChange={(e) => setCategoryFormData({ ...categoryFormData, color: e.target.value })}
+              className="h-10 w-20 cursor-pointer rounded-lg border border-gray-300 dark:border-gray-600"
+            />
+          </div>
+        </div>
       </Modal>
 
       {/* Modal de Excluir Categoria */}
@@ -1553,7 +1690,108 @@ export default function ServicesPage() {
           </>
         }
       >
-        <ComboForm />
+        <div className="space-y-4">
+          <Input
+            label="Nome do Combo *"
+            value={comboFormData.name}
+            onChange={(e) => setComboFormData({ ...comboFormData, name: e.target.value })}
+            error={formErrors.comboName}
+            placeholder="Ex: Dia do Noivo"
+          />
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Descrição
+            </label>
+            <textarea
+              value={comboFormData.description}
+              onChange={(e) => setComboFormData({ ...comboFormData, description: e.target.value })}
+              placeholder="Descrição do combo..."
+              rows={2}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Serviços Incluídos *
+            </label>
+            <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-gray-300 p-3 dark:border-gray-600">
+              {services.filter(s => s.status === "active").map((service) => (
+                <label key={service.id} className="flex items-center gap-3 rounded-lg p-2 hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <input
+                    type="checkbox"
+                    checked={comboFormData.serviceIds.includes(service.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setComboFormData({
+                          ...comboFormData,
+                          serviceIds: [...comboFormData.serviceIds, service.id],
+                        });
+                      } else {
+                        setComboFormData({
+                          ...comboFormData,
+                          serviceIds: comboFormData.serviceIds.filter((id) => id !== service.id),
+                        });
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{service.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {formatCurrency(service.price)} • {formatDuration(service.durationMinutes)}
+                    </p>
+                  </div>
+                </label>
+              ))}
+            </div>
+            {formErrors.comboServices && (
+              <p className="mt-1 text-sm text-red-500">{formErrors.comboServices}</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Valor do Combo (R$) *
+              </label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={comboFormData.comboPrice}
+                  onChange={(e) => setComboFormData({ ...comboFormData, comboPrice: parseFloat(e.target.value) || 0 })}
+                  className="w-full rounded-lg border border-gray-300 bg-white pl-10 pr-4 py-2.5 text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Resumo</p>
+              <p className="text-sm">
+                <span className="text-gray-400 line-through">{formatCurrency(comboRegularPrice)}</span>
+                <span className="ml-2 font-semibold text-green-600 dark:text-green-400">
+                  {formatCurrency(comboFormData.comboPrice)}
+                </span>
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {comboDiscount > 0 && <span className="text-green-600 dark:text-green-400">-{comboDiscount}% </span>}
+                • {formatDuration(comboTotalDuration)}
+              </p>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={comboFormData.showInOnlineBooking}
+              onChange={(e) => setComboFormData({ ...comboFormData, showInOnlineBooking: e.target.checked })}
+              className="h-4 w-4 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-300">Disponível para agendamento online</span>
+          </label>
+        </div>
       </Modal>
 
       {/* Modal de Excluir Combo */}

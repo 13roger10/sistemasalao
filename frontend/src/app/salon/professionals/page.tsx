@@ -2,18 +2,21 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Plus,
   Search,
   Edit2,
   Trash2,
   RefreshCw,
   UserCheck,
   UserX,
-  Phone,
-  Mail,
   Scissors,
   Clock,
   Star,
+  Phone,
+  Mail,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  Filter,
 } from "lucide-react";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { DataTable, ActionMenuItem, Column } from "@/components/ui/DataTable";
@@ -21,30 +24,32 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
+import { useUnit } from "@/contexts/UnitContext";
+import { professionalService } from "@/services/salon/professionalService";
+import { api } from "@/services/salon/api";
+import type { Professional, ProfessionalCreateInput, ProfessionalUpdateInput } from "@/types/salon";
 
-// Tipos
-interface Professional {
-  id: string;
-  name: string;
+// Tipo para usuário do backend
+interface User {
+  id: number;
+  nome: string;
   email: string;
-  phone: string;
-  avatar?: string;
-  specialty: string;
-  services: string[];
-  workingHours: string;
-  commission: number;
-  rating: number;
-  totalServices: number;
-  status: "active" | "inactive";
-  createdAt: Date;
+  telefone?: string;
+  role: string;
+  ativo: boolean;
+}
+
+interface UserPageResponse {
+  content: User[];
+  totalElements: number;
+  totalPages: number;
 }
 
 interface ProfessionalFormData {
-  name: string;
-  email: string;
-  phone: string;
+  usuarioId: string;
   specialty: string;
-  commission: number;
+  bio: string;
+  acceptsOnlineBooking: boolean;
 }
 
 // Badge de Status
@@ -88,6 +93,7 @@ const StatsCard = ({
 
 export default function ProfessionalsPage() {
   const { user } = useSalonAuth();
+  const { selectedUnitId } = useUnit();
 
   // Estados de listagem
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -109,91 +115,96 @@ export default function ProfessionalsPage() {
 
   // Estados do formulário
   const [formData, setFormData] = useState<ProfessionalFormData>({
-    name: "",
-    email: "",
-    phone: "",
+    usuarioId: "",
     specialty: "",
-    commission: 50,
+    bio: "",
+    acceptsOnlineBooking: true,
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // Carregar profissionais (mock)
+  // Lista de usuários disponíveis
+  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [userSearchTerm, setUserSearchTerm] = useState("");
+
+  // Wizard states
+  const [wizardStep, setWizardStep] = useState<1 | 2>(1);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+
+  // Filtros avançados
+  const [roleFilter, setRoleFilter] = useState<string>("");
+  const [userStatusFilter, setUserStatusFilter] = useState<string>("");
+
+  // Filtrar usuários pela busca e filtros avançados (em tempo real)
+  const filteredUsers = availableUsers.filter(user => {
+    // Filtro de busca por texto
+    const matchesSearch = !userSearchTerm ||
+      user.nome?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+      user.email?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+      user.telefone?.includes(userSearchTerm);
+
+    // Filtro por role
+    const matchesRole = !roleFilter || user.role === roleFilter;
+
+    // Filtro por status
+    const matchesStatus = !userStatusFilter ||
+      (userStatusFilter === "active" && user.ativo) ||
+      (userStatusFilter === "inactive" && !user.ativo);
+
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+
+  // Carregar usuários disponíveis
+  const loadAvailableUsers = useCallback(async () => {
+    setIsLoadingUsers(true);
+    try {
+      const response = await api.get<UserPageResponse>("/usuarios", { size: 100 });
+      // Filtrar apenas usuários ativos que podem ser profissionais
+      const users = response.content?.filter(u => u.ativo) || [];
+      setAvailableUsers(users);
+    } catch (error) {
+      console.error("Erro ao carregar usuários:", error);
+      setAvailableUsers([]);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  }, []);
+
+  // Carregar profissionais da API
   const loadProfessionals = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Mock data
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      const response = await professionalService.list({
+        page,
+        limit: 10,
+        salonId: selectedUnitId || "1",
+        search: searchTerm || undefined,
+        status: statusFilter || undefined,
+      });
 
-      const mockProfessionals: Professional[] = [
-        {
-          id: "1",
-          name: "Carlos Silva",
-          email: "carlos@salao.com",
-          phone: "(11) 99999-1111",
-          specialty: "Corte Masculino",
-          services: ["Corte", "Barba", "Sobrancelha"],
-          workingHours: "09:00 - 18:00",
-          commission: 50,
-          rating: 4.8,
-          totalServices: 156,
-          status: "active",
-          createdAt: new Date(),
-        },
-        {
-          id: "2",
-          name: "Ana Santos",
-          email: "ana@salao.com",
-          phone: "(11) 99999-2222",
-          specialty: "Coloração",
-          services: ["Coloração", "Mechas", "Corte Feminino"],
-          workingHours: "10:00 - 19:00",
-          commission: 45,
-          rating: 4.9,
-          totalServices: 203,
-          status: "active",
-          createdAt: new Date(),
-        },
-        {
-          id: "3",
-          name: "Pedro Costa",
-          email: "pedro@salao.com",
-          phone: "(11) 99999-3333",
-          specialty: "Manicure",
-          services: ["Manicure", "Pedicure", "Unhas em Gel"],
-          workingHours: "09:00 - 17:00",
-          commission: 40,
-          rating: 4.7,
-          totalServices: 89,
-          status: "inactive",
-          createdAt: new Date(),
-        },
-      ];
-
-      let filtered = mockProfessionals;
-      if (searchTerm) {
-        filtered = filtered.filter(
-          (p) =>
-            p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            p.email.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      }
-      if (statusFilter) {
-        filtered = filtered.filter((p) => p.status === statusFilter);
-      }
-
-      setProfessionals(filtered);
-      setTotalPages(1);
-      setTotalItems(filtered.length);
+      setProfessionals(response.data);
+      setTotalPages(response.meta.totalPages);
+      setTotalItems(response.meta.total);
     } catch (error) {
       console.error("Erro ao carregar profissionais:", error);
+      setProfessionals([]);
+      setTotalPages(1);
+      setTotalItems(0);
     } finally {
       setIsLoading(false);
     }
-  }, [searchTerm, statusFilter]);
+  }, [page, searchTerm, statusFilter, selectedUnitId]);
 
   useEffect(() => {
     loadProfessionals();
   }, [loadProfessionals]);
+
+  // Carregar usuários quando abrir modal de criação
+  useEffect(() => {
+    if (isCreateModalOpen) {
+      loadAvailableUsers();
+    }
+  }, [isCreateModalOpen, loadAvailableUsers]);
 
   // Handlers
   const handleSearch = (e: React.FormEvent) => {
@@ -207,28 +218,46 @@ export default function ProfessionalsPage() {
 
     setIsSubmitting(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      const createData: ProfessionalCreateInput = {
+        userId: formData.usuarioId,
+        specialties: formData.specialty ? [formData.specialty] : [],
+        bio: formData.bio,
+        acceptsOnlineBooking: formData.acceptsOnlineBooking,
+      };
+      await professionalService.create(createData);
       setIsCreateModalOpen(false);
       resetForm();
       loadProfessionals();
-    } catch (error) {
-      console.error("Erro ao criar profissional:", error);
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      setFormErrors({
+        submit: err.message || "Erro ao criar profissional",
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleUpdate = async () => {
-    if (!selectedProfessional || !validateForm()) return;
+    if (!selectedProfessional) return;
 
     setIsSubmitting(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      const updateData: ProfessionalUpdateInput = {
+        userId: formData.usuarioId,
+        specialties: formData.specialty ? [formData.specialty] : [],
+        bio: formData.bio,
+        acceptsOnlineBooking: formData.acceptsOnlineBooking,
+      };
+      await professionalService.update(selectedProfessional.id, updateData);
       setIsEditModalOpen(false);
       resetForm();
       loadProfessionals();
-    } catch (error) {
-      console.error("Erro ao atualizar profissional:", error);
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      setFormErrors({
+        submit: err.message || "Erro ao atualizar profissional",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -239,7 +268,7 @@ export default function ProfessionalsPage() {
 
     setIsSubmitting(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await professionalService.delete(selectedProfessional.id);
       setIsDeleteModalOpen(false);
       setSelectedProfessional(null);
       loadProfessionals();
@@ -250,45 +279,87 @@ export default function ProfessionalsPage() {
     }
   };
 
+  const handleReactivate = async (professional: Professional) => {
+    try {
+      await professionalService.reactivate(professional.id);
+      loadProfessionals();
+    } catch (error) {
+      console.error("Erro ao reativar profissional:", error);
+    }
+  };
+
   const validateForm = () => {
     const errors: Record<string, string> = {};
 
-    if (!formData.name.trim()) {
-      errors.name = "Nome é obrigatório";
-    }
-    if (!formData.email.trim()) {
-      errors.email = "Email é obrigatório";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      errors.email = "Email inválido";
-    }
-    if (!formData.phone.trim()) {
-      errors.phone = "Telefone é obrigatório";
+    if (!formData.usuarioId) {
+      errors.usuarioId = "Selecione um usuário";
     }
 
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
+  // Funções do Wizard
+  const handleSelectUser = (user: User) => {
+    setSelectedUser(user);
+    setFormData({ ...formData, usuarioId: user.id.toString() });
+  };
+
+  const handleNextStep = () => {
+    if (selectedUser) {
+      setWizardStep(2);
+    }
+  };
+
+  const handlePrevStep = () => {
+    setWizardStep(1);
+  };
+
+  // Helper para obter label da role
+  const getRoleLabel = (role: string) => {
+    const labels: Record<string, string> = {
+      ADMIN: "Administrador",
+      PROFISSIONAL: "Profissional",
+      CLIENTE: "Cliente",
+      RECEPCIONIST: "Recepcionista",
+    };
+    return labels[role] || role;
+  };
+
+  // Helper para obter cor da role
+  const getRoleColor = (role: string) => {
+    const colors: Record<string, string> = {
+      ADMIN: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+      PROFISSIONAL: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+      CLIENTE: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+      RECEPCIONIST: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+    };
+    return colors[role] || "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
+  };
+
   const resetForm = () => {
     setFormData({
-      name: "",
-      email: "",
-      phone: "",
+      usuarioId: "",
       specialty: "",
-      commission: 50,
+      bio: "",
+      acceptsOnlineBooking: true,
     });
     setFormErrors({});
     setSelectedProfessional(null);
+    setUserSearchTerm("");
+    setWizardStep(1);
+    setSelectedUser(null);
+    setRoleFilter("");
+    setUserStatusFilter("");
   };
 
   const openEditModal = (professional: Professional) => {
     setSelectedProfessional(professional);
     setFormData({
-      name: professional.name,
-      email: professional.email,
-      phone: professional.phone,
-      specialty: professional.specialty,
-      commission: professional.commission,
+      usuarioId: professional.userId?.toString() || "",
+      specialty: professional.specialties?.[0] || "",
+      bio: professional.bio || "",
+      acceptsOnlineBooking: professional.acceptsOnlineBooking ?? true,
     });
     setIsEditModalOpen(true);
   };
@@ -309,18 +380,18 @@ export default function ProfessionalsPage() {
             {item.avatar ? (
               <img
                 src={item.avatar}
-                alt={item.name}
+                alt={item.name || ""}
                 className="h-10 w-10 rounded-full object-cover"
               />
             ) : (
               <span className="text-sm font-semibold">
-                {item.name.charAt(0).toUpperCase()}
+                {item.name?.charAt(0)?.toUpperCase() || "?"}
               </span>
             )}
           </div>
           <div>
-            <p className="font-medium text-gray-900 dark:text-white">{item.name}</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{item.email}</p>
+            <p className="font-medium text-gray-900 dark:text-white">{item.name || "Sem nome"}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{item.email || "-"}</p>
           </div>
         </div>
       ),
@@ -331,7 +402,7 @@ export default function ProfessionalsPage() {
       render: (item) => (
         <span className="inline-flex items-center gap-1 text-gray-700 dark:text-gray-300">
           <Scissors className="h-3 w-3" />
-          {item.specialty}
+          {item.specialties?.join(", ") || "-"}
         </span>
       ),
     },
@@ -339,7 +410,7 @@ export default function ProfessionalsPage() {
       key: "phone",
       header: "Telefone",
       render: (item) => (
-        <span className="text-gray-700 dark:text-gray-300">{item.phone}</span>
+        <span className="text-gray-700 dark:text-gray-300">{item.phone || "-"}</span>
       ),
     },
     {
@@ -348,7 +419,7 @@ export default function ProfessionalsPage() {
       render: (item) => (
         <div className="flex items-center gap-1">
           <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-          <span className="font-medium text-gray-900 dark:text-white">{item.rating}</span>
+          <span className="font-medium text-gray-900 dark:text-white">{item.averageRating?.toFixed(1) || "0.0"}</span>
         </div>
       ),
     },
@@ -356,7 +427,9 @@ export default function ProfessionalsPage() {
       key: "commission",
       header: "Comissão",
       render: (item) => (
-        <span className="font-medium text-gray-900 dark:text-white">{item.commission}%</span>
+        <span className="font-medium text-gray-900 dark:text-white">
+          {item.commissionType === "percentage" ? `${item.commissionValue}%` : `R$ ${item.commissionValue}`}
+        </span>
       ),
     },
     {
@@ -375,8 +448,8 @@ export default function ProfessionalsPage() {
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Profissionais</h1>
             <p className="text-gray-500 dark:text-gray-400">Gerencie os profissionais do salão</p>
           </div>
-          <Button onClick={() => setIsCreateModalOpen(true)} leftIcon={<Plus className="h-4 w-4" />}>
-            Novo Profissional
+          <Button onClick={() => setIsCreateModalOpen(true)} leftIcon={<Search className="h-4 w-4" />}>
+            Buscar Profissional
           </Button>
         </div>
 
@@ -447,7 +520,7 @@ export default function ProfessionalsPage() {
             isLoading={isLoading}
             emptyMessage="Nenhum profissional encontrado"
             emptyAction={{
-              label: "Adicionar profissional",
+              label: "Buscar profissional",
               onClick: () => setIsCreateModalOpen(true),
             }}
             pagination={{
@@ -475,7 +548,7 @@ export default function ProfessionalsPage() {
                   </ActionMenuItem>
                 ) : (
                   <ActionMenuItem
-                    onClick={() => console.log("Reativar", item.id)}
+                    onClick={() => handleReactivate(item)}
                     icon={<RefreshCw className="h-4 w-4" />}
                   >
                     Reativar
@@ -488,91 +561,301 @@ export default function ProfessionalsPage() {
         </div>
       </div>
 
-      {/* Modal de Criar Profissional */}
+      {/* Modal de Buscar Profissional - Wizard */}
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => {
           setIsCreateModalOpen(false);
           resetForm();
         }}
-        title="Novo Profissional"
-        size="lg"
+        title={wizardStep === 1 ? "Buscar Profissional" : "Configurar Profissional"}
+        size="xl"
         footer={
           <>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setIsCreateModalOpen(false);
-                resetForm();
-              }}
-            >
-              Cancelar
-            </Button>
-            <Button onClick={handleCreate} isLoading={isSubmitting}>
-              Criar Profissional
-            </Button>
+            {wizardStep === 1 ? (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setIsCreateModalOpen(false);
+                    resetForm();
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleNextStep}
+                  disabled={!selectedUser}
+                  rightIcon={<ChevronRight className="h-4 w-4" />}
+                >
+                  Próximo
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={handlePrevStep}
+                  leftIcon={<ChevronLeft className="h-4 w-4" />}
+                >
+                  Voltar
+                </Button>
+                <Button onClick={handleCreate} isLoading={isSubmitting}>
+                  Vincular Profissional
+                </Button>
+              </>
+            )}
           </>
         }
       >
-        <div className="space-y-4">
-          {formErrors.submit && (
-            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
-              {formErrors.submit}
+        {/* Progress Indicator */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${
+                wizardStep >= 1 ? "bg-violet-500 text-white" : "bg-gray-200 text-gray-500 dark:bg-gray-700"
+              }`}>
+                {wizardStep > 1 ? <Check className="h-4 w-4" /> : "1"}
+              </div>
+              <span className={`text-sm font-medium ${wizardStep >= 1 ? "text-violet-600 dark:text-violet-400" : "text-gray-500"}`}>
+                Selecionar Usuário
+              </span>
             </div>
-          )}
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              label="Nome *"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              error={formErrors.name}
-              placeholder="Nome completo"
-              autoComplete="off"
-            />
-            <Input
-              label="Email *"
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              error={formErrors.email}
-              placeholder="email@exemplo.com"
-              autoComplete="off"
-            />
+            <div className="mx-4 h-0.5 flex-1 bg-gray-200 dark:bg-gray-700">
+              <div className={`h-full transition-all ${wizardStep >= 2 ? "w-full bg-violet-500" : "w-0"}`} />
+            </div>
+            <div className="flex items-center gap-2">
+              <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${
+                wizardStep >= 2 ? "bg-violet-500 text-white" : "bg-gray-200 text-gray-500 dark:bg-gray-700"
+              }`}>
+                2
+              </div>
+              <span className={`text-sm font-medium ${wizardStep >= 2 ? "text-violet-600 dark:text-violet-400" : "text-gray-500"}`}>
+                Configurar
+              </span>
+            </div>
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {formErrors.submit && (
+          <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+            {formErrors.submit}
+          </div>
+        )}
+
+        {/* Step 1: Selecionar Usuário */}
+        {wizardStep === 1 && (
+          <div className="space-y-4">
+            {/* Busca em tempo real */}
             <Input
-              label="Telefone *"
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              error={formErrors.phone}
-              placeholder="(00) 00000-0000"
+              value={userSearchTerm}
+              placeholder="Buscar por nome, email ou telefone..."
+              onChange={(e) => setUserSearchTerm(e.target.value)}
+              leftIcon={<Search className="h-4 w-4" />}
             />
+
+            {/* Filtros Avançados */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                <Filter className="h-4 w-4" />
+                <span>Filtros:</span>
+              </div>
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-violet-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              >
+                <option value="">Todas as roles</option>
+                <option value="ADMIN">Administrador</option>
+                <option value="PROFISSIONAL">Profissional</option>
+                <option value="CLIENTE">Cliente</option>
+                <option value="RECEPCIONIST">Recepcionista</option>
+              </select>
+              <select
+                value={userStatusFilter}
+                onChange={(e) => setUserStatusFilter(e.target.value)}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-violet-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              >
+                <option value="">Todos os status</option>
+                <option value="active">Ativos</option>
+                <option value="inactive">Inativos</option>
+              </select>
+              {(roleFilter || userStatusFilter || userSearchTerm) && (
+                <button
+                  onClick={() => {
+                    setRoleFilter("");
+                    setUserStatusFilter("");
+                    setUserSearchTerm("");
+                  }}
+                  className="text-sm text-violet-600 hover:text-violet-700 dark:text-violet-400"
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </div>
+
+            {/* Contador de resultados */}
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {isLoadingUsers ? "Carregando..." : `${filteredUsers.length} usuário(s) encontrado(s)`}
+            </p>
+
+            {/* Lista de Cards de Usuários */}
+            <div className="max-h-[400px] space-y-2 overflow-y-auto pr-2">
+              {isLoadingUsers ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="h-6 w-6 animate-spin text-violet-500" />
+                </div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="rounded-lg border-2 border-dashed border-gray-300 p-8 text-center dark:border-gray-600">
+                  <UserX className="mx-auto h-10 w-10 text-gray-400" />
+                  <p className="mt-2 text-gray-500 dark:text-gray-400">Nenhum usuário encontrado</p>
+                  <p className="text-sm text-gray-400 dark:text-gray-500">Tente ajustar os filtros</p>
+                </div>
+              ) : (
+                filteredUsers.map((user) => (
+                  <button
+                    key={user.id}
+                    onClick={() => handleSelectUser(user)}
+                    className={`w-full rounded-xl border-2 p-4 text-left transition-all hover:border-violet-300 hover:bg-violet-50 dark:hover:border-violet-700 dark:hover:bg-violet-900/20 ${
+                      selectedUser?.id === user.id
+                        ? "border-violet-500 bg-violet-50 dark:border-violet-500 dark:bg-violet-900/30"
+                        : "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+                    }`}
+                  >
+                    <div className="flex items-center gap-4">
+                      {/* Avatar */}
+                      <div className={`flex h-12 w-12 items-center justify-center rounded-full text-lg font-semibold ${
+                        selectedUser?.id === user.id
+                          ? "bg-violet-500 text-white"
+                          : "bg-violet-100 text-violet-600 dark:bg-violet-900/50 dark:text-violet-400"
+                      }`}>
+                        {user.nome?.charAt(0)?.toUpperCase() || "?"}
+                      </div>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-900 dark:text-white truncate">
+                            {user.nome || "Sem nome"}
+                          </p>
+                          {selectedUser?.id === user.id && (
+                            <Check className="h-4 w-4 text-violet-500 flex-shrink-0" />
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                          <span className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
+                            <Mail className="h-3 w-3" />
+                            <span className="truncate">{user.email || "-"}</span>
+                          </span>
+                          {user.telefone && (
+                            <span className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
+                              <Phone className="h-3 w-3" />
+                              {user.telefone}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Badges */}
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getRoleColor(user.role)}`}>
+                          {getRoleLabel(user.role)}
+                        </span>
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                          user.ativo
+                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                            : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                        }`}>
+                          {user.ativo ? <UserCheck className="h-3 w-3" /> : <UserX className="h-3 w-3" />}
+                          {user.ativo ? "Ativo" : "Inativo"}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+
+            {formErrors.usuarioId && (
+              <p className="text-sm text-red-500">{formErrors.usuarioId}</p>
+            )}
+          </div>
+        )}
+
+        {/* Step 2: Configurar Profissional */}
+        {wizardStep === 2 && selectedUser && (
+          <div className="space-y-4">
+            {/* Card do usuário selecionado */}
+            <div className="rounded-xl border-2 border-violet-500 bg-violet-50 p-4 dark:border-violet-500 dark:bg-violet-900/20">
+              <div className="flex items-center gap-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-violet-500 text-xl font-semibold text-white">
+                  {selectedUser.nome?.charAt(0)?.toUpperCase() || "?"}
+                </div>
+                <div className="flex-1">
+                  <p className="text-lg font-semibold text-violet-900 dark:text-violet-100">
+                    {selectedUser.nome}
+                  </p>
+                  <div className="flex items-center gap-3 text-sm text-violet-700 dark:text-violet-300">
+                    <span className="flex items-center gap-1">
+                      <Mail className="h-3 w-3" />
+                      {selectedUser.email}
+                    </span>
+                    {selectedUser.telefone && (
+                      <span className="flex items-center gap-1">
+                        <Phone className="h-3 w-3" />
+                        {selectedUser.telefone}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${getRoleColor(selectedUser.role)}`}>
+                  {getRoleLabel(selectedUser.role)}
+                </span>
+              </div>
+            </div>
+
+            {/* Formulário de configuração */}
             <Input
               label="Especialidade"
               value={formData.specialty}
               onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
-              placeholder="Ex: Corte Masculino"
+              placeholder="Ex: Corte Masculino, Coloração, Barba"
+              leftIcon={<Scissors className="h-4 w-4" />}
             />
-          </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Comissão (%)
+                Bio / Descrição
               </label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={formData.commission}
-                onChange={(e) => setFormData({ ...formData, commission: Number(e.target.value) })}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              <textarea
+                value={formData.bio}
+                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                placeholder="Descreva a experiência e especialidades do profissional..."
+                rows={4}
+                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
               />
             </div>
+
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800">
+              <label className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={formData.acceptsOnlineBooking}
+                  onChange={(e) => setFormData({ ...formData, acceptsOnlineBooking: e.target.checked })}
+                  className="h-5 w-5 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
+                />
+                <div>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    Aceita agendamento online
+                  </span>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Permite que clientes agendem horários pela internet
+                  </p>
+                </div>
+              </label>
+            </div>
           </div>
-        </div>
+        )}
       </Modal>
 
       {/* Modal de Editar Profissional */}
@@ -608,64 +891,55 @@ export default function ProfessionalsPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              label="Nome *"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              error={formErrors.name}
-              placeholder="Nome completo"
-              autoComplete="off"
-            />
-            <Input
-              label="Email *"
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              error={formErrors.email}
-              placeholder="email@exemplo.com"
-              autoComplete="off"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              label="Telefone *"
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              error={formErrors.phone}
-              placeholder="(00) 00000-0000"
-            />
-            <Input
-              label="Especialidade"
-              value={formData.specialty}
-              onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
-              placeholder="Ex: Corte Masculino"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Comissão (%)
-              </label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={formData.commission}
-                onChange={(e) => setFormData({ ...formData, commission: Number(e.target.value) })}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              />
+          {selectedProfessional && (
+            <div className="rounded-lg bg-violet-50 p-3 dark:bg-violet-900/20">
+              <p className="font-medium text-violet-700 dark:text-violet-400">
+                {selectedProfessional.name || "Profissional"}
+              </p>
+              <p className="text-sm text-violet-600 dark:text-violet-300">
+                {selectedProfessional.email}
+              </p>
             </div>
+          )}
+
+          <Input
+            label="Especialidade"
+            value={formData.specialty}
+            onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
+            placeholder="Ex: Corte Masculino, Coloração"
+          />
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Bio
+            </label>
+            <textarea
+              value={formData.bio}
+              onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+              placeholder="Descrição do profissional..."
+              rows={3}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
+            />
           </div>
+
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={formData.acceptsOnlineBooking}
+              onChange={(e) => setFormData({ ...formData, acceptsOnlineBooking: e.target.checked })}
+              className="h-4 w-4 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              Aceita agendamento online
+            </span>
+          </label>
 
           {selectedProfessional && (
             <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50">
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                <strong>Total de atendimentos:</strong> {selectedProfessional.totalServices}
+                <strong>Total de atendimentos:</strong> {selectedProfessional.totalAppointments || 0}
                 {" | "}
-                <strong>Avaliação:</strong> {selectedProfessional.rating}
+                <strong>Avaliação:</strong> {selectedProfessional.averageRating?.toFixed(1) || "0.0"}
               </p>
             </div>
           )}

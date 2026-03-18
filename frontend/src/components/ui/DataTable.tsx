@@ -1,6 +1,7 @@
 "use client";
 
-import { ReactNode, useState, createContext, useContext } from "react";
+import { ReactNode, useState, createContext, useContext, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 import { Button } from "./Button";
 
@@ -259,29 +260,16 @@ export function DataTable<T>({
                     {/* Actions */}
                     {rowActions && (
                       <td className={cellPadding} onClick={(e) => e.stopPropagation()}>
-                        <div className="relative">
-                          <button
-                            onClick={() => setOpenActionMenu(openActionMenu === id ? null : id)}
-                            className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                          >
-                            <MoreHorizontal className="h-5 w-5 text-gray-400" />
-                          </button>
-                          {openActionMenu === id && (
-                            <>
-                              <div
-                                className="fixed inset-0 z-40"
-                                onClick={() => setOpenActionMenu(null)}
-                              />
-                              <div className={`absolute right-0 z-50 w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl ${
-                                index < 1 ? "top-full mt-1" : "bottom-full mb-1"
-                              }`}>
-                                <ActionMenuContext.Provider value={() => setOpenActionMenu(null)}>
-                                  {rowActions(item)}
-                                </ActionMenuContext.Provider>
-                              </div>
-                            </>
-                          )}
-                        </div>
+                        <ActionMenuButton
+                          id={id}
+                          isOpen={openActionMenu === id}
+                          onToggle={() => setOpenActionMenu(openActionMenu === id ? null : id)}
+                          onClose={() => setOpenActionMenu(null)}
+                        >
+                          <ActionMenuContext.Provider value={() => setOpenActionMenu(null)}>
+                            {rowActions(item)}
+                          </ActionMenuContext.Provider>
+                        </ActionMenuButton>
                       </td>
                     )}
                   </tr>
@@ -360,6 +348,66 @@ export function DataTable<T>({
             </Button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Action Menu Button with Portal
+interface ActionMenuButtonProps {
+  id: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  children: ReactNode;
+}
+
+function ActionMenuButton({ id, isOpen, onToggle, onClose, children }: ActionMenuButtonProps) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setMenuPosition({
+        top: rect.top - 8, // Position above the button
+        left: rect.right - 192, // 192px = w-48 (menu width)
+      });
+    }
+  }, [isOpen]);
+
+  return (
+    <div className="relative">
+      <button
+        ref={buttonRef}
+        onClick={onToggle}
+        className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+      >
+        <MoreHorizontal className="h-5 w-5 text-gray-400" />
+      </button>
+      {isOpen && mounted && createPortal(
+        <>
+          <div
+            className="fixed inset-0 z-[9998]"
+            onClick={onClose}
+          />
+          <div
+            className="fixed z-[9999] w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl"
+            style={{
+              top: `${menuPosition.top}px`,
+              left: `${menuPosition.left}px`,
+              transform: 'translateY(-100%)',
+            }}
+          >
+            {children}
+          </div>
+        </>,
+        document.body
       )}
     </div>
   );

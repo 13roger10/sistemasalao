@@ -74,8 +74,17 @@ public class ProfissionalService {
     }
 
     @Transactional(readOnly = true)
-    public List<ProfissionalResponse> listarPorSalon(Long salonId) {
-        return profissionalRepository.findBySalonIdAndAtivoTrue(salonId).stream()
+    public List<ProfissionalResponse> listarPorSalon(Long salonId, Boolean ativo) {
+        List<Profissional> profissionais;
+        if (ativo == null) {
+            // Retorna todos (ativos e inativos)
+            profissionais = profissionalRepository.findBySalonId(salonId);
+        } else if (ativo) {
+            profissionais = profissionalRepository.findBySalonIdAndAtivoTrue(salonId);
+        } else {
+            profissionais = profissionalRepository.findBySalonIdAndAtivoFalse(salonId);
+        }
+        return profissionais.stream()
                 .map(ProfissionalResponse::fromEntity)
                 .toList();
     }
@@ -139,6 +148,26 @@ public class ProfissionalService {
         profissional.setAtivo(false);
         profissionalRepository.save(profissional);
         log.info("Profissional desativado: {}", id);
+    }
+
+    @Transactional
+    public void reativar(Long id, String emailAdmin) {
+        Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
+
+        Profissional profissional = profissionalRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Profissional", id));
+
+        if (!profissional.getSalon().getId().equals(salon.getId())) {
+            throw new BusinessException("Profissional não pertence a este salão");
+        }
+
+        if (profissional.isAtivo()) {
+            throw new BusinessException("Profissional já está ativo");
+        }
+
+        profissional.setAtivo(true);
+        profissionalRepository.save(profissional);
+        log.info("Profissional reativado: {}", id);
     }
 
     public Profissional getProfissionalEntity(Long id) {

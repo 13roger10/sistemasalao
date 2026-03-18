@@ -93,6 +93,53 @@ export const clientService = {
     return api.get<Client[]>(`${BASE_PATH}/search`, { q: query, limit });
   },
 
+  // Check if phone already exists
+  checkPhoneExists: async (phone: string, salonId: string, excludeClientId?: string): Promise<boolean> => {
+    try {
+      const clients = await api.get<Client[]>(`${BASE_PATH}/salon/${salonId}`);
+      const normalizedPhone = phone.replace(/\D/g, ''); // Remove non-digits
+      return clients.some(client => {
+        if (excludeClientId && client.id === excludeClientId) return false;
+        const clientPhone = client.phone?.replace(/\D/g, '') || '';
+        return clientPhone === normalizedPhone;
+      });
+    } catch {
+      return false;
+    }
+  },
+
+  // Check if WhatsApp already exists
+  checkWhatsAppExists: async (whatsapp: string, salonId: string, excludeClientId?: string): Promise<boolean> => {
+    try {
+      if (!whatsapp) return false;
+      const clients = await api.get<Client[]>(`${BASE_PATH}/salon/${salonId}`);
+      const normalizedWhatsApp = whatsapp.replace(/\D/g, ''); // Remove non-digits
+      return clients.some(client => {
+        if (excludeClientId && client.id === excludeClientId) return false;
+        const clientWhatsApp = client.whatsapp?.replace(/\D/g, '') || '';
+        return clientWhatsApp === normalizedWhatsApp;
+      });
+    } catch {
+      return false;
+    }
+  },
+
+  // Check if email already exists
+  checkEmailExists: async (email: string, salonId: string, excludeClientId?: string): Promise<boolean> => {
+    try {
+      if (!email) return false;
+      const clients = await api.get<Client[]>(`${BASE_PATH}/salon/${salonId}`);
+      const normalizedEmail = email.toLowerCase().trim();
+      return clients.some(client => {
+        if (excludeClientId && client.id === excludeClientId) return false;
+        const clientEmail = client.email?.toLowerCase().trim() || '';
+        return clientEmail === normalizedEmail;
+      });
+    } catch {
+      return false;
+    }
+  },
+
   // Update client loyalty points
   updateLoyaltyPoints: (
     id: string,

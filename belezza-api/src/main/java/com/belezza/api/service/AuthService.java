@@ -2,11 +2,15 @@ package com.belezza.api.service;
 
 import com.belezza.api.dto.auth.*;
 import com.belezza.api.dto.user.UserResponse;
+import com.belezza.api.entity.Cliente;
 import com.belezza.api.entity.Plano;
+import com.belezza.api.entity.Role;
 import com.belezza.api.entity.Usuario;
 import com.belezza.api.exception.AuthenticationException;
+import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.DuplicateResourceException;
 import com.belezza.api.exception.ResourceNotFoundException;
+import com.belezza.api.repository.ClienteRepository;
 import com.belezza.api.repository.UsuarioRepository;
 import com.belezza.api.security.JwtService;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +35,8 @@ import java.util.UUID;
 public class AuthService {
 
     private final UsuarioRepository usuarioRepository;
+    private final ClienteRepository clienteRepository;
+    private final SalonService salonService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
@@ -43,6 +49,11 @@ public class AuthService {
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         log.info("Registering new user with email: {}", request.getEmail());
+
+        // Validate salonId is required for CLIENTE role
+        if (request.getRole() == Role.CLIENTE && request.getSalonId() == null) {
+            throw new BusinessException("salonId é obrigatório para registro de clientes");
+        }
 
         // Check if email already exists
         if (usuarioRepository.existsByEmail(request.getEmail())) {
@@ -69,6 +80,24 @@ public class AuthService {
 
         usuario = usuarioRepository.save(usuario);
         log.info("User registered successfully with id: {}", usuario.getId());
+
+        // If registering as CLIENTE, create the client entry for the salon
+        if (request.getRole() == Role.CLIENTE && request.getSalonId() != null) {
+            var salon = salonService.getSalonEntity(request.getSalonId());
+
+            // Check if already a client of this salon
+            if (!clienteRepository.existsByUsuarioIdAndSalonId(usuario.getId(), request.getSalonId())) {
+                Cliente cliente = Cliente.builder()
+                        .usuario(usuario)
+                        .salon(salon)
+                        .aceitaMarketing(true)
+                        .aceitaWhatsApp(true)
+                        .aceitaEmail(true)
+                        .build();
+                clienteRepository.save(cliente);
+                log.info("Client entry created for user {} in salon {}", usuario.getId(), request.getSalonId());
+            }
+        }
 
         // Send email verification
         emailService.sendEmailVerificationEmail(

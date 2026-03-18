@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Plus,
   Search,
   Edit2,
   Trash2,
@@ -19,6 +18,10 @@ import {
   DollarSign,
   Scissors,
   MessageCircle,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  Filter,
 } from "lucide-react";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { DataTable, ActionMenuItem, Column } from "@/components/ui/DataTable";
@@ -26,8 +29,25 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
 import { clientService } from "@/services/salon/clientService";
+import { api } from "@/services/salon/api";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import { useUnit } from "@/contexts/UnitContext";
+
+// Tipo para usuário do backend
+interface User {
+  id: number;
+  nome: string;
+  email: string;
+  telefone?: string;
+  role: string;
+  ativo: boolean;
+}
+
+interface UserPageResponse {
+  content: User[];
+  totalElements: number;
+  totalPages: number;
+}
 import type {
   Client,
   ClientCreateInput,
@@ -175,6 +195,19 @@ export default function ClientsPage() {
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
+  // Lista de usuários disponíveis para vincular
+  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [userSearchTerm, setUserSearchTerm] = useState("");
+
+  // Wizard states
+  const [wizardStep, setWizardStep] = useState<1 | 2>(1);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+
+  // Filtros avançados do modal
+  const [roleFilter, setRoleFilter] = useState<string>("");
+  const [userStatusFilter, setUserStatusFilter] = useState<string>("");
+
   // Carregar clientes
   const loadClients = useCallback(async () => {
     setIsLoading(true);
@@ -265,6 +298,44 @@ export default function ClientsPage() {
     loadClients();
   }, [loadClients]);
 
+  // Filtrar usuários pela busca e filtros avançados (em tempo real)
+  const filteredUsers = availableUsers.filter(user => {
+    const matchesSearch = !userSearchTerm ||
+      user.nome?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+      user.email?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+      user.telefone?.includes(userSearchTerm);
+
+    const matchesRole = !roleFilter || user.role === roleFilter;
+
+    const matchesStatus = !userStatusFilter ||
+      (userStatusFilter === "active" && user.ativo) ||
+      (userStatusFilter === "inactive" && !user.ativo);
+
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+
+  // Carregar usuários disponíveis
+  const loadAvailableUsers = useCallback(async () => {
+    setIsLoadingUsers(true);
+    try {
+      const response = await api.get<UserPageResponse>("/usuarios", { size: 100 });
+      const users = response.content?.filter(u => u.ativo) || [];
+      setAvailableUsers(users);
+    } catch (error) {
+      console.error("Erro ao carregar usuários:", error);
+      setAvailableUsers([]);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  }, []);
+
+  // Carregar usuários quando abrir modal de criação
+  useEffect(() => {
+    if (isCreateModalOpen) {
+      loadAvailableUsers();
+    }
+  }, [isCreateModalOpen, loadAvailableUsers]);
+
   // Handlers de busca
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,10 +349,36 @@ export default function ClientsPage() {
 
     setIsSubmitting(true);
     try {
+      const salonId = selectedUnitId || "1";
+      const errors: Record<string, string> = {};
+
+      // Verificar duplicados em paralelo
+      const [phoneExists, whatsappExists, emailExists] = await Promise.all([
+        clientService.checkPhoneExists(formData.phone, salonId),
+        formData.whatsapp ? clientService.checkWhatsAppExists(formData.whatsapp, salonId) : Promise.resolve(false),
+        formData.email ? clientService.checkEmailExists(formData.email, salonId) : Promise.resolve(false),
+      ]);
+
+      if (phoneExists) {
+        errors.phone = "Este telefone já está cadastrado";
+      }
+      if (whatsappExists) {
+        errors.whatsapp = "Este WhatsApp já está cadastrado";
+      }
+      if (emailExists) {
+        errors.email = "Este email já está cadastrado";
+      }
+
+      if (Object.keys(errors).length > 0) {
+        setFormErrors(errors);
+        setIsSubmitting(false);
+        return;
+      }
+
       // Incluir salonId no request
       const createData = {
         ...formData,
-        salonId: selectedUnitId || "1",
+        salonId,
       };
       await clientService.create(createData);
       setIsCreateModalOpen(false);
@@ -302,6 +399,32 @@ export default function ClientsPage() {
 
     setIsSubmitting(true);
     try {
+      const salonId = selectedUnitId || "1";
+      const errors: Record<string, string> = {};
+
+      // Verificar duplicados em paralelo (excluindo o cliente atual)
+      const [phoneExists, whatsappExists, emailExists] = await Promise.all([
+        clientService.checkPhoneExists(formData.phone, salonId, selectedClient.id),
+        formData.whatsapp ? clientService.checkWhatsAppExists(formData.whatsapp, salonId, selectedClient.id) : Promise.resolve(false),
+        formData.email ? clientService.checkEmailExists(formData.email, salonId, selectedClient.id) : Promise.resolve(false),
+      ]);
+
+      if (phoneExists) {
+        errors.phone = "Este telefone já está cadastrado";
+      }
+      if (whatsappExists) {
+        errors.whatsapp = "Este WhatsApp já está cadastrado";
+      }
+      if (emailExists) {
+        errors.email = "Este email já está cadastrado";
+      }
+
+      if (Object.keys(errors).length > 0) {
+        setFormErrors(errors);
+        setIsSubmitting(false);
+        return;
+      }
+
       const updateData: ClientUpdateInput = {
         name: formData.name,
         phone: formData.phone,
@@ -404,6 +527,10 @@ export default function ClientsPage() {
       errors.phone = "Telefone é obrigatório";
     }
 
+    if (!formData.birthDate) {
+      errors.birthDate = "Data de nascimento é obrigatória";
+    }
+
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       errors.email = "Email inválido";
     }
@@ -427,6 +554,55 @@ export default function ClientsPage() {
     });
     setFormErrors({});
     setSelectedClient(null);
+    setWizardStep(1);
+    setSelectedUser(null);
+    setRoleFilter("");
+    setUserStatusFilter("");
+    setUserSearchTerm("");
+  };
+
+  // Funções do Wizard
+  const handleSelectUser = (user: User) => {
+    setSelectedUser(user);
+    setFormData({
+      ...formData,
+      name: user.nome || "",
+      email: user.email || "",
+      phone: user.telefone || "",
+      whatsapp: user.telefone || "",
+    });
+  };
+
+  const handleNextStep = () => {
+    if (selectedUser) {
+      setWizardStep(2);
+    }
+  };
+
+  const handlePrevStep = () => {
+    setWizardStep(1);
+  };
+
+  // Helper para obter label da role
+  const getRoleLabel = (role: string) => {
+    const labels: Record<string, string> = {
+      ADMIN: "Administrador",
+      PROFISSIONAL: "Profissional",
+      CLIENTE: "Cliente",
+      RECEPCIONIST: "Recepcionista",
+    };
+    return labels[role] || role;
+  };
+
+  // Helper para obter cor da role
+  const getRoleColor = (role: string) => {
+    const colors: Record<string, string> = {
+      ADMIN: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+      PROFISSIONAL: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+      CLIENTE: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+      RECEPCIONIST: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+    };
+    return colors[role] || "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
   };
 
   // Abrir modal de edição
@@ -564,8 +740,8 @@ export default function ClientsPage() {
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Clientes</h1>
             <p className="text-gray-500 dark:text-gray-400">Gerencie os clientes do salão</p>
           </div>
-          <Button onClick={() => setIsCreateModalOpen(true)} leftIcon={<Plus className="h-4 w-4" />}>
-            Novo Cliente
+          <Button onClick={() => setIsCreateModalOpen(true)} leftIcon={<Search className="h-4 w-4" />}>
+            Buscar Cliente
           </Button>
         </div>
 
@@ -654,7 +830,7 @@ export default function ClientsPage() {
             isLoading={isLoading}
             emptyMessage="Nenhum cliente encontrado"
             emptyAction={{
-              label: "Adicionar cliente",
+              label: "Buscar cliente",
               onClick: () => setIsCreateModalOpen(true),
             }}
             pagination={{
@@ -692,136 +868,369 @@ export default function ClientsPage() {
         </div>
       </div>
 
-      {/* Modal de Criar Cliente */}
+      {/* Modal de Buscar Cliente - Wizard */}
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => {
           setIsCreateModalOpen(false);
           resetForm();
         }}
-        title="Novo Cliente"
-        size="lg"
+        title={wizardStep === 1 ? "Buscar Cliente" : "Configurar Cliente"}
+        size="xl"
         footer={
           <>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setIsCreateModalOpen(false);
-                resetForm();
-              }}
-            >
-              Cancelar
-            </Button>
-            <Button onClick={handleCreate} isLoading={isSubmitting}>
-              Criar Cliente
-            </Button>
+            {wizardStep === 1 ? (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setIsCreateModalOpen(false);
+                    resetForm();
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleNextStep}
+                  disabled={!selectedUser}
+                  rightIcon={<ChevronRight className="h-4 w-4" />}
+                >
+                  Próximo
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={handlePrevStep}
+                  leftIcon={<ChevronLeft className="h-4 w-4" />}
+                >
+                  Voltar
+                </Button>
+                <Button onClick={handleCreate} isLoading={isSubmitting}>
+                  Vincular Cliente
+                </Button>
+              </>
+            )}
           </>
         }
       >
-        <div className="space-y-4">
-          {formErrors.submit && (
-            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
-              {formErrors.submit}
+        {/* Progress Indicator */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${
+                wizardStep >= 1 ? "bg-violet-500 text-white" : "bg-gray-200 text-gray-500 dark:bg-gray-700"
+              }`}>
+                {wizardStep > 1 ? <Check className="h-4 w-4" /> : "1"}
+              </div>
+              <span className={`text-sm font-medium ${wizardStep >= 1 ? "text-violet-600 dark:text-violet-400" : "text-gray-500"}`}>
+                Selecionar Usuário
+              </span>
             </div>
-          )}
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              label="Nome *"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              error={formErrors.name}
-              placeholder="Nome completo"
-              autoComplete="off"
-            />
-            <Input
-              label="Telefone *"
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              error={formErrors.phone}
-              placeholder="(00) 00000-0000"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              label="WhatsApp"
-              value={formData.whatsapp}
-              onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
-              placeholder="(00) 00000-0000"
-            />
-            <Input
-              label="Email"
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              error={formErrors.email}
-              placeholder="email@exemplo.com"
-              autoComplete="off"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              label="Data de Nascimento"
-              type="date"
-              value={formData.birthDate ? new Date(formData.birthDate).toISOString().split("T")[0] : ""}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  birthDate: e.target.value ? new Date(e.target.value) : undefined,
-                })
-              }
-            />
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Observações
-              </label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Preferências, alergias..."
-                rows={1}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
-              />
+            <div className="mx-4 h-0.5 flex-1 bg-gray-200 dark:bg-gray-700">
+              <div className={`h-full transition-all ${wizardStep >= 2 ? "w-full bg-violet-500" : "w-0"}`} />
             </div>
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Preferências de Comunicação
-            </label>
-            <div className="flex flex-wrap gap-4">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={formData.acceptsWhatsApp}
-                  onChange={(e) => setFormData({ ...formData, acceptsWhatsApp: e.target.checked })}
-                  className="h-4 w-4 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
-                />
-                <span className="text-sm text-gray-700 dark:text-gray-300">WhatsApp</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={formData.acceptsEmail}
-                  onChange={(e) => setFormData({ ...formData, acceptsEmail: e.target.checked })}
-                  className="h-4 w-4 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
-                />
-                <span className="text-sm text-gray-700 dark:text-gray-300">Email</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={formData.acceptsMarketing}
-                  onChange={(e) => setFormData({ ...formData, acceptsMarketing: e.target.checked })}
-                  className="h-4 w-4 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
-                />
-                <span className="text-sm text-gray-700 dark:text-gray-300">Marketing</span>
-              </label>
+            <div className="flex items-center gap-2">
+              <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${
+                wizardStep >= 2 ? "bg-violet-500 text-white" : "bg-gray-200 text-gray-500 dark:bg-gray-700"
+              }`}>
+                2
+              </div>
+              <span className={`text-sm font-medium ${wizardStep >= 2 ? "text-violet-600 dark:text-violet-400" : "text-gray-500"}`}>
+                Configurar
+              </span>
             </div>
           </div>
         </div>
+
+        {formErrors.submit && (
+          <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+            {formErrors.submit}
+          </div>
+        )}
+
+        {/* Step 1: Selecionar Usuário */}
+        {wizardStep === 1 && (
+          <div className="space-y-4">
+            {/* Busca em tempo real */}
+            <Input
+              value={userSearchTerm}
+              placeholder="Buscar por nome, email ou telefone..."
+              onChange={(e) => setUserSearchTerm(e.target.value)}
+              leftIcon={<Search className="h-4 w-4" />}
+            />
+
+            {/* Filtros Avançados */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                <Filter className="h-4 w-4" />
+                <span>Filtros:</span>
+              </div>
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-violet-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              >
+                <option value="">Todas as roles</option>
+                <option value="ADMIN">Administrador</option>
+                <option value="PROFISSIONAL">Profissional</option>
+                <option value="CLIENTE">Cliente</option>
+                <option value="RECEPCIONIST">Recepcionista</option>
+              </select>
+              <select
+                value={userStatusFilter}
+                onChange={(e) => setUserStatusFilter(e.target.value)}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-violet-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              >
+                <option value="">Todos os status</option>
+                <option value="active">Ativos</option>
+                <option value="inactive">Inativos</option>
+              </select>
+              {(roleFilter || userStatusFilter || userSearchTerm) && (
+                <button
+                  onClick={() => {
+                    setRoleFilter("");
+                    setUserStatusFilter("");
+                    setUserSearchTerm("");
+                  }}
+                  className="text-sm text-violet-600 hover:text-violet-700 dark:text-violet-400"
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </div>
+
+            {/* Contador de resultados */}
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {isLoadingUsers ? "Carregando..." : `${filteredUsers.length} usuário(s) encontrado(s)`}
+            </p>
+
+            {/* Lista de Cards de Usuários */}
+            <div className="max-h-[400px] space-y-2 overflow-y-auto pr-2">
+              {isLoadingUsers ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="h-6 w-6 animate-spin text-violet-500" />
+                </div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="rounded-lg border-2 border-dashed border-gray-300 p-8 text-center dark:border-gray-600">
+                  <UserX className="mx-auto h-10 w-10 text-gray-400" />
+                  <p className="mt-2 text-gray-500 dark:text-gray-400">Nenhum usuário encontrado</p>
+                  <p className="text-sm text-gray-400 dark:text-gray-500">Tente ajustar os filtros</p>
+                </div>
+              ) : (
+                filteredUsers.map((user) => (
+                  <button
+                    key={user.id}
+                    onClick={() => handleSelectUser(user)}
+                    className={`w-full rounded-xl border-2 p-4 text-left transition-all hover:border-violet-300 hover:bg-violet-50 dark:hover:border-violet-700 dark:hover:bg-violet-900/20 ${
+                      selectedUser?.id === user.id
+                        ? "border-violet-500 bg-violet-50 dark:border-violet-500 dark:bg-violet-900/30"
+                        : "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+                    }`}
+                  >
+                    <div className="flex items-center gap-4">
+                      {/* Avatar */}
+                      <div className={`flex h-12 w-12 items-center justify-center rounded-full text-lg font-semibold ${
+                        selectedUser?.id === user.id
+                          ? "bg-violet-500 text-white"
+                          : "bg-violet-100 text-violet-600 dark:bg-violet-900/50 dark:text-violet-400"
+                      }`}>
+                        {user.nome?.charAt(0)?.toUpperCase() || "?"}
+                      </div>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-900 dark:text-white truncate">
+                            {user.nome || "Sem nome"}
+                          </p>
+                          {selectedUser?.id === user.id && (
+                            <Check className="h-4 w-4 text-violet-500 flex-shrink-0" />
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                          <span className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
+                            <Mail className="h-3 w-3" />
+                            <span className="truncate">{user.email || "-"}</span>
+                          </span>
+                          {user.telefone && (
+                            <span className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
+                              <Phone className="h-3 w-3" />
+                              {user.telefone}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Badges */}
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getRoleColor(user.role)}`}>
+                          {getRoleLabel(user.role)}
+                        </span>
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                          user.ativo
+                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                            : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                        }`}>
+                          {user.ativo ? <UserCheck className="h-3 w-3" /> : <UserX className="h-3 w-3" />}
+                          {user.ativo ? "Ativo" : "Inativo"}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Configurar Cliente */}
+        {wizardStep === 2 && selectedUser && (
+          <div className="space-y-4">
+            {/* Card do usuário selecionado */}
+            <div className="rounded-xl border-2 border-violet-500 bg-violet-50 p-4 dark:border-violet-500 dark:bg-violet-900/20">
+              <div className="flex items-center gap-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-violet-500 text-xl font-semibold text-white">
+                  {selectedUser.nome?.charAt(0)?.toUpperCase() || "?"}
+                </div>
+                <div className="flex-1">
+                  <p className="text-lg font-semibold text-violet-900 dark:text-violet-100">
+                    {selectedUser.nome}
+                  </p>
+                  <div className="flex items-center gap-3 text-sm text-violet-700 dark:text-violet-300">
+                    <span className="flex items-center gap-1">
+                      <Mail className="h-3 w-3" />
+                      {selectedUser.email}
+                    </span>
+                    {selectedUser.telefone && (
+                      <span className="flex items-center gap-1">
+                        <Phone className="h-3 w-3" />
+                        {selectedUser.telefone}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${getRoleColor(selectedUser.role)}`}>
+                  {getRoleLabel(selectedUser.role)}
+                </span>
+              </div>
+            </div>
+
+            {/* Formulário de configuração */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Input
+                label="Nome *"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                error={formErrors.name}
+                placeholder="Nome completo"
+                autoComplete="off"
+              />
+              <Input
+                label="Telefone *"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                error={formErrors.phone}
+                placeholder="(00) 00000-0000"
+                leftIcon={<Phone className="h-4 w-4" />}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Input
+                label="WhatsApp"
+                value={formData.whatsapp}
+                onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
+                error={formErrors.whatsapp}
+                placeholder="(00) 00000-0000"
+                leftIcon={<MessageCircle className="h-4 w-4" />}
+              />
+              <Input
+                label="Email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                error={formErrors.email}
+                placeholder="email@exemplo.com"
+                leftIcon={<Mail className="h-4 w-4" />}
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Input
+                label="Data de Nascimento *"
+                type="date"
+                value={formData.birthDate ? new Date(formData.birthDate).toISOString().split("T")[0] : ""}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    birthDate: e.target.value ? new Date(e.target.value) : undefined,
+                  })
+                }
+                error={formErrors.birthDate}
+                leftIcon={<Calendar className="h-4 w-4" />}
+              />
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Observações
+                </label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="Preferências, alergias..."
+                  rows={1}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
+                />
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800">
+              <label className="mb-3 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Preferências de Comunicação
+              </label>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={formData.acceptsWhatsApp}
+                    onChange={(e) => setFormData({ ...formData, acceptsWhatsApp: e.target.checked })}
+                    className="h-5 w-5 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
+                  />
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">WhatsApp</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Receber mensagens</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={formData.acceptsEmail}
+                    onChange={(e) => setFormData({ ...formData, acceptsEmail: e.target.checked })}
+                    className="h-5 w-5 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
+                  />
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">Email</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Receber emails</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={formData.acceptsMarketing}
+                    onChange={(e) => setFormData({ ...formData, acceptsMarketing: e.target.checked })}
+                    className="h-5 w-5 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
+                  />
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">Marketing</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Promoções e novidades</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Modal de Editar Cliente */}
@@ -880,6 +1289,7 @@ export default function ClientsPage() {
               label="WhatsApp"
               value={formData.whatsapp}
               onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
+              error={formErrors.whatsapp}
               placeholder="(00) 00000-0000"
             />
             <Input
@@ -895,7 +1305,7 @@ export default function ClientsPage() {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input
-              label="Data de Nascimento"
+              label="Data de Nascimento *"
               type="date"
               value={formData.birthDate ? new Date(formData.birthDate).toISOString().split("T")[0] : ""}
               onChange={(e) =>
@@ -904,6 +1314,7 @@ export default function ClientsPage() {
                   birthDate: e.target.value ? new Date(e.target.value) : undefined,
                 })
               }
+              error={formErrors.birthDate}
             />
             {selectedClient && (
               <div>

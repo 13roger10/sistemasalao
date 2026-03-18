@@ -81,4 +81,9 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
            "LEFT JOIN Profissional p ON p.usuario = u " +
            "WHERE (p.salon.id = :salonId OR u.role = 'ADMIN') AND u.role = :role")
     Page<Usuario> findBySalonIdAndRole(@Param("salonId") Long salonId, @Param("role") Role role, Pageable pageable);
+
+    // Buscar usuários CLIENTE que ainda não estão vinculados a um salão específico
+    @Query("SELECT u FROM Usuario u WHERE u.role = 'CLIENTE' AND u.ativo = true " +
+           "AND NOT EXISTS (SELECT c FROM Cliente c WHERE c.usuario = u AND c.salon.id = :salonId)")
+    List<Usuario> findClientesNaoVinculadosAoSalon(@Param("salonId") Long salonId);
 }

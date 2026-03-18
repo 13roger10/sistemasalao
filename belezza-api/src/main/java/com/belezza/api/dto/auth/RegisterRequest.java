@@ -38,4 +38,7 @@ public class RegisterRequest {
 
     @NotNull(message = "Role é obrigatório")
     private Role role;
+
+    // ID do salão para vincular o cliente (obrigatório quando role = CLIENTE)
+    private Long salonId;
 }

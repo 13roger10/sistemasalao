@@ -14,48 +14,171 @@ import type {
 } from '@/types/salon';
 import type { PaginatedResponse, PaginationParams } from '@/types/salon/common';
 
-const BASE_PATH = '/salon/services';
+// IMPORTANTE: O backend usa /servicos (português), não /services
+const BASE_PATH = '/servicos';
+const PUBLIC_PATH = '/public/servicos';
+
+// Mapeamento de categoria para TipoServico do backend
+const categoryToTipoServico: Record<string, string> = {
+  '1': 'CABELO',
+  '2': 'BARBA',
+  '3': 'ESTETICA',
+  'Cabelo': 'CABELO',
+  'Barba': 'BARBA',
+  'Estética': 'ESTETICA',
+  'Unha': 'UNHA',
+  'Maquiagem': 'MAQUIAGEM',
+  'Depilação': 'DEPILACAO',
+  'Sobrancelha': 'SOBRANCELHA',
+  'Massagem': 'MASSAGEM',
+  'Outro': 'OUTRO',
+};
+
+// Mapeamento de TipoServico para categoryId
+const tipoServicoToCategoryId: Record<string, string> = {
+  'CABELO': '1',
+  'BARBA': '2',
+  'ESTETICA': '3',
+  'UNHA': '4',
+  'MAQUIAGEM': '5',
+  'DEPILACAO': '6',
+  'SOBRANCELHA': '7',
+  'MASSAGEM': '8',
+  'OUTRO': '9',
+};
+
+// Interface para resposta do backend
+interface ServicoBackendResponse {
+  id: number;
+  nome: string;
+  descricao?: string;
+  preco: number;
+  duracaoMinutos: number;
+  tipo: string;
+  tipoDescricao?: string;
+  imagemUrl?: string;
+  ativo: boolean;
+  salonId?: number;
+  criadoEm?: string;
+}
+
+// Função para mapear resposta do backend para o formato do frontend
+const mapBackendToFrontend = (servico: ServicoBackendResponse): Service => {
+  const categoryId = tipoServicoToCategoryId[servico.tipo] || '9';
+  return {
+    id: String(servico.id),
+    name: servico.nome,
+    description: servico.descricao || '',
+    categoryId: categoryId,
+    category: {
+      id: categoryId,
+      name: servico.tipoDescricao || servico.tipo,
+      order: parseInt(categoryId),
+      status: 'active',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    price: Number(servico.preco) || 0,
+    durationMinutes: servico.duracaoMinutos || 0,
+    commissionPercentage: 50, // default
+    usesStock: false,
+    loyaltyPointsEarned: 10, // default
+    status: servico.ativo ? 'active' : 'inactive',
+    showInOnlineBooking: true,
+    requiresConfirmation: false,
+    unitIds: [],
+    totalBookings: 0,
+    averageRating: 0,
+    createdAt: servico.criadoEm ? new Date(servico.criadoEm) : new Date(),
+    updatedAt: new Date(),
+    image: servico.imagemUrl,
+  };
+};
 
 export const serviceService = {
   // ===== PUBLIC/CLIENT ENDPOINTS =====
 
   // List services for public booking (no auth required)
+  // Usa endpoint público do backend em português
   listPublic: (unitId?: string): Promise<Service[]> => {
-    return api.get<Service[]>(`${BASE_PATH}/public`, { unitId });
+    return api.get<Service[]>(PUBLIC_PATH, { unitId, salonId: unitId || '1' });
   },
 
   // List services for authenticated client
   listForClient: (unitId?: string): Promise<Service[]> => {
-    return api.get<Service[]>(`${BASE_PATH}/client`, { unitId });
+    // Tenta endpoint de cliente, fallback para público
+    return api.get<Service[]>(`${BASE_PATH}/client`, { unitId })
+      .catch(() => api.get<Service[]>(PUBLIC_PATH, { unitId, salonId: unitId || '1' }));
   },
 
   // ===== ADMIN/STAFF ENDPOINTS =====
 
   // List services with pagination and filters
+  // IMPORTANTE: Backend usa /servicos/salon/{salonId}
   list: (
-    params: PaginationParams & ServiceFilters
+    params: PaginationParams & ServiceFilters & { salonId?: string | number }
   ): Promise<PaginatedResponse<Service>> => {
-    return api.get<PaginatedResponse<Service>>(BASE_PATH, params);
+    const salonId = params.salonId || '1';
+    return api.get<ServicoBackendResponse[]>(`${BASE_PATH}/salon/${salonId}`, params)
+      .then((backendServices) => {
+        const services = backendServices.map(mapBackendToFrontend);
+        const page = params.page || 1;
+        const limit = params.limit || 10;
+        const totalPages = Math.ceil(services.length / limit);
+        return {
+          data: services,
+          items: services,
+          meta: {
+            total: services.length,
+            page,
+            limit,
+            totalPages,
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1,
+          },
+        };
+      });
   },
 
   // Get all services (no pagination, for selects)
-  getAll: (params?: ServiceFilters): Promise<Service[]> => {
-    return api.get<Service[]>(`${BASE_PATH}/all`, params);
+  getAll: (params?: ServiceFilters & { salonId?: string | number }): Promise<Service[]> => {
+    const salonId = params?.salonId || '1';
+    return api.get<ServicoBackendResponse[]>(`${BASE_PATH}/salon/${salonId}`, params)
+      .then((backendServices) => backendServices.map(mapBackendToFrontend));
   },
 
   // Get single service by ID
   getById: (id: string): Promise<Service> => {
-    return api.get<Service>(`${BASE_PATH}/${id}`);
+    return api.get<ServicoBackendResponse>(`${BASE_PATH}/${id}`)
+      .then(mapBackendToFrontend);
   },
 
   // Create new service
+  // Backend espera: nome, descricao, preco, duracaoMinutos, tipo
   create: (data: ServiceCreateInput): Promise<Service> => {
-    return api.post<Service>(BASE_PATH, data);
+    const backendData = {
+      nome: data.name,
+      descricao: data.description || '',
+      preco: data.price,
+      duracaoMinutos: data.durationMinutes,
+      tipo: categoryToTipoServico[data.categoryId || ''] || 'OUTRO',
+    };
+    return api.post<ServicoBackendResponse>(BASE_PATH, backendData)
+      .then(mapBackendToFrontend);
   },
 
   // Update existing service
+  // Backend usa PUT, não PATCH
   update: (id: string, data: ServiceUpdateInput): Promise<Service> => {
-    return api.patch<Service>(`${BASE_PATH}/${id}`, data);
+    const backendData = {
+      nome: data.name,
+      descricao: data.description || '',
+      preco: data.price,
+      duracaoMinutos: data.durationMinutes,
+      tipo: categoryToTipoServico[data.categoryId || ''] || 'OUTRO',
+    };
+    return api.put<ServicoBackendResponse>(`${BASE_PATH}/${id}`, backendData)
+      .then(mapBackendToFrontend);
   },
 
   // Delete service (soft delete)
