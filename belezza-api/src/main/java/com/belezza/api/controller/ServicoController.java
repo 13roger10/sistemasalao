@@ -37,7 +37,30 @@ public class ServicoController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/categories")
+    @Operation(summary = "Listar categorias", description = "Lista todas as categorias de serviços disponíveis")
+    public ResponseEntity<List<CategoryResponse>> listarCategorias() {
+        List<CategoryResponse> categories = java.util.Arrays.stream(TipoServico.values())
+            .map(tipo -> new CategoryResponse(
+                tipo.name().toLowerCase(),
+                tipo.getDescription(),
+                "Serviços de " + tipo.getDescription().toLowerCase(),
+                tipo.ordinal() + 1,
+                "active"
+            ))
+            .toList();
+        return ResponseEntity.ok(categories);
+    }
+
+    public record CategoryResponse(
+        String id,
+        String name,
+        String description,
+        int order,
+        String status
+    ) {}
+
+    @GetMapping("/{id:\\d+}")
     @Operation(summary = "Buscar serviço", description = "Busca um serviço por ID")
     public ResponseEntity<ServicoResponse> buscarPorId(@PathVariable Long id) {
         ServicoResponse response = servicoService.buscarPorId(id);
@@ -60,7 +83,7 @@ public class ServicoController {
         return ResponseEntity.ok(response);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/{id:\\d+}")
     @AdminOnly
     @Operation(summary = "Atualizar serviço", description = "Atualiza um serviço existente")
     public ResponseEntity<ServicoResponse> atualizar(
@@ -71,7 +94,7 @@ public class ServicoController {
         return ResponseEntity.ok(response);
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/{id:\\d+}")
     @AdminOnly
     @Operation(summary = "Desativar serviço", description = "Desativa um serviço (soft delete)")
     public ResponseEntity<Void> desativar(

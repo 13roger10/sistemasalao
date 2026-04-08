@@ -1,11 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import {
-  ChevronLeft,
   Search,
-  Filter,
   Download,
   Clock,
   User,
@@ -17,11 +14,12 @@ import {
   LogOut,
   Plus,
   RefreshCw,
-  Calendar,
+  Shield,
 } from 'lucide-react';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { SalonLayout } from '@/components/layout/SalonLayout';
 import { auditService } from '@/services/salon/auditService';
 import type { AuditLog, AuditAction, AuditEntity, AuditStats } from '@/types/salon/audit';
 
@@ -39,18 +37,18 @@ const actionIcons: Record<AuditAction, React.ReactNode> = {
   restore_backup: <RefreshCw className="h-4 w-4" />,
 };
 
-const actionColors: Record<AuditAction, string> = {
-  create: 'bg-green-100 text-green-700',
-  update: 'bg-blue-100 text-blue-700',
-  delete: 'bg-red-100 text-red-700',
-  restore: 'bg-purple-100 text-purple-700',
-  login: 'bg-violet-100 text-violet-700',
-  logout: 'bg-gray-100 text-gray-700',
-  view: 'bg-yellow-100 text-yellow-700',
-  export: 'bg-cyan-100 text-cyan-700',
-  import: 'bg-orange-100 text-orange-700',
-  backup: 'bg-indigo-100 text-indigo-700',
-  restore_backup: 'bg-pink-100 text-pink-700',
+const actionColors: Record<AuditAction, { light: string; dark: string }> = {
+  create: { light: 'bg-green-100 text-green-700', dark: 'dark:bg-green-900/30 dark:text-green-400' },
+  update: { light: 'bg-blue-100 text-blue-700', dark: 'dark:bg-blue-900/30 dark:text-blue-400' },
+  delete: { light: 'bg-red-100 text-red-700', dark: 'dark:bg-red-900/30 dark:text-red-400' },
+  restore: { light: 'bg-purple-100 text-purple-700', dark: 'dark:bg-purple-900/30 dark:text-purple-400' },
+  login: { light: 'bg-violet-100 text-violet-700', dark: 'dark:bg-violet-900/30 dark:text-violet-400' },
+  logout: { light: 'bg-gray-100 text-gray-700', dark: 'dark:bg-gray-700 dark:text-gray-300' },
+  view: { light: 'bg-yellow-100 text-yellow-700', dark: 'dark:bg-yellow-900/30 dark:text-yellow-400' },
+  export: { light: 'bg-cyan-100 text-cyan-700', dark: 'dark:bg-cyan-900/30 dark:text-cyan-400' },
+  import: { light: 'bg-orange-100 text-orange-700', dark: 'dark:bg-orange-900/30 dark:text-orange-400' },
+  backup: { light: 'bg-indigo-100 text-indigo-700', dark: 'dark:bg-indigo-900/30 dark:text-indigo-400' },
+  restore_backup: { light: 'bg-pink-100 text-pink-700', dark: 'dark:bg-pink-900/30 dark:text-pink-400' },
 };
 
 const actionLabels: Record<AuditAction, string> = {
@@ -85,7 +83,6 @@ const entityLabels: Record<AuditEntity, string> = {
 };
 
 export default function AuditLogPage() {
-  const router = useRouter();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [stats, setStats] = useState<AuditStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -153,25 +150,26 @@ export default function AuditLogPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-white shadow-sm">
-        <div className="flex items-center gap-4 p-4">
-          <button
-            onClick={() => router.back()}
-            className="rounded-full p-2 hover:bg-gray-100"
-          >
-            <ChevronLeft className="h-6 w-6" />
-          </button>
-          <div className="flex-1">
-            <h1 className="text-lg font-semibold">Logs de Alteracao</h1>
-            <p className="text-sm text-gray-500">
-              Historico de todas as alteracoes no sistema
-            </p>
+    <SalonLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
+              <Shield className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                Logs de Alteracao
+              </h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Historico de todas as alteracoes no sistema
+              </p>
+            </div>
           </div>
           <button
             onClick={handleExport}
-            className="flex items-center gap-2 rounded-lg bg-violet-500 px-4 py-2 text-sm font-medium text-white hover:bg-violet-600"
+            className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700"
           >
             <Download className="h-4 w-4" />
             Exportar
@@ -179,7 +177,7 @@ export default function AuditLogPage() {
         </div>
 
         {/* Filters */}
-        <div className="border-t px-4 py-3">
+        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
           <div className="flex flex-wrap gap-3">
             {/* Search */}
             <div className="relative flex-1">
@@ -189,7 +187,7 @@ export default function AuditLogPage() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Buscar..."
-                className="w-full rounded-lg border border-gray-200 py-2 pl-10 pr-4 text-sm focus:border-violet-500 focus:outline-none"
+                className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-10 pr-4 text-sm text-gray-900 focus:border-violet-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
               />
             </div>
 
@@ -197,7 +195,7 @@ export default function AuditLogPage() {
             <select
               value={selectedAction}
               onChange={e => setSelectedAction(e.target.value as AuditAction | '')}
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-violet-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             >
               <option value="">Todas acoes</option>
               {Object.entries(actionLabels).map(([key, label]) => (
@@ -209,7 +207,7 @@ export default function AuditLogPage() {
             <select
               value={selectedEntity}
               onChange={e => setSelectedEntity(e.target.value as AuditEntity | '')}
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-violet-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             >
               <option value="">Todas entidades</option>
               {Object.entries(entityLabels).map(([key, label]) => (
@@ -221,7 +219,7 @@ export default function AuditLogPage() {
             <select
               value={dateRange}
               onChange={e => setDateRange(e.target.value as typeof dateRange)}
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-violet-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             >
               <option value="today">Hoje</option>
               <option value="week">Ultima semana</option>
@@ -230,58 +228,59 @@ export default function AuditLogPage() {
             </select>
           </div>
         </div>
-      </div>
 
-      {/* Stats */}
-      {stats && (
-        <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
-          <div className="rounded-xl bg-white p-4 shadow-sm">
-            <p className="text-sm text-gray-500">Total de Logs</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.totalLogs}</p>
-          </div>
-          <div className="rounded-xl bg-white p-4 shadow-sm">
-            <p className="text-sm text-gray-500">Criacoes</p>
-            <p className="text-2xl font-bold text-green-600">{stats.byAction.create || 0}</p>
-          </div>
-          <div className="rounded-xl bg-white p-4 shadow-sm">
-            <p className="text-sm text-gray-500">Alteracoes</p>
-            <p className="text-2xl font-bold text-blue-600">{stats.byAction.update || 0}</p>
-          </div>
-          <div className="rounded-xl bg-white p-4 shadow-sm">
-            <p className="text-sm text-gray-500">Exclusoes</p>
-            <p className="text-2xl font-bold text-red-600">{stats.byAction.delete || 0}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Logs List */}
-      <div className="p-4">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-200 border-t-violet-500" />
-          </div>
-        ) : logs.length === 0 ? (
-          <div className="rounded-xl bg-white py-12 text-center shadow-sm">
-            <FileText className="mx-auto h-12 w-12 text-gray-300" />
-            <p className="mt-4 text-gray-500">Nenhum log encontrado</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {logs.map(log => (
-              <LogCard key={log.id} log={log} />
-            ))}
+        {/* Stats */}
+        {stats && (
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <p className="text-sm text-gray-500 dark:text-gray-400">Total de Logs</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.totalLogs}</p>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <p className="text-sm text-gray-500 dark:text-gray-400">Criacoes</p>
+              <p className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.byAction.create || 0}</p>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <p className="text-sm text-gray-500 dark:text-gray-400">Alteracoes</p>
+              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.byAction.update || 0}</p>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <p className="text-sm text-gray-500 dark:text-gray-400">Exclusoes</p>
+              <p className="text-2xl font-bold text-red-600 dark:text-red-400">{stats.byAction.delete || 0}</p>
+            </div>
           </div>
         )}
+
+        {/* Logs List */}
+        <div>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-200 border-t-violet-500" />
+            </div>
+          ) : logs.length === 0 ? (
+            <div className="rounded-lg border border-gray-200 bg-white py-12 text-center dark:border-gray-700 dark:bg-gray-800">
+              <FileText className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" />
+              <p className="mt-4 text-gray-500 dark:text-gray-400">Nenhum log encontrado</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {logs.map(log => (
+                <LogCard key={log.id} log={log} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </SalonLayout>
   );
 }
 
 function LogCard({ log }: { log: AuditLog }) {
   const [expanded, setExpanded] = useState(false);
+  const colors = actionColors[log.action];
 
   return (
-    <div className="overflow-hidden rounded-xl bg-white shadow-sm">
+    <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-3 p-4 text-left"
@@ -290,7 +289,8 @@ function LogCard({ log }: { log: AuditLog }) {
         <div
           className={cn(
             'flex h-10 w-10 items-center justify-center rounded-full',
-            actionColors[log.action]
+            colors.light,
+            colors.dark
           )}
         >
           {actionIcons[log.action]}
@@ -298,10 +298,10 @@ function LogCard({ log }: { log: AuditLog }) {
 
         {/* Content */}
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-gray-900">
+          <p className="font-medium text-gray-900 dark:text-white">
             {log.description || `${actionLabels[log.action]} de ${entityLabels[log.entity]}`}
           </p>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-500">
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
             <span className="flex items-center gap-1">
               <User className="h-3 w-3" />
               {log.userName}
@@ -322,12 +322,13 @@ function LogCard({ log }: { log: AuditLog }) {
           <span
             className={cn(
               'rounded-full px-2 py-0.5 text-xs font-medium',
-              actionColors[log.action]
+              colors.light,
+              colors.dark
             )}
           >
             {actionLabels[log.action]}
           </span>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-gray-400 dark:text-gray-500">
             {entityLabels[log.entity]}
           </span>
         </div>
@@ -335,32 +336,32 @@ function LogCard({ log }: { log: AuditLog }) {
 
       {/* Expanded Details */}
       {expanded && (
-        <div className="border-t bg-gray-50 p-4">
+        <div className="border-t border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/50">
           <div className="space-y-3 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-500">ID do Registro:</span>
-              <span className="font-mono text-gray-900">{log.entityId}</span>
+              <span className="text-gray-500 dark:text-gray-400">ID do Registro:</span>
+              <span className="font-mono text-gray-900 dark:text-white">{log.entityId}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">Data/Hora:</span>
-              <span className="text-gray-900">
+              <span className="text-gray-500 dark:text-gray-400">Data/Hora:</span>
+              <span className="text-gray-900 dark:text-white">
                 {format(new Date(log.createdAt), "dd/MM/yyyy 'as' HH:mm:ss", { locale: ptBR })}
               </span>
             </div>
             {log.ipAddress && (
               <div className="flex justify-between">
-                <span className="text-gray-500">IP:</span>
-                <span className="font-mono text-gray-900">{log.ipAddress}</span>
+                <span className="text-gray-500 dark:text-gray-400">IP:</span>
+                <span className="font-mono text-gray-900 dark:text-white">{log.ipAddress}</span>
               </div>
             )}
             {log.changedFields && log.changedFields.length > 0 && (
               <div>
-                <span className="text-gray-500">Campos alterados:</span>
+                <span className="text-gray-500 dark:text-gray-400">Campos alterados:</span>
                 <div className="mt-1 flex flex-wrap gap-1">
                   {log.changedFields.map(field => (
                     <span
                       key={field}
-                      className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700"
+                      className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
                     >
                       {field}
                     </span>
@@ -370,16 +371,16 @@ function LogCard({ log }: { log: AuditLog }) {
             )}
             {log.oldValues && (
               <div>
-                <span className="text-gray-500">Valores anteriores:</span>
-                <pre className="mt-1 overflow-auto rounded bg-gray-100 p-2 text-xs">
+                <span className="text-gray-500 dark:text-gray-400">Valores anteriores:</span>
+                <pre className="mt-1 overflow-auto rounded bg-gray-100 p-2 text-xs text-gray-900 dark:bg-gray-800 dark:text-gray-300">
                   {JSON.stringify(log.oldValues, null, 2)}
                 </pre>
               </div>
             )}
             {log.newValues && (
               <div>
-                <span className="text-gray-500">Novos valores:</span>
-                <pre className="mt-1 overflow-auto rounded bg-gray-100 p-2 text-xs">
+                <span className="text-gray-500 dark:text-gray-400">Novos valores:</span>
+                <pre className="mt-1 overflow-auto rounded bg-gray-100 p-2 text-xs text-gray-900 dark:bg-gray-800 dark:text-gray-300">
                   {JSON.stringify(log.newValues, null, 2)}
                 </pre>
               </div>

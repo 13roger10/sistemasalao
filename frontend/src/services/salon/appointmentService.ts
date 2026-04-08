@@ -8,6 +8,7 @@ import type {
   AppointmentFilters,
   AppointmentStats,
   AppointmentStatus,
+  AppointmentService,
   AvailabilityRequest,
   AvailabilityResponse,
   WaitlistEntry,
@@ -20,22 +21,41 @@ import type { PaginatedResponse, PaginationParams, DateRange } from '@/types/sal
 // IMPORTANTE: O backend usa /agendamentos (português), não /appointments
 const BASE_PATH = '/agendamentos';
 
+// Interface para serviço agendado
+interface ServicoAgendadoDTO {
+  servicoId: number;
+  servicoNome: string;
+  servicoDescricao?: string;
+  servicoPreco: number;
+  ordem: number;
+  duracaoPrevistaMinutos: number;
+  tempoPreparacaoMinutos: number;
+}
+
 // Interface para resposta do backend
 interface AgendamentoBackendResponse {
   id: number;
+  salonId?: number;
+  salonNome?: string;
   profissionalId: number;
   profissionalNome?: string;
   clienteId?: number;
   clienteNome?: string;
+  clienteTelefone?: string;
   servicoId?: number;
   servicoNome?: string;
-  servicoIds?: number[];
+  servicoDuracaoMinutos?: number;
+  servicos?: ServicoAgendadoDTO[];
+  duracaoTotalMinutos?: number;
   dataHora: string;
-  duracaoMinutos: number;
+  fimPrevisto?: string;
   status: string;
+  statusDescricao?: string;
   observacoes?: string;
-  precoTotal?: number;
+  motivoCancelamento?: string;
+  valorCobrado?: number;
   criadoEm?: string;
+  atualizadoEm?: string;
 }
 
 // Mapear status do backend para frontend
@@ -54,7 +74,65 @@ const mapStatus = (status: string): AppointmentStatus => {
 // Mapear resposta do backend para frontend
 const mapAgendamentoToFrontend = (agendamento: AgendamentoBackendResponse): Appointment => {
   const dataHora = new Date(agendamento.dataHora);
-  const endTime = new Date(dataHora.getTime() + (agendamento.duracaoMinutos || 30) * 60000);
+  const duracaoMinutos = agendamento.duracaoTotalMinutos || agendamento.servicoDuracaoMinutos || 30;
+  const fimPrevisto = agendamento.fimPrevisto
+    ? new Date(agendamento.fimPrevisto)
+    : new Date(dataHora.getTime() + duracaoMinutos * 60000);
+
+  // Mapear serviços
+  const services: AppointmentService[] = [];
+  if (agendamento.servicos && agendamento.servicos.length > 0) {
+    // Múltiplos serviços
+    for (const serv of agendamento.servicos) {
+      services.push({
+        serviceId: String(serv.servicoId),
+        service: {
+          id: String(serv.servicoId),
+          name: serv.servicoNome,
+          description: serv.servicoDescricao,
+          categoryId: '',
+          price: serv.servicoPreco,
+          durationMinutes: serv.duracaoPrevistaMinutos,
+          status: 'active' as const,
+          usesStock: false,
+          loyaltyPointsEarned: 0,
+          showInOnlineBooking: true,
+          requiresConfirmation: false,
+          unitIds: ['1'],
+          totalBookings: 0,
+          averageRating: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        price: serv.servicoPreco,
+        durationMinutes: serv.duracaoPrevistaMinutos,
+      });
+    }
+  } else if (agendamento.servicoNome) {
+    // Serviço único (legacy)
+    services.push({
+      serviceId: String(agendamento.servicoId || ''),
+      service: {
+        id: String(agendamento.servicoId || ''),
+        name: agendamento.servicoNome,
+        categoryId: '',
+        price: agendamento.valorCobrado || 0,
+        durationMinutes: agendamento.servicoDuracaoMinutos || 30,
+        status: 'active' as const,
+        usesStock: false,
+        loyaltyPointsEarned: 0,
+        showInOnlineBooking: true,
+        requiresConfirmation: false,
+        unitIds: ['1'],
+        totalBookings: 0,
+        averageRating: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      price: agendamento.valorCobrado || 0,
+      durationMinutes: agendamento.servicoDuracaoMinutos || 30,
+    });
+  }
 
   return {
     id: String(agendamento.id),
@@ -63,7 +141,7 @@ const mapAgendamentoToFrontend = (agendamento: AgendamentoBackendResponse): Appo
       id: String(agendamento.clienteId || ''),
       name: agendamento.clienteNome,
       email: '',
-      phone: '',
+      phone: agendamento.clienteTelefone || '',
       totalVisits: 0,
       totalSpent: 0,
       loyaltyPoints: 0,
@@ -77,65 +155,109 @@ const mapAgendamentoToFrontend = (agendamento: AgendamentoBackendResponse): Appo
       updatedAt: new Date(),
     } : undefined,
     professionalId: String(agendamento.profissionalId),
-    professional: undefined, // Simplificado - o profissional será carregado separadamente se necessário
-    services: agendamento.servicoNome ? [{
-      serviceId: String(agendamento.servicoId || ''),
-      price: agendamento.precoTotal || 0,
-      durationMinutes: agendamento.duracaoMinutos || 30,
-    }] : [],
+    professional: agendamento.profissionalNome ? {
+      id: String(agendamento.profissionalId),
+      userId: String(agendamento.profissionalId),
+      name: agendamento.profissionalNome,
+      email: '',
+      phone: '',
+      status: 'active',
+      serviceIds: [],
+      specialties: [],
+      commissionType: 'percentage',
+      commissionValue: 0,
+      schedule: { days: [] },
+      averageRating: 0,
+      totalReviews: 0,
+      totalAppointments: 0,
+      totalRevenue: 0,
+      unitIds: ['1'],
+      primaryUnitId: '1',
+      acceptsOnlineBooking: true,
+      showInPublicProfile: true,
+      color: '#8B5CF6',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } : undefined,
+    services,
     date: dataHora,
     startTime: dataHora.toTimeString().slice(0, 5),
-    endTime: endTime.toTimeString().slice(0, 5),
-    totalDurationMinutes: agendamento.duracaoMinutos || 30,
+    endTime: fimPrevisto.toTimeString().slice(0, 5),
+    totalDurationMinutes: duracaoMinutos,
     status: mapStatus(agendamento.status),
     source: 'admin',
-    totalPrice: agendamento.precoTotal || 0,
-    finalPrice: agendamento.precoTotal || 0,
+    totalPrice: agendamento.valorCobrado || 0,
+    finalPrice: agendamento.valorCobrado || 0,
     isPaid: false,
     commissionTotal: 0,
     commissionPaid: false,
     internalNotes: agendamento.observacoes,
+    cancellationReason: agendamento.motivoCancelamento,
     unitId: '1',
     createdAt: agendamento.criadoEm ? new Date(agendamento.criadoEm) : new Date(),
-    updatedAt: new Date(),
+    updatedAt: agendamento.atualizadoEm ? new Date(agendamento.atualizadoEm) : new Date(),
   };
 };
 
 export const appointmentService = {
   // List appointments with pagination and filters (admin endpoint)
   // IMPORTANTE: Backend usa /agendamentos/salon/{salonId}
-  list: (
+  list: async (
     params: PaginationParams & AppointmentFilters & { salonId?: string | number }
   ): Promise<PaginatedResponse<Appointment>> => {
     const salonId = params.salonId || '1';
-    return api.get<{ content: AgendamentoBackendResponse[], totalElements: number, totalPages: number, number: number }>(`${BASE_PATH}/salon/${salonId}`, params)
-      .then((response) => {
-        const appointments = response.content?.map(mapAgendamentoToFrontend) || [];
-        return {
-          data: appointments,
-          items: appointments,
-          meta: {
-            total: response.totalElements || appointments.length,
-            page: (response.number || 0) + 1,
-            limit: params.limit || 20,
-            totalPages: response.totalPages || 1,
-            hasNextPage: (response.number || 0) + 1 < (response.totalPages || 1),
-            hasPrevPage: (response.number || 0) > 0,
-          },
-        };
-      });
+    try {
+      // Convert frontend pagination params to Spring Boot format
+      const backendParams = {
+        page: (params.page || 1) - 1, // Spring Boot uses 0-indexed pages
+        size: params.limit || 100,    // Spring Boot uses 'size' not 'limit'
+      };
+      console.log('Buscando agendamentos - URL:', `${BASE_PATH}/salon/${salonId}`, 'Params:', backendParams);
+      const response = await api.get<{ content: AgendamentoBackendResponse[], totalElements: number, totalPages: number, number: number }>(`${BASE_PATH}/salon/${salonId}`, backendParams);
+      console.log('Resposta da API de agendamentos:', response);
+      console.log('Content recebido:', response.content);
+      const appointments = response.content?.map(mapAgendamentoToFrontend) || [];
+      console.log('Agendamentos mapeados:', appointments.length, appointments.length > 0 ? appointments[0] : 'nenhum');
+      return {
+        data: appointments,
+        items: appointments,
+        meta: {
+          total: response.totalElements || appointments.length,
+          page: (response.number || 0) + 1,
+          limit: params.limit || 20,
+          totalPages: response.totalPages || 1,
+          hasNextPage: (response.number || 0) + 1 < (response.totalPages || 1),
+          hasPrevPage: (response.number || 0) > 0,
+        },
+      };
+    } catch (error) {
+      console.error('Erro ao buscar agendamentos:', error);
+      return {
+        data: [],
+        items: [],
+        meta: {
+          total: 0,
+          page: 1,
+          limit: params.limit || 20,
+          totalPages: 0,
+          hasNextPage: false,
+          hasPrevPage: false,
+        },
+      };
+    }
   },
 
   // List appointments for the authenticated client
+  // IMPORTANTE: Usa /salon/appointments/my (MeusAgendamentosController)
   getMyAppointments: (
     params?: PaginationParams & { status?: string }
   ): Promise<PaginatedResponse<Appointment>> => {
-    return api.get<PaginatedResponse<Appointment>>(`${BASE_PATH}/my`, params);
+    return api.get<PaginatedResponse<Appointment>>('/salon/appointments/my', params);
   },
 
   // Get single appointment for the authenticated client
   getMyAppointmentById: (id: string): Promise<Appointment> => {
-    return api.get<Appointment>(`${BASE_PATH}/my/${id}`);
+    return api.get<Appointment>(`/salon/appointments/my/${id}`);
   },
 
   // Create new appointment for the authenticated client
@@ -147,17 +269,17 @@ export const appointmentService = {
     unitId: string;
     notes?: string;
   }): Promise<Appointment> => {
-    return api.post<Appointment>(`${BASE_PATH}/my`, data);
+    return api.post<Appointment>('/salon/appointments/my', data);
   },
 
   // Confirm appointment for the authenticated client
   confirmMyAppointment: (id: string): Promise<Appointment> => {
-    return api.post<Appointment>(`${BASE_PATH}/my/${id}/confirm`);
+    return api.post<Appointment>(`/salon/appointments/my/${id}/confirm`);
   },
 
   // Cancel appointment for the authenticated client
   cancelMyAppointment: (id: string, reason?: string): Promise<Appointment> => {
-    return api.post<Appointment>(`${BASE_PATH}/my/${id}/cancel`, { reason });
+    return api.post<Appointment>(`/salon/appointments/my/${id}/cancel`, { reason });
   },
 
   // Reschedule appointment for the authenticated client
@@ -166,7 +288,7 @@ export const appointmentService = {
     newDate: string,
     newTime: string
   ): Promise<Appointment> => {
-    return api.post<Appointment>(`${BASE_PATH}/my/${id}/reschedule`, {
+    return api.post<Appointment>(`/salon/appointments/my/${id}/reschedule`, {
       date: newDate,
       startTime: newTime,
     });
@@ -181,17 +303,19 @@ export const appointmentService = {
   // Backend espera: profissionalId, servicoId/servicoIds, dataHora, observacoes
   create: (data: AppointmentCreateInput): Promise<Appointment> => {
     // Combinar date e startTime em dataHora (LocalDateTime)
-    const date = data.date instanceof Date ? data.date : new Date(data.date);
+    // Extrair componentes da data para evitar problemas de timezone
+    const year = data.date.getFullYear();
+    const month = data.date.getMonth() + 1;
+    const day = data.date.getDate();
+
     const [hours, minutes] = (data.startTime || '09:00').split(':').map(Number);
-    date.setHours(hours, minutes, 0, 0);
 
     // Formatar dataHora como LocalDateTime (sem timezone) - formato: yyyy-MM-ddTHH:mm:ss
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hour = String(date.getHours()).padStart(2, '0');
-    const minute = String(date.getMinutes()).padStart(2, '0');
-    const dataHora = `${year}-${month}-${day}T${hour}:${minute}:00`;
+    const monthStr = String(month).padStart(2, '0');
+    const dayStr = String(day).padStart(2, '0');
+    const hour = String(hours).padStart(2, '0');
+    const minute = String(minutes).padStart(2, '0');
+    const dataHora = `${year}-${monthStr}-${dayStr}T${hour}:${minute}:00`;
 
     // Combinar notas
     const observacoes = [data.clientNotes, data.internalNotes]
@@ -199,6 +323,7 @@ export const appointmentService = {
       .join(' | ');
 
     const backendData = {
+      clienteId: data.clientId ? Number(data.clientId) : undefined,
       profissionalId: Number(data.professionalId),
       servicoIds: data.serviceIds?.map(id => Number(id)),
       dataHora,
@@ -216,32 +341,37 @@ export const appointmentService = {
     return api.patch<Appointment>(`${BASE_PATH}/${id}`, data);
   },
 
-  // Cancel appointment
+  // Cancel appointment (backend usa /cancelar)
   cancel: (id: string, reason?: string): Promise<Appointment> => {
-    return api.post<Appointment>(`${BASE_PATH}/${id}/cancel`, { reason });
+    return api.post<AgendamentoBackendResponse>(`${BASE_PATH}/${id}/cancelar`, { motivo: reason })
+      .then(mapAgendamentoToFrontend);
   },
 
-  // Confirm appointment
+  // Confirm appointment (backend usa /confirmar)
   confirm: (id: string): Promise<Appointment> => {
-    return api.post<Appointment>(`${BASE_PATH}/${id}/confirm`);
+    return api.post<AgendamentoBackendResponse>(`${BASE_PATH}/${id}/confirmar`)
+      .then(mapAgendamentoToFrontend);
   },
 
-  // Start appointment (in progress)
+  // Start appointment (in progress) (backend usa /iniciar)
   start: (id: string): Promise<Appointment> => {
-    return api.post<Appointment>(`${BASE_PATH}/${id}/start`);
+    return api.post<AgendamentoBackendResponse>(`${BASE_PATH}/${id}/iniciar`)
+      .then(mapAgendamentoToFrontend);
   },
 
-  // Complete appointment
+  // Complete appointment (backend usa /concluir)
   complete: (
     id: string,
     paymentData?: { method: string; amount: number }
   ): Promise<Appointment> => {
-    return api.post<Appointment>(`${BASE_PATH}/${id}/complete`, paymentData);
+    return api.post<AgendamentoBackendResponse>(`${BASE_PATH}/${id}/concluir`, paymentData)
+      .then(mapAgendamentoToFrontend);
   },
 
-  // Mark as no-show
+  // Mark as no-show (backend usa /no-show)
   noShow: (id: string): Promise<Appointment> => {
-    return api.post<Appointment>(`${BASE_PATH}/${id}/no-show`);
+    return api.post<AgendamentoBackendResponse>(`${BASE_PATH}/${id}/no-show`)
+      .then(mapAgendamentoToFrontend);
   },
 
   // Get appointments for calendar view
@@ -266,7 +396,7 @@ export const appointmentService = {
           id: String(ag.id),
           title: ag.servicoNome || 'Agendamento',
           start: new Date(ag.dataHora),
-          end: new Date(new Date(ag.dataHora).getTime() + (ag.duracaoMinutos || 30) * 60000),
+          end: new Date(new Date(ag.dataHora).getTime() + (ag.duracaoTotalMinutos || ag.servicoDuracaoMinutos || 30) * 60000),
           professionalId: String(ag.profissionalId),
           clientName: ag.clienteNome || 'Cliente',
           services: ag.servicoNome ? [ag.servicoNome] : [],
@@ -283,7 +413,7 @@ export const appointmentService = {
           id: String(ag.id),
           title: ag.servicoNome || 'Agendamento',
           start: new Date(ag.dataHora),
-          end: new Date(new Date(ag.dataHora).getTime() + (ag.duracaoMinutos || 30) * 60000),
+          end: new Date(new Date(ag.dataHora).getTime() + (ag.duracaoTotalMinutos || ag.servicoDuracaoMinutos || 30) * 60000),
           professionalId: String(ag.profissionalId),
           clientName: ag.clienteNome || 'Cliente',
           services: ag.servicoNome ? [ag.servicoNome] : [],
@@ -309,29 +439,72 @@ export const appointmentService = {
     });
   },
 
-  // Check availability
-  // IMPORTANTE: Backend não tem endpoint de disponibilidade, retorna slots padrão
-  checkAvailability: (data: AvailabilityRequest): Promise<AvailabilityResponse> => {
-    // Gerar slots de horário padrão (8h-19h, a cada 30min)
-    const slots: TimeSlot[] = [];
-    for (let hour = 8; hour <= 18; hour++) {
-      slots.push({ time: `${String(hour).padStart(2, '0')}:00`, available: true });
-      slots.push({ time: `${String(hour).padStart(2, '0')}:30`, available: true });
-    }
-    slots.push({ time: '19:00', available: true });
+  // Check availability - calls real backend endpoint
+  checkAvailability: async (data: AvailabilityRequest): Promise<AvailabilityResponse> => {
+    // Format date as YYYY-MM-DD
+    const dateStr = data.date instanceof Date
+      ? data.date.toISOString().split('T')[0]
+      : new Date(data.date).toISOString().split('T')[0];
 
-    return Promise.resolve({
-      date: data.date,
-      professionals: [{
-        professionalId: data.professionalId || '1',
-        professionalName: 'Profissional',
-        slots,
-      }],
-    });
+    // Build query params
+    const params = new URLSearchParams();
+    params.append('salonId', String(data.unitId || '1'));
+    params.append('data', dateStr);
+    data.serviceIds.forEach(id => params.append('servicoIds', String(id)));
+    if (data.professionalId) {
+      params.append('profissionalId', String(data.professionalId));
+    }
+
+    interface BackendTimeSlot {
+      time: string;
+      available: boolean;
+      reason?: string;
+    }
+
+    interface BackendProfessional {
+      professionalId: number;
+      professionalName: string;
+      photoUrl?: string;
+      slots: BackendTimeSlot[];
+    }
+
+    interface BackendDisponibilidadeResponse {
+      date: string;
+      totalDurationMinutes: number;
+      slotIntervalMinutes: number;
+      professionals: BackendProfessional[];
+    }
+
+    try {
+      const response = await api.get<BackendDisponibilidadeResponse>(
+        `${BASE_PATH}/disponibilidade?${params.toString()}`
+      );
+
+      // Map backend response to frontend format
+      return {
+        date: new Date(response.date),
+        professionals: response.professionals.map(prof => ({
+          professionalId: String(prof.professionalId),
+          professionalName: prof.professionalName,
+          slots: prof.slots.map(slot => ({
+            time: slot.time,
+            available: slot.available,
+            reason: slot.reason,
+          })),
+        })),
+      };
+    } catch (error) {
+      console.error('Error fetching availability:', error);
+      // Fallback to empty response on error
+      return {
+        date: data.date,
+        professionals: [],
+      };
+    }
   },
 
   // Get availability (alias for MobileBooking compatibility)
-  getAvailability: (data: AvailabilityRequest): Promise<AvailabilityResponse> => {
+  getAvailability: async (data: AvailabilityRequest): Promise<AvailabilityResponse> => {
     return appointmentService.checkAvailability(data);
   },
 

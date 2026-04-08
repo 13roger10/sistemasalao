@@ -895,7 +895,7 @@ export default function PublicBookingPage() {
             <div className="rounded-lg bg-yellow-50 p-4 text-left dark:bg-yellow-900/20">
               <p className="text-sm text-yellow-800 dark:text-yellow-200">
                 <strong>Importante:</strong> Em caso de imprevistos, por favor entre em contato
-                conosco com pelo menos 2 horas de antecedência.
+                conosco o mais breve possivel.
               </p>
             </div>
 

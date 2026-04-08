@@ -70,7 +70,7 @@ public class Cliente {
     @Builder.Default
     private boolean aceitaMarketing = true;
 
-    @Column(nullable = false)
+    @Column(name = "aceita_whatsapp", nullable = false)
     @Builder.Default
     private boolean aceitaWhatsApp = true;
 

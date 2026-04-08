@@ -1,7 +1,9 @@
 package com.belezza.api.service;
 
+import com.belezza.api.dto.profissional.CategoriaResponse;
 import com.belezza.api.dto.profissional.ProfissionalRequest;
 import com.belezza.api.dto.profissional.ProfissionalResponse;
+import com.belezza.api.entity.CategoriaProfissional;
 import com.belezza.api.entity.Profissional;
 import com.belezza.api.entity.Salon;
 import com.belezza.api.entity.Servico;
@@ -44,7 +46,10 @@ public class ProfissionalService {
         Profissional profissional = Profissional.builder()
                 .usuario(usuario)
                 .salon(salon)
+                .categoria(request.getCategoria())
+                .nivel(request.getNivel())
                 .especialidade(request.getEspecialidade())
+                .especializacoes(request.getEspecializacoes())
                 .bio(request.getBio())
                 .aceitaAgendamentoOnline(request.getAceitaAgendamentoOnline() != null ? request.getAceitaAgendamentoOnline() : true)
                 .servicos(new ArrayList<>())
@@ -114,7 +119,10 @@ public class ProfissionalService {
             throw new BusinessException("Profissional não pertence a este salão");
         }
 
+        if (request.getCategoria() != null) profissional.setCategoria(request.getCategoria());
+        if (request.getNivel() != null) profissional.setNivel(request.getNivel());
         if (request.getEspecialidade() != null) profissional.setEspecialidade(request.getEspecialidade());
+        if (request.getEspecializacoes() != null) profissional.setEspecializacoes(request.getEspecializacoes());
         if (request.getBio() != null) profissional.setBio(request.getBio());
         if (request.getAceitaAgendamentoOnline() != null) profissional.setAceitaAgendamentoOnline(request.getAceitaAgendamentoOnline());
 
@@ -181,5 +189,25 @@ public class ProfissionalService {
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", email));
         return profissionalRepository.findByUsuarioIdAndAtivoTrue(usuario.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Profissional", "usuário", email));
+    }
+
+    @Transactional(readOnly = true)
+    public List<CategoriaResponse> listarCategoriasPorSalon(Long salonId) {
+        return profissionalRepository.findDistinctCategoriasBySalonId(salonId).stream()
+                .map(c -> new CategoriaResponse(c.name(), c.getDescricao(), c.getDetalhes()))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProfissionalResponse> listarPorCategoria(Long salonId, CategoriaProfissional categoria, Boolean ativo) {
+        List<Profissional> profissionais;
+        if (ativo != null && ativo) {
+            profissionais = profissionalRepository.findBySalonIdAndCategoriaAndAtivoTrue(salonId, categoria);
+        } else {
+            profissionais = profissionalRepository.findBySalonIdAndCategoria(salonId, categoria);
+        }
+        return profissionais.stream()
+                .map(ProfissionalResponse::fromEntity)
+                .toList();
     }
 }

@@ -1,6 +1,5 @@
 package com.belezza.api.dto.agendamento;
 
-import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -16,6 +15,13 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AgendamentoRequest {
+
+    /**
+     * ID do cliente para o agendamento.
+     * Quando fornecido (ex: admin criando para cliente), usa este cliente.
+     * Quando não fornecido, usa o usuário autenticado como cliente.
+     */
+    private Long clienteId;
 
     @NotNull(message = "ID do profissional é obrigatório")
     private Long profissionalId;
@@ -40,7 +46,6 @@ public class AgendamentoRequest {
     private Integer tempoPreparacaoEntreServicosMinutos;
 
     @NotNull(message = "Data e hora são obrigatórios")
-    @Future(message = "Data e hora devem ser no futuro")
     private LocalDateTime dataHora;
 
     @Size(max = 500)

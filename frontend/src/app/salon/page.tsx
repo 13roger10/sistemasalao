@@ -24,7 +24,7 @@ export default function SalonIndexPage() {
         ADMIN: "/salon/dashboard",
         RECEPCIONIST: "/salon/dashboard",
         PROFESSIONAL: "/salon/appointments",
-        CLIENT: "/salon/client/appointments",
+        CLIENT: "/salon/book",
       };
       router.push(roleRedirects[user.role]);
     }

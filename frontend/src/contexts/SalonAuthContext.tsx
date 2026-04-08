@@ -156,8 +156,8 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
-      // Chama API de login
-      const response = await fetch("/api/auth/salon/login", {
+      // Chama API de login no backend (via proxy)
+      const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -168,8 +168,31 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
         throw new Error(error.message || "Credenciais inválidas");
       }
 
-      const data: AuthLoginResponse = await response.json();
-      setAuth(data.user, data.token, data.refreshToken, data.expiresIn);
+      const backendData = await response.json();
+
+      // Mapeia a resposta do backend para o formato do frontend
+      const roleMap: Record<string, AuthUserRole> = {
+        "ADMIN": "ADMIN",
+        "PROFISSIONAL": "PROFESSIONAL",
+        "CLIENTE": "CLIENT",
+        "RECEPCIONISTA": "RECEPCIONIST",
+      };
+
+      const user: SalonAuthUser = {
+        id: backendData.user.id.toString(),
+        email: backendData.user.email,
+        name: backendData.user.nome,
+        role: roleMap[backendData.user.role] || "CLIENT",
+        phone: backendData.user.telefone,
+        avatar: backendData.user.avatarUrl,
+        isActive: true,
+        createdAt: new Date(backendData.user.criadoEm),
+        updatedAt: backendData.user.ultimoLogin ? new Date(backendData.user.ultimoLogin) : new Date(backendData.user.criadoEm),
+        lastLogin: backendData.user.ultimoLogin ? new Date(backendData.user.ultimoLogin) : undefined,
+        permissions: AUTH_ROLE_PERMISSIONS[roleMap[backendData.user.role] || "CLIENT"] || [],
+      };
+
+      setAuth(user, backendData.accessToken, backendData.refreshToken, backendData.expiresIn);
     } catch (error) {
       clearAuth();
       throw error;
@@ -191,7 +214,7 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
     }
 
     try {
-      const response = await fetch("/api/auth/salon/refresh", {
+      const response = await fetch("/api/auth/refresh", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken }),
@@ -202,8 +225,31 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
         return false;
       }
 
-      const data: AuthLoginResponse = await response.json();
-      setAuth(data.user, data.token, data.refreshToken, data.expiresIn);
+      const backendData = await response.json();
+
+      // Mapeia a resposta do backend para o formato do frontend
+      const roleMap: Record<string, AuthUserRole> = {
+        "ADMIN": "ADMIN",
+        "PROFISSIONAL": "PROFESSIONAL",
+        "CLIENTE": "CLIENT",
+        "RECEPCIONISTA": "RECEPCIONIST",
+      };
+
+      const user: SalonAuthUser = {
+        id: backendData.user.id.toString(),
+        email: backendData.user.email,
+        name: backendData.user.nome,
+        role: roleMap[backendData.user.role] || "CLIENT",
+        phone: backendData.user.telefone,
+        avatar: backendData.user.avatarUrl,
+        isActive: true,
+        createdAt: new Date(backendData.user.criadoEm),
+        updatedAt: backendData.user.ultimoLogin ? new Date(backendData.user.ultimoLogin) : new Date(backendData.user.criadoEm),
+        lastLogin: backendData.user.ultimoLogin ? new Date(backendData.user.ultimoLogin) : undefined,
+        permissions: AUTH_ROLE_PERMISSIONS[backendData.user.role] || [],
+      };
+
+      setAuth(user, backendData.accessToken, backendData.refreshToken, backendData.expiresIn);
       return true;
     } catch {
       clearAuth();

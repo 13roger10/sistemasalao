@@ -1,7 +1,11 @@
 package com.belezza.api.controller;
 
+import com.belezza.api.dto.profissional.CategoriaResponse;
+import com.belezza.api.dto.profissional.NivelResponse;
 import com.belezza.api.dto.profissional.ProfissionalRequest;
 import com.belezza.api.dto.profissional.ProfissionalResponse;
+import com.belezza.api.entity.CategoriaProfissional;
+import com.belezza.api.entity.NivelProfissional;
 import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.service.ProfissionalService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -15,6 +19,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.List;
 
 @RestController
@@ -25,6 +30,41 @@ import java.util.List;
 public class ProfissionalController {
 
     private final ProfissionalService profissionalService;
+
+    @GetMapping("/categorias")
+    @Operation(summary = "Listar categorias", description = "Lista todas as categorias de profissionais disponíveis")
+    public ResponseEntity<List<CategoriaResponse>> listarCategorias() {
+        List<CategoriaResponse> categorias = Arrays.stream(CategoriaProfissional.values())
+                .map(c -> new CategoriaResponse(c.name(), c.getDescricao(), c.getDetalhes()))
+                .toList();
+        return ResponseEntity.ok(categorias);
+    }
+
+    @GetMapping("/niveis")
+    @Operation(summary = "Listar níveis", description = "Lista todos os níveis de experiência profissional disponíveis")
+    public ResponseEntity<List<NivelResponse>> listarNiveis() {
+        List<NivelResponse> niveis = Arrays.stream(NivelProfissional.values())
+                .map(n -> new NivelResponse(n.name(), n.getDescricao(), n.getDetalhes()))
+                .toList();
+        return ResponseEntity.ok(niveis);
+    }
+
+    @GetMapping("/salon/{salonId}/categorias")
+    @Operation(summary = "Listar categorias do salão", description = "Lista categorias de profissionais ativos no salão")
+    public ResponseEntity<List<CategoriaResponse>> listarCategoriasPorSalon(@PathVariable Long salonId) {
+        List<CategoriaResponse> categorias = profissionalService.listarCategoriasPorSalon(salonId);
+        return ResponseEntity.ok(categorias);
+    }
+
+    @GetMapping("/salon/{salonId}/categoria/{categoria}")
+    @Operation(summary = "Listar por categoria", description = "Lista profissionais de uma categoria específica")
+    public ResponseEntity<List<ProfissionalResponse>> listarPorCategoria(
+            @PathVariable Long salonId,
+            @PathVariable CategoriaProfissional categoria,
+            @RequestParam(required = false, defaultValue = "true") Boolean ativo) {
+        List<ProfissionalResponse> response = profissionalService.listarPorCategoria(salonId, categoria, ativo);
+        return ResponseEntity.ok(response);
+    }
 
     @PostMapping
     @AdminOnly

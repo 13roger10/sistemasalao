@@ -1,5 +1,6 @@
 package com.belezza.api.repository;
 
+import com.belezza.api.entity.CategoriaProfissional;
 import com.belezza.api.entity.Profissional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -32,4 +33,12 @@ public interface ProfissionalRepository extends JpaRepository<Profissional, Long
 
     @Query("SELECT COUNT(p) FROM Profissional p WHERE p.salon.id = :salonId AND p.ativo = true")
     long countActiveBySalonId(@Param("salonId") Long salonId);
+
+    List<Profissional> findBySalonIdAndCategoriaAndAtivoTrue(Long salonId, CategoriaProfissional categoria);
+
+    @Query("SELECT p FROM Profissional p WHERE p.salon.id = :salonId AND p.categoria = :categoria")
+    List<Profissional> findBySalonIdAndCategoria(@Param("salonId") Long salonId, @Param("categoria") CategoriaProfissional categoria);
+
+    @Query("SELECT DISTINCT p.categoria FROM Profissional p WHERE p.salon.id = :salonId AND p.ativo = true AND p.categoria IS NOT NULL")
+    List<CategoriaProfissional> findDistinctCategoriasBySalonId(@Param("salonId") Long salonId);
 }

@@ -194,8 +194,8 @@ export default function proxy(request: NextRequest) {
     // Verifica acesso às áreas de funcionários
     if (staffRoutes.some(route => pathname === route || pathname.startsWith(route + '/'))) {
       if (userRole === 'CLIENT') {
-        log("Client trying to access staff area, redirecting to /salon/client/appointments");
-        return addSecurityHeaders(NextResponse.redirect(new URL('/salon/client/appointments', request.url)));
+        log("Client trying to access staff area, redirecting to /salon/book");
+        return addSecurityHeaders(NextResponse.redirect(new URL('/salon/book', request.url)));
       }
       return addSecurityHeaders(NextResponse.next());
     }

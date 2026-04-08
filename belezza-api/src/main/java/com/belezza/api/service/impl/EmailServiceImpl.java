@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@ConditionalOnProperty(name = "spring.mail.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "spring.mail.enabled", havingValue = "true")
 public class EmailServiceImpl implements EmailService {
 
     private final JavaMailSender mailSender;

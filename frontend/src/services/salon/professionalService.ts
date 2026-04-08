@@ -9,6 +9,10 @@ import type {
   ProfessionalAvailability,
   ProfessionalPerformance,
   ProfessionalRanking,
+  ProfessionalCategory,
+  ProfessionalLevel,
+  CategoryInfo,
+  LevelInfo,
 } from '@/types/salon';
 import type { PaginatedResponse, PaginationParams, DateRange } from '@/types/salon/common';
 
@@ -22,7 +26,12 @@ interface ProfissionalBackend {
   nome: string;
   email: string;
   telefone?: string;
+  categoria?: ProfessionalCategory;
+  categoriaDescricao?: string;
+  nivel?: ProfessionalLevel;
+  nivelDescricao?: string;
   especialidade?: string;
+  especializacoes?: string;
   bio?: string;
   ativo: boolean;
   aceitaAgendamentoOnline: boolean;
@@ -41,7 +50,12 @@ function mapProfessional(data: ProfissionalBackend): Professional {
     email: data.email || '',
     phone: data.telefone || '',
     bio: data.bio || '',
+    category: data.categoria,
+    categoryDescription: data.categoriaDescricao,
+    level: data.nivel,
+    levelDescription: data.nivelDescricao,
     specialties: data.especialidade ? [data.especialidade] : [],
+    specializations: data.especializacoes,
     status: data.ativo ? 'active' : 'inactive',
     acceptsOnlineBooking: data.aceitaAgendamentoOnline ?? true,
     // Campos de comissão
@@ -50,7 +64,7 @@ function mapProfessional(data: ProfissionalBackend): Professional {
     // Serviços
     serviceIds: data.servicos?.map(s => String(s.id)) || [],
     // Defaults para campos não retornados pelo backend
-    schedule: {},
+    schedule: { days: [] },
     averageRating: 0,
     totalReviews: 0,
     totalAppointments: 0,
@@ -128,11 +142,14 @@ export const professionalService = {
   },
 
   // Create new professional
-  // Backend espera: usuarioId, especialidade, bio, aceitaAgendamentoOnline, servicoIds
+  // Backend espera: usuarioId, categoria, nivel, especialidade, especializacoes, bio, aceitaAgendamentoOnline, servicoIds
   create: (data: ProfessionalCreateInput): Promise<Professional> => {
     const backendData = {
       usuarioId: data.userId ? Number(data.userId) : undefined,
+      categoria: data.category,
+      nivel: data.level,
       especialidade: data.specialties?.join(", ") || data.specialty || "",
+      especializacoes: data.specializations || "",
       bio: data.bio || "",
       aceitaAgendamentoOnline: data.acceptsOnlineBooking ?? true,
       servicoIds: data.serviceIds?.map(id => Number(id)) || [],
@@ -146,7 +163,10 @@ export const professionalService = {
   update: (id: string, data: ProfessionalUpdateInput): Promise<Professional> => {
     const backendData = {
       usuarioId: data.userId ? Number(data.userId) : undefined,
+      categoria: data.category,
+      nivel: data.level,
       especialidade: data.specialties?.join(", ") || data.specialty || "",
+      especializacoes: data.specializations || "",
       bio: data.bio || "",
       aceitaAgendamentoOnline: data.acceptsOnlineBooking ?? true,
       servicoIds: data.serviceIds?.map(id => Number(id)) || [],
@@ -254,5 +274,36 @@ export const professionalService = {
   // Upload avatar
   uploadAvatar: (id: string, file: File): Promise<{ avatarUrl: string }> => {
     return api.upload(`${BASE_PATH}/${id}/avatar`, file);
+  },
+
+  // Get all available categories
+  getCategories: (): Promise<CategoryInfo[]> => {
+    return api.get<CategoryInfo[]>(`${BASE_PATH}/categorias`);
+  },
+
+  // Get all available levels
+  getLevels: (): Promise<LevelInfo[]> => {
+    return api.get<LevelInfo[]>(`${BASE_PATH}/niveis`);
+  },
+
+  // Get categories used in a salon
+  getCategoriesBySalon: (salonId: string | number): Promise<CategoryInfo[]> => {
+    return api.get<CategoryInfo[]>(`${BASE_PATH}/salon/${salonId}/categorias`);
+  },
+
+  // List professionals by category
+  listByCategory: (
+    salonId: string | number,
+    category: ProfessionalCategory,
+    ativo?: boolean
+  ): Promise<Professional[]> => {
+    const params: Record<string, unknown> = {};
+    if (ativo !== undefined) {
+      params.ativo = ativo;
+    }
+    return api.get<ProfissionalBackend[]>(
+      `${BASE_PATH}/salon/${salonId}/categoria/${category}`,
+      params
+    ).then((profissionais) => profissionais.map(mapProfessional));
   },
 };

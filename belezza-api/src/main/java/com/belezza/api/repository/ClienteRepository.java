@@ -51,4 +51,13 @@ public interface ClienteRepository extends JpaRepository<Cliente, Long> {
         @Param("inicio") java.time.LocalDateTime inicio,
         @Param("fim") java.time.LocalDateTime fim
     );
+
+    // Meta: Contar novos clientes no período (alias)
+    @Query("SELECT COUNT(c) FROM Cliente c WHERE c.salon.id = :salonId " +
+           "AND c.criadoEm BETWEEN :inicio AND :fim")
+    long contarNovosClientes(
+        @Param("salonId") Long salonId,
+        @Param("inicio") java.time.LocalDateTime inicio,
+        @Param("fim") java.time.LocalDateTime fim
+    );
 }

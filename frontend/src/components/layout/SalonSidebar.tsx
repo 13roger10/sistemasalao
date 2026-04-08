@@ -8,6 +8,7 @@ import {
   UserCircle,
   Scissors,
   Calendar,
+  CalendarDays,
   DollarSign,
   Percent,
   Gift,
@@ -203,14 +204,14 @@ const MENU_SECTIONS: MenuSection[] = [
 // Menu específico para clientes
 const CLIENT_MENU: MenuItem[] = [
   {
-    label: "Meus Agendamentos",
-    href: "/salon/client/appointments",
+    label: "Agendar",
+    href: "/salon/book",
     icon: Calendar,
   },
   {
-    label: "Novo Agendamento",
-    href: "/salon/client/book",
-    icon: Calendar,
+    label: "Minha Agenda",
+    href: "/salon/client/appointments",
+    icon: CalendarDays,
   },
   {
     label: "Meus Pontos",

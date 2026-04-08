@@ -44,9 +44,8 @@ async function fetchApi<T>(
       || null;
 
     // Debug log
-    if (!token) {
-      console.log('[API] No token found in localStorage');
-    }
+    console.log(`[API] ${options.method || 'GET'} ${url}`);
+    console.log(`[API] Token found: ${token ? 'yes (' + token.substring(0, 20) + '...)' : 'no'}`);
   }
 
   if (token) {
@@ -61,28 +60,60 @@ async function fetchApi<T>(
     },
   });
 
+  console.log(`[API] Response: ${response.status} ${response.statusText}`);
+  console.log(`[API] Response headers:`, Object.fromEntries(response.headers.entries()));
+
   // Handle non-JSON responses
   const contentType = response.headers.get('content-type');
   if (!contentType?.includes('application/json')) {
     if (!response.ok) {
+      // Try to get text response for debugging
+      const textBody = await response.text().catch(() => '(no body)');
+      console.error(`[API] Non-JSON error response: ${response.status}`, textBody);
       throw new ApiException({
-        message: 'Erro de servidor',
+        message: `Erro de servidor (${response.status}): ${textBody || response.statusText}`,
         code: 'SERVER_ERROR',
       });
     }
     return {} as T;
   }
 
-  const data = await response.json();
-
-  if (!response.ok) {
+  // Try to parse JSON
+  let data;
+  try {
+    const textBody = await response.text();
+    console.log(`[API] Raw response body:`, textBody);
+    data = textBody ? JSON.parse(textBody) : {};
+  } catch (parseError) {
+    console.error(`[API] JSON parse error:`, parseError);
     throw new ApiException({
-      message: data.message || 'Erro desconhecido',
-      code: data.code || 'UNKNOWN_ERROR',
-      details: data.details,
+      message: 'Erro ao processar resposta do servidor',
+      code: 'PARSE_ERROR',
     });
   }
 
+  if (!response.ok) {
+    // Map backend error fields to frontend format
+    const fieldErrors = data.fieldErrors || data.details;
+    let message = data.message || 'Erro desconhecido';
+
+    // Append field error details to message for better debugging
+    if (fieldErrors && Object.keys(fieldErrors).length > 0) {
+      const errorDetails = Object.entries(fieldErrors)
+        .map(([field, msg]) => `${field}: ${msg}`)
+        .join('; ');
+      message = `${message} (${errorDetails})`;
+    }
+
+    console.error(`[API] Error response (${response.status}):`, data);
+    throw new ApiException({
+      message: `[HTTP ${response.status}] ${message}`,
+      code: data.errorCode || data.code || 'UNKNOWN_ERROR',
+      details: fieldErrors,
+    });
+  }
+
+  console.log(`[API] Success response:`, data);
   return data;
 }
 

@@ -4,6 +4,41 @@ import { ID, Timestamps, Status, WeekSchedule, SoftDelete } from './common';
 
 export type CommissionType = 'percentage' | 'fixed';
 
+export type ProfessionalCategory =
+  | 'PROPRIETARIO'
+  | 'GERENTE'
+  | 'RECEPCIONISTA'
+  | 'CABELEIREIRO'
+  | 'COLORISTA'
+  | 'MANICURE_PEDICURE'
+  | 'NAIL_DESIGNER'
+  | 'MAQUIADOR'
+  | 'DESIGNER_SOBRANCELHAS'
+  | 'LASH_DESIGNER'
+  | 'ESTETICISTA'
+  | 'BARBEIRO'
+  | 'AUXILIAR'
+  | 'OUTRO';
+
+export interface CategoryInfo {
+  codigo: string;
+  descricao: string;
+  detalhes: string;
+}
+
+export type ProfessionalLevel =
+  | 'JUNIOR'
+  | 'PLENO'
+  | 'SENIOR'
+  | 'ESPECIALISTA'
+  | 'MASTER';
+
+export interface LevelInfo {
+  codigo: string;
+  descricao: string;
+  detalhes: string;
+}
+
 export interface Professional extends Timestamps, SoftDelete {
   id: ID;
   userId: ID;
@@ -12,12 +47,17 @@ export interface Professional extends Timestamps, SoftDelete {
   phone: string;
   avatar?: string;
   bio?: string;
+  category?: ProfessionalCategory;
+  categoryDescription?: string;
+  level?: ProfessionalLevel;
+  levelDescription?: string;
   role?: string; // e.g., "Cabeleireiro", "Manicure"
   status: Status;
 
   // Services
   serviceIds: ID[];
   specialties: string[];
+  specializations?: string; // Lista de especializações separadas por vírgula
 
   // Commission
   commissionType: CommissionType;
@@ -53,9 +93,12 @@ export interface ProfessionalCreateInput {
   phone?: string;
   avatar?: string;
   bio?: string;
+  category?: ProfessionalCategory;
+  level?: ProfessionalLevel;
   serviceIds?: ID[];
   specialties?: string[];
   specialty?: string;
+  specializations?: string;
   commissionType?: CommissionType;
   commissionValue?: number;
   schedule?: WeekSchedule;
@@ -76,6 +119,7 @@ export interface ProfessionalFilters {
   status?: Status;
   serviceId?: ID;
   unitId?: ID;
+  category?: ProfessionalCategory;
   specialty?: string;
   minRating?: number;
   acceptsOnlineBooking?: boolean;

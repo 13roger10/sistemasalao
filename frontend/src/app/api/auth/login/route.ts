@@ -12,10 +12,10 @@ export async function POST(request: NextRequest) {
     logger.info("Received login request", { email });
 
     // Use environment variable for backend URL (falls back to localhost for development)
-    const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8080/api";
+    const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8080";
     logger.debug("Backend URL configured", { backendUrl });
 
-    const response = await fetch(`${backendUrl}/auth/login`, {
+    const response = await fetch(`${backendUrl}/api/auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -54,22 +54,9 @@ export async function POST(request: NextRequest) {
 
     logger.debug("Cookie set successfully");
 
-    // Mapear resposta para formato do frontend
-    const frontendResponse = {
-      user: {
-        id: data.user.id.toString(),
-        email: data.user.email,
-        name: data.user.nome,
-        role: data.user.role === "ADMIN" ? "admin" : "user",
-        avatar: undefined,
-        createdAt: new Date(data.user.criadoEm),
-        updatedAt: new Date(data.user.ultimoLogin || data.user.criadoEm),
-      },
-      token: data.accessToken,
-    };
-
-    logger.debug("Returning login response");
-    return NextResponse.json(frontendResponse);
+    // Retorna resposta do backend diretamente (SalonAuthContext faz o mapeamento)
+    logger.debug("Returning login response", { role: data.user?.role });
+    return NextResponse.json(data);
   } catch (error) {
     logger.error("Internal server error during login", error);
     return NextResponse.json(

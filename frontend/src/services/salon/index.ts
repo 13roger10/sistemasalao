@@ -23,3 +23,9 @@ export { reminderService } from './reminderService';
 
 // Audit and backup services
 export { auditService, setAuditContext, clearAuditContext, withAuditLog } from './auditService';
+
+// Business profile service
+export { businessService } from './businessService';
+
+// Schedule service
+export { scheduleService } from './scheduleService';

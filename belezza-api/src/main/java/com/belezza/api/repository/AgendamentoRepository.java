@@ -192,4 +192,52 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long> 
         @Param("status") StatusAgendamento status,
         Pageable pageable
     );
+
+    // Meta: Calcular faturamento do salão no período
+    @Query("SELECT COALESCE(SUM(a.valorCobrado), 0) FROM Agendamento a " +
+           "WHERE a.salon.id = :salonId " +
+           "AND a.dataHora BETWEEN :inicio AND :fim " +
+           "AND a.status = 'CONCLUIDO'")
+    java.math.BigDecimal calcularFaturamento(
+        @Param("salonId") Long salonId,
+        @Param("inicio") LocalDateTime inicio,
+        @Param("fim") LocalDateTime fim
+    );
+
+    // Meta: Calcular faturamento por profissional no período
+    @Query("SELECT COALESCE(SUM(a.valorCobrado), 0) FROM Agendamento a " +
+           "WHERE a.salon.id = :salonId " +
+           "AND a.profissional.id = :profissionalId " +
+           "AND a.dataHora BETWEEN :inicio AND :fim " +
+           "AND a.status = 'CONCLUIDO'")
+    java.math.BigDecimal calcularFaturamentoPorProfissional(
+        @Param("salonId") Long salonId,
+        @Param("profissionalId") Long profissionalId,
+        @Param("inicio") LocalDateTime inicio,
+        @Param("fim") LocalDateTime fim
+    );
+
+    // Meta: Contar atendimentos do salão no período
+    @Query("SELECT COUNT(a) FROM Agendamento a " +
+           "WHERE a.salon.id = :salonId " +
+           "AND a.dataHora BETWEEN :inicio AND :fim " +
+           "AND a.status = 'CONCLUIDO'")
+    long contarAtendimentos(
+        @Param("salonId") Long salonId,
+        @Param("inicio") LocalDateTime inicio,
+        @Param("fim") LocalDateTime fim
+    );
+
+    // Meta: Contar atendimentos por profissional no período
+    @Query("SELECT COUNT(a) FROM Agendamento a " +
+           "WHERE a.salon.id = :salonId " +
+           "AND a.profissional.id = :profissionalId " +
+           "AND a.dataHora BETWEEN :inicio AND :fim " +
+           "AND a.status = 'CONCLUIDO'")
+    long contarAtendimentosPorProfissional(
+        @Param("salonId") Long salonId,
+        @Param("profissionalId") Long profissionalId,
+        @Param("inicio") LocalDateTime inicio,
+        @Param("fim") LocalDateTime fim
+    );
 }

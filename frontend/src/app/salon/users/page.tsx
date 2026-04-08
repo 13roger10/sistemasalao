@@ -20,6 +20,15 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
 import { userService } from "@/services/user";
+import { serviceService } from "@/services/salon/serviceService";
+import { professionalService } from "@/services/salon/professionalService";
+import {
+  workScheduleService,
+  diasSemana,
+  diasSemanaShort,
+  type DiaSemana,
+  type WorkScheduleRequest,
+} from "@/services/salon/workScheduleService";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import {
   UsuarioListItem,
@@ -28,6 +37,8 @@ import {
   UpdateUsuarioRequest,
   RoleOption,
 } from "@/types";
+import type { Service } from "@/types/salon";
+import { Clock } from "lucide-react";
 
 // Componente de Badge para Role
 const RoleBadge = ({ role }: { role: UserRole }) => {
@@ -105,6 +116,14 @@ export default function SalonUsersPage() {
   const [selectedUser, setSelectedUser] = useState<UsuarioListItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Estado para modal de erro de configuração do profissional
+  const [configErrorModal, setConfigErrorModal] = useState<{
+    open: boolean;
+    userId: number | null;
+    profissionalId: number | null;
+    errors: string[];
+  }>({ open: false, userId: null, profissionalId: null, errors: [] });
+
   // Estados do formulário
   const [formData, setFormData] = useState<CreateUsuarioRequest>({
     nome: "",
@@ -113,8 +132,20 @@ export default function SalonUsersPage() {
     telefone: "",
     role: "PROFISSIONAL",
     plano: "FREE",
+    salonId: 1, // ID do salão padrão
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  // Estados para serviços (profissionais)
+  const [availableServices, setAvailableServices] = useState<Service[]>([]);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
+  const [isLoadingServices, setIsLoadingServices] = useState(false);
+
+  // Estados para horários de trabalho (profissionais)
+  const [workSchedules, setWorkSchedules] = useState<WorkScheduleRequest[]>(
+    workScheduleService.getDefaultSchedule()
+  );
+  const [showScheduleSection, setShowScheduleSection] = useState(false);
 
   // Carregar roles disponíveis
   useEffect(() => {
@@ -157,6 +188,28 @@ export default function SalonUsersPage() {
     loadUsuarios();
   }, [loadUsuarios]);
 
+  // Carregar serviços quando modal estiver aberto e role for PROFISSIONAL
+  useEffect(() => {
+    const loadServices = async () => {
+      if ((isCreateModalOpen || isEditModalOpen) && formData.role === "PROFISSIONAL") {
+        setIsLoadingServices(true);
+        // Expandir seção de horários automaticamente para novos profissionais
+        if (isCreateModalOpen) {
+          setShowScheduleSection(true);
+        }
+        try {
+          const services = await serviceService.getAll({ salonId: "1", status: "active" });
+          setAvailableServices(services);
+        } catch (error) {
+          console.error("Erro ao carregar serviços:", error);
+        } finally {
+          setIsLoadingServices(false);
+        }
+      }
+    };
+    loadServices();
+  }, [isCreateModalOpen, isEditModalOpen, formData.role]);
+
   // Handlers de busca
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,11 +223,83 @@ export default function SalonUsersPage() {
 
     setIsSubmitting(true);
     try {
-      await userService.create(formData);
+      console.log("[handleCreate] Criando usuário com dados:", formData);
+      const createdUser = await userService.create(formData);
+      console.log("[handleCreate] Usuário criado:", createdUser);
+      console.log("[handleCreate] profissionalId:", createdUser.profissionalId);
+
+      // Se for profissional, configurar serviços e horários AUTOMATICAMENTE
+      if (formData.role === "PROFISSIONAL") {
+        if (!createdUser.profissionalId) {
+          console.error("[handleCreate] ERRO: profissionalId não foi retornado pelo backend!");
+          alert("Erro: O profissional foi criado mas o ID não foi retornado. Edite o profissional para configurar serviços e horários.");
+        } else {
+          const errors: string[] = [];
+          const successItems: string[] = [];
+
+          // Determinar quais serviços vincular:
+          // Se o usuário selecionou serviços, usar esses
+          // Senão, usar TODOS os serviços disponíveis (padrão automático)
+          const servicesToLink = selectedServiceIds.length > 0
+            ? selectedServiceIds
+            : availableServices.map(s => String(s.id));
+
+          if (servicesToLink.length > 0) {
+            try {
+              console.log("[handleCreate] Vinculando serviços:", servicesToLink, "ao profissional:", createdUser.profissionalId);
+              await professionalService.update(String(createdUser.profissionalId), {
+                userId: String(createdUser.id),
+                serviceIds: servicesToLink,
+                acceptsOnlineBooking: true,
+              });
+              console.log("[handleCreate] Serviços vinculados com sucesso!");
+              successItems.push(`${servicesToLink.length} serviços`);
+            } catch (serviceError) {
+              console.error("[handleCreate] Erro ao vincular serviços:", serviceError);
+              errors.push("serviços");
+            }
+          } else {
+            console.warn("[handleCreate] Nenhum serviço disponível para vincular");
+          }
+
+          // Determinar quais horários configurar:
+          // Usar os horários configurados pelo usuário OU o padrão (Seg-Sáb 09:00-18:00)
+          const schedulesToSave = workSchedules.some(s => s.ativo)
+            ? workSchedules
+            : workScheduleService.getDefaultSchedule();
+
+          const activeSchedules = schedulesToSave.filter(s => s.ativo);
+          if (activeSchedules.length > 0) {
+            try {
+              console.log("[handleCreate] Salvando horários:", activeSchedules.map(s => s.diaSemana), "para profissional:", createdUser.profissionalId);
+              await workScheduleService.saveAll(createdUser.profissionalId, schedulesToSave);
+              console.log("[handleCreate] Horários salvos com sucesso!");
+              successItems.push(`horários (${activeSchedules.length} dias)`);
+            } catch (scheduleError) {
+              console.error("[handleCreate] Erro ao salvar horários:", scheduleError);
+              errors.push("horários");
+            }
+          }
+
+          // Mostrar resultado
+          if (errors.length > 0) {
+            setConfigErrorModal({
+              open: true,
+              userId: createdUser.id,
+              profissionalId: createdUser.profissionalId,
+              errors,
+            });
+          } else if (successItems.length > 0) {
+            console.log("[handleCreate] Profissional criado e configurado automaticamente:", successItems.join(", "));
+          }
+        }
+      }
+
       setIsCreateModalOpen(false);
       resetForm();
       loadUsuarios();
     } catch (error: unknown) {
+      console.error("[handleCreate] Erro ao criar usuário:", error);
       const err = error as { response?: { data?: { message?: string } } };
       setFormErrors({
         submit: err.response?.data?.message || "Erro ao criar usuário",
@@ -201,6 +326,28 @@ export default function SalonUsersPage() {
       }
 
       await userService.update(selectedUser.id, updateData);
+
+      // Se for profissional, atualizar serviços e horários
+      if (formData.role === "PROFISSIONAL" && selectedUser.profissionalId) {
+        // Atualizar serviços vinculados
+        try {
+          await professionalService.update(String(selectedUser.profissionalId), {
+            userId: String(selectedUser.id),
+            serviceIds: selectedServiceIds,
+            acceptsOnlineBooking: true,
+          });
+        } catch (serviceError) {
+          console.error("Erro ao atualizar serviços do profissional:", serviceError);
+        }
+
+        // Atualizar horários de trabalho
+        try {
+          await workScheduleService.saveAll(selectedUser.profissionalId, workSchedules);
+        } catch (scheduleError) {
+          console.error("Erro ao atualizar horários de trabalho:", scheduleError);
+        }
+      }
+
       setIsEditModalOpen(false);
       resetForm();
       loadUsuarios();
@@ -239,6 +386,32 @@ export default function SalonUsersPage() {
     }
   };
 
+  // Handlers para modal de erro de configuração
+  const handleConfigErrorEdit = async () => {
+    if (!configErrorModal.userId) return;
+    setConfigErrorModal({ open: false, userId: null, profissionalId: null, errors: [] });
+    // Recarregar e abrir modal de edição
+    await loadUsuarios();
+    const usuario = usuarios.find(u => u.id === configErrorModal.userId);
+    if (usuario) {
+      openEditModal(usuario);
+    }
+  };
+
+  const handleConfigErrorDelete = async () => {
+    if (!configErrorModal.userId) return;
+    setIsSubmitting(true);
+    try {
+      await userService.deactivate(configErrorModal.userId);
+      setConfigErrorModal({ open: false, userId: null, profissionalId: null, errors: [] });
+      loadUsuarios();
+    } catch (error) {
+      console.error("Erro ao excluir usuário:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Validação do formulário
   const validateForm = (isEdit = false) => {
     const errors: Record<string, string> = {};
@@ -272,13 +445,17 @@ export default function SalonUsersPage() {
       telefone: "",
       role: "PROFISSIONAL",
       plano: "FREE",
+      salonId: 1, // ID do salão padrão
     });
     setFormErrors({});
     setSelectedUser(null);
+    setSelectedServiceIds([]);
+    setWorkSchedules(workScheduleService.getDefaultSchedule());
+    setShowScheduleSection(false);
   };
 
   // Abrir modal de edição
-  const openEditModal = (usuario: UsuarioListItem) => {
+  const openEditModal = async (usuario: UsuarioListItem) => {
     setSelectedUser(usuario);
     setFormData({
       nome: usuario.nome,
@@ -288,6 +465,48 @@ export default function SalonUsersPage() {
       role: usuario.role,
       plano: usuario.plano,
     });
+
+    // Se for profissional, carregar os serviços e horários vinculados
+    if (usuario.role === "PROFISSIONAL" && usuario.profissionalId) {
+      // Carregar serviços
+      try {
+        const professional = await professionalService.getById(String(usuario.profissionalId));
+        setSelectedServiceIds(professional.serviceIds || []);
+      } catch (error) {
+        console.error("Erro ao carregar serviços do profissional:", error);
+        setSelectedServiceIds([]);
+      }
+
+      // Carregar horários de trabalho
+      try {
+        const existingSchedules = await workScheduleService.list(usuario.profissionalId);
+        const defaultSchedules = workScheduleService.getDefaultSchedule();
+
+        // Merge existing schedules with defaults
+        const mergedSchedules = defaultSchedules.map(defaultSched => {
+          const existing = existingSchedules.find(e => e.diaSemana === defaultSched.diaSemana);
+          if (existing) {
+            return {
+              diaSemana: existing.diaSemana,
+              horaInicio: existing.horaInicio.substring(0, 5), // Remove seconds
+              horaFim: existing.horaFim.substring(0, 5),
+              intervaloInicio: existing.intervaloInicio?.substring(0, 5),
+              intervaloFim: existing.intervaloFim?.substring(0, 5),
+              ativo: existing.ativo,
+            };
+          }
+          return defaultSched;
+        });
+        setWorkSchedules(mergedSchedules);
+      } catch (error) {
+        console.error("Erro ao carregar horários do profissional:", error);
+        setWorkSchedules(workScheduleService.getDefaultSchedule());
+      }
+    } else {
+      setSelectedServiceIds([]);
+      setWorkSchedules(workScheduleService.getDefaultSchedule());
+    }
+
     setIsEditModalOpen(true);
   };
 
@@ -436,7 +655,7 @@ export default function SalonUsersPage() {
                 {item.ativo ? (
                   <ActionMenuItem
                     onClick={() => openDeleteModal(item)}
-                    icon={<Trash2 className="h-4 w-4" />}
+                    icon={<UserX className="h-4 w-4" />}
                     variant="danger"
                   >
                     Desativar
@@ -449,6 +668,13 @@ export default function SalonUsersPage() {
                     Reativar
                   </ActionMenuItem>
                 )}
+                <ActionMenuItem
+                  onClick={() => openDeleteModal(item)}
+                  icon={<Trash2 className="h-4 w-4" />}
+                  variant="danger"
+                >
+                  Excluir
+                </ActionMenuItem>
               </>
             )}
             striped
@@ -567,6 +793,164 @@ export default function SalonUsersPage() {
               </select>
             </div>
           </div>
+
+          {/* Seleção de Serviços para Profissionais */}
+          {formData.role === "PROFISSIONAL" && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Serviços que realiza
+              </label>
+              <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                Selecione os serviços que este profissional pode realizar
+              </p>
+              {isLoadingServices ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
+                </div>
+              ) : availableServices.length > 0 ? (
+                <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-300 p-2 dark:border-gray-600">
+                  <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                    {availableServices.map((service) => (
+                      <label
+                        key={service.id}
+                        className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                          selectedServiceIds.includes(service.id)
+                            ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400"
+                            : "hover:bg-gray-100 dark:hover:bg-gray-700"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedServiceIds.includes(service.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedServiceIds([...selectedServiceIds, service.id]);
+                            } else {
+                              setSelectedServiceIds(selectedServiceIds.filter((id) => id !== service.id));
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                        />
+                        <span className="text-gray-900 dark:text-white">{service.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                  Nenhum serviço disponível
+                </p>
+              )}
+              {selectedServiceIds.length > 0 && (
+                <p className="mt-2 text-xs text-violet-600 dark:text-violet-400">
+                  {selectedServiceIds.length} serviço(s) selecionado(s)
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Horários de Trabalho para Profissionais */}
+          {formData.role === "PROFISSIONAL" && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowScheduleSection(!showScheduleSection)}
+                className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-gray-50 px-4 py-3 text-left transition-colors hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600"
+              >
+                <div className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-violet-500" />
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      Horários de Trabalho
+                    </span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {workSchedules.filter(s => s.ativo).length} dia(s) configurado(s)
+                    </p>
+                  </div>
+                </div>
+                <span className="text-sm text-violet-600 dark:text-violet-400">
+                  {showScheduleSection ? "Ocultar" : "Configurar"}
+                </span>
+              </button>
+
+              {showScheduleSection && (
+                <div className="mt-3 space-y-2 rounded-lg border border-gray-300 p-3 dark:border-gray-600">
+                  {diasSemana.map((dia, idx) => {
+                    const schedule = workSchedules[idx];
+                    if (!schedule) return null;
+
+                    return (
+                      <div
+                        key={dia}
+                        className={`flex items-center gap-3 rounded-lg p-2 ${
+                          schedule.ativo
+                            ? "bg-green-50 dark:bg-green-900/20"
+                            : "bg-gray-50 dark:bg-gray-800"
+                        }`}
+                      >
+                        <label className="flex w-20 cursor-pointer items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={schedule.ativo}
+                            onChange={(e) => {
+                              const newSchedules = [...workSchedules];
+                              newSchedules[idx] = {
+                                ...newSchedules[idx],
+                                ativo: e.target.checked,
+                              };
+                              setWorkSchedules(newSchedules);
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                          />
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            {diasSemanaShort[dia]}
+                          </span>
+                        </label>
+
+                        {schedule.ativo && (
+                          <>
+                            <input
+                              type="time"
+                              value={schedule.horaInicio}
+                              onChange={(e) => {
+                                const newSchedules = [...workSchedules];
+                                newSchedules[idx] = {
+                                  ...newSchedules[idx],
+                                  horaInicio: e.target.value,
+                                };
+                                setWorkSchedules(newSchedules);
+                              }}
+                              className="w-24 rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                            />
+                            <span className="text-gray-500">às</span>
+                            <input
+                              type="time"
+                              value={schedule.horaFim}
+                              onChange={(e) => {
+                                const newSchedules = [...workSchedules];
+                                newSchedules[idx] = {
+                                  ...newSchedules[idx],
+                                  horaFim: e.target.value,
+                                };
+                                setWorkSchedules(newSchedules);
+                              }}
+                              className="w-24 rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                            />
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              Almoço: {schedule.intervaloInicio}-{schedule.intervaloFim}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    Intervalo de almoço padrão: 12:00-13:00
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </Modal>
 
@@ -683,6 +1067,164 @@ export default function SalonUsersPage() {
             </div>
           </div>
 
+          {/* Seleção de Serviços para Profissionais */}
+          {formData.role === "PROFISSIONAL" && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Serviços que realiza
+              </label>
+              <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                Selecione os serviços que este profissional pode realizar
+              </p>
+              {isLoadingServices ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
+                </div>
+              ) : availableServices.length > 0 ? (
+                <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-300 p-2 dark:border-gray-600">
+                  <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                    {availableServices.map((service) => (
+                      <label
+                        key={service.id}
+                        className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                          selectedServiceIds.includes(service.id)
+                            ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400"
+                            : "hover:bg-gray-100 dark:hover:bg-gray-700"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedServiceIds.includes(service.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedServiceIds([...selectedServiceIds, service.id]);
+                            } else {
+                              setSelectedServiceIds(selectedServiceIds.filter((id) => id !== service.id));
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                        />
+                        <span className="text-gray-900 dark:text-white">{service.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                  Nenhum serviço disponível
+                </p>
+              )}
+              {selectedServiceIds.length > 0 && (
+                <p className="mt-2 text-xs text-violet-600 dark:text-violet-400">
+                  {selectedServiceIds.length} serviço(s) selecionado(s)
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Horários de Trabalho para Profissionais */}
+          {formData.role === "PROFISSIONAL" && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowScheduleSection(!showScheduleSection)}
+                className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-gray-50 px-4 py-3 text-left transition-colors hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600"
+              >
+                <div className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-violet-500" />
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      Horários de Trabalho
+                    </span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {workSchedules.filter(s => s.ativo).length} dia(s) configurado(s)
+                    </p>
+                  </div>
+                </div>
+                <span className="text-sm text-violet-600 dark:text-violet-400">
+                  {showScheduleSection ? "Ocultar" : "Configurar"}
+                </span>
+              </button>
+
+              {showScheduleSection && (
+                <div className="mt-3 space-y-2 rounded-lg border border-gray-300 p-3 dark:border-gray-600">
+                  {diasSemana.map((dia, idx) => {
+                    const schedule = workSchedules[idx];
+                    if (!schedule) return null;
+
+                    return (
+                      <div
+                        key={dia}
+                        className={`flex items-center gap-3 rounded-lg p-2 ${
+                          schedule.ativo
+                            ? "bg-green-50 dark:bg-green-900/20"
+                            : "bg-gray-50 dark:bg-gray-800"
+                        }`}
+                      >
+                        <label className="flex w-20 cursor-pointer items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={schedule.ativo}
+                            onChange={(e) => {
+                              const newSchedules = [...workSchedules];
+                              newSchedules[idx] = {
+                                ...newSchedules[idx],
+                                ativo: e.target.checked,
+                              };
+                              setWorkSchedules(newSchedules);
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                          />
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            {diasSemanaShort[dia]}
+                          </span>
+                        </label>
+
+                        {schedule.ativo && (
+                          <>
+                            <input
+                              type="time"
+                              value={schedule.horaInicio}
+                              onChange={(e) => {
+                                const newSchedules = [...workSchedules];
+                                newSchedules[idx] = {
+                                  ...newSchedules[idx],
+                                  horaInicio: e.target.value,
+                                };
+                                setWorkSchedules(newSchedules);
+                              }}
+                              className="w-24 rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                            />
+                            <span className="text-gray-500">às</span>
+                            <input
+                              type="time"
+                              value={schedule.horaFim}
+                              onChange={(e) => {
+                                const newSchedules = [...workSchedules];
+                                newSchedules[idx] = {
+                                  ...newSchedules[idx],
+                                  horaFim: e.target.value,
+                                };
+                                setWorkSchedules(newSchedules);
+                              }}
+                              className="w-24 rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                            />
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              Almoço: {schedule.intervaloInicio}-{schedule.intervaloFim}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    Intervalo de almoço padrão: 12:00-13:00
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {selectedUser && (
             <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50">
               <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -708,13 +1250,64 @@ export default function SalonUsersPage() {
           setSelectedUser(null);
         }}
         onConfirm={handleDelete}
-        title="Desativar Usuário"
-        message={`Tem certeza que deseja desativar o usuário "${selectedUser?.nome}"? O usuário não poderá mais acessar o sistema.`}
-        confirmText="Desativar"
+        title="Excluir Usuário"
+        message={`Tem certeza que deseja excluir o usuário "${selectedUser?.nome}"? O usuário será desativado e não poderá mais acessar o sistema.`}
+        confirmText="Excluir"
         cancelText="Cancelar"
         variant="danger"
         isLoading={isSubmitting}
       />
+
+      {/* Modal de Erro de Configuração do Profissional */}
+      <Modal
+        isOpen={configErrorModal.open}
+        onClose={() => setConfigErrorModal({ open: false, userId: null, profissionalId: null, errors: [] })}
+        title="Atenção"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-yellow-600 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                O profissional foi criado, mas houve erro ao configurar: <strong>{configErrorModal.errors.join(", ")}</strong>.
+              </p>
+              <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                Você pode editar o profissional para corrigir ou excluí-lo.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setConfigErrorModal({ open: false, userId: null, profissionalId: null, errors: [] })}
+            >
+              Fechar
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleConfigErrorDelete}
+              disabled={isSubmitting}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Excluir
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleConfigErrorEdit}
+              disabled={isSubmitting}
+            >
+              <Edit2 className="h-4 w-4 mr-2" />
+              Editar
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </SalonLayout>
   );
 }

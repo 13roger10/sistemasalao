@@ -1,11 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import {
   Bell,
   Clock,
-  ChevronLeft,
   Save,
   RotateCcw,
   MessageSquare,
@@ -15,6 +13,7 @@ import {
   Info,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { SalonLayout } from '@/components/layout/SalonLayout';
 import { reminderService } from '@/services/salon/reminderService';
 import type { ReminderSettings, ReminderChannel } from '@/types/salon/notification';
 
@@ -32,8 +31,66 @@ const channelLabels: Record<ReminderChannel, string> = {
   whatsapp: 'WhatsApp',
 };
 
+// Componente Toggle reutilizavel
+interface ToggleSwitchProps {
+  enabled: boolean;
+  onChange: () => void;
+}
+
+function ToggleSwitch({ enabled, onChange }: ToggleSwitchProps) {
+  return (
+    <button
+      onClick={onChange}
+      className={cn(
+        'relative flex-shrink-0 rounded-full transition-colors',
+        enabled ? 'bg-violet-500' : 'bg-gray-300 dark:bg-gray-600'
+      )}
+      style={{ width: '44px', height: '24px' }}
+    >
+      <span
+        className="absolute rounded-full bg-white shadow-md transition-transform duration-200"
+        style={{
+          width: '18px',
+          height: '18px',
+          top: '3px',
+          left: '3px',
+          transform: enabled ? 'translateX(20px)' : 'translateX(0)',
+        }}
+      />
+    </button>
+  );
+}
+
+// Componente de linha de configuracao
+interface SettingRowProps {
+  icon: React.ReactNode;
+  iconBg: string;
+  title: string;
+  description: string;
+  enabled: boolean;
+  onChange: () => void;
+  children?: React.ReactNode;
+}
+
+function SettingRow({ icon, iconBg, title, description, enabled, onChange, children }: SettingRowProps) {
+  return (
+    <div className="p-5">
+      <div className="flex items-center gap-4">
+        <div className={cn('flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full', iconBg)}>
+          {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-gray-900 dark:text-white">{title}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
+        </div>
+        <ToggleSwitch enabled={enabled} onChange={onChange} />
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export default function ReminderSettingsPage() {
-  const router = useRouter();
   const [settings, setSettings] = useState<ReminderSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -106,197 +163,102 @@ export default function ReminderSettingsPage() {
 
   if (isLoading || !settings) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-200 border-t-violet-500" />
-      </div>
+      <SalonLayout>
+        <div className="flex min-h-[400px] items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-200 border-t-violet-500" />
+        </div>
+      </SalonLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-white shadow-sm">
-        <div className="flex items-center gap-4 p-4">
-          <button
-            onClick={() => router.back()}
-            className="rounded-full p-2 hover:bg-gray-100"
-          >
-            <ChevronLeft className="h-6 w-6" />
-          </button>
-          <div className="flex-1">
-            <h1 className="text-lg font-semibold">Lembretes Automaticos</h1>
-            <p className="text-sm text-gray-500">
-              Configure lembretes de agendamento
-            </p>
-          </div>
-          {hasChanges && (
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="flex items-center gap-2 rounded-lg bg-violet-500 px-4 py-2 font-medium text-white hover:bg-violet-600 disabled:opacity-50"
-            >
-              <Save className="h-4 w-4" />
-              {isSaving ? 'Salvando...' : 'Salvar'}
-            </button>
-          )}
-          {saveSuccess && (
-            <div className="flex items-center gap-1 text-green-600">
-              <Check className="h-5 w-5" />
-              <span className="text-sm">Salvo</span>
+    <SalonLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
+              <Bell className="h-6 w-6 text-blue-600 dark:text-blue-400" />
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="p-4 space-y-6">
-        {/* Enable/Disable */}
-        <div className="rounded-xl bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div
-                className={cn(
-                  'flex h-10 w-10 items-center justify-center rounded-full',
-                  settings.enabled ? 'bg-violet-100' : 'bg-gray-100'
-                )}
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                Lembretes Automaticos
+              </h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Configure lembretes de agendamento
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {saveSuccess && (
+              <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                <Check className="h-5 w-5" />
+                <span className="text-sm">Salvo</span>
+              </div>
+            )}
+            {hasChanges && (
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 font-medium text-white hover:bg-violet-700 disabled:opacity-50"
               >
-                <Bell
-                  className={cn(
-                    'h-5 w-5',
-                    settings.enabled ? 'text-violet-600' : 'text-gray-500'
-                  )}
-                />
-              </div>
-              <div>
-                <h3 className="font-medium text-gray-900">
-                  Lembretes Automaticos
-                </h3>
-                <p className="text-sm text-gray-500">
-                  Enviar lembretes automaticamente
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => handleChange({ enabled: !settings.enabled })}
-              className={cn(
-                'relative h-6 w-11 rounded-full transition-colors',
-                settings.enabled ? 'bg-violet-500' : 'bg-gray-300'
-              )}
-            >
-              <span
-                className={cn(
-                  'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
-                  settings.enabled ? 'translate-x-5' : 'translate-x-0.5'
-                )}
-              />
-            </button>
+                <Save className="h-4 w-4" />
+                {isSaving ? 'Salvando...' : 'Salvar'}
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Reminder Types */}
-        <div className="rounded-xl bg-white p-4 shadow-sm">
-          <h3 className="mb-4 font-medium text-gray-900">Tipos de Lembrete</h3>
+        {/* All Toggle Settings */}
+        <div className="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800">
+          {/* Enable/Disable - Main Toggle */}
+          <SettingRow
+            icon={<Bell className={cn('h-5 w-5', settings.enabled ? 'text-violet-600 dark:text-violet-400' : 'text-gray-500 dark:text-gray-400')} />}
+            iconBg={settings.enabled ? 'bg-violet-100 dark:bg-violet-900/30' : 'bg-gray-100 dark:bg-gray-700'}
+            title="Lembretes Automaticos"
+            description="Enviar lembretes automaticamente"
+            enabled={settings.enabled}
+            onChange={() => handleChange({ enabled: !settings.enabled })}
+          />
 
           {/* Day Before */}
-          <div className="mb-4 rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-gray-900">1 Dia Antes</p>
-                <p className="text-sm text-gray-500">
-                  Enviar lembrete na vespera do agendamento
-                </p>
-              </div>
-              <button
-                onClick={() =>
-                  handleChange({
-                    dayBefore: {
-                      ...settings.dayBefore,
-                      enabled: !settings.dayBefore.enabled,
-                    },
-                  })
-                }
-                className={cn(
-                  'relative h-6 w-11 rounded-full transition-colors',
-                  settings.dayBefore.enabled ? 'bg-violet-500' : 'bg-gray-300'
-                )}
-              >
-                <span
-                  className={cn(
-                    'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
-                    settings.dayBefore.enabled ? 'translate-x-5' : 'translate-x-0.5'
-                  )}
-                />
-              </button>
-            </div>
-
+          <SettingRow
+            icon={<Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
+            iconBg="bg-blue-100 dark:bg-blue-900/30"
+            title="1 Dia Antes"
+            description="Enviar lembrete na vespera do agendamento"
+            enabled={settings.dayBefore.enabled}
+            onChange={() => handleChange({ dayBefore: { ...settings.dayBefore, enabled: !settings.dayBefore.enabled } })}
+          >
             {settings.dayBefore.enabled && (
-              <div className="mt-4 flex items-center gap-2">
-                <Clock className="h-5 w-5 text-gray-400" />
-                <label className="text-sm text-gray-600">Enviar as:</label>
+              <div className="mt-4 ml-14 flex items-center gap-2">
+                <label className="text-sm text-gray-600 dark:text-gray-400">Enviar as:</label>
                 <input
                   type="time"
                   value={settings.dayBefore.time}
-                  onChange={e =>
-                    handleChange({
-                      dayBefore: {
-                        ...settings.dayBefore,
-                        time: e.target.value,
-                      },
-                    })
-                  }
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+                  onChange={e => handleChange({ dayBefore: { ...settings.dayBefore, time: e.target.value } })}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-violet-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 />
               </div>
             )}
-          </div>
+          </SettingRow>
 
           {/* Hours Before */}
-          <div className="rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-gray-900">Horas Antes</p>
-                <p className="text-sm text-gray-500">
-                  Enviar lembrete algumas horas antes
-                </p>
-              </div>
-              <button
-                onClick={() =>
-                  handleChange({
-                    hoursBefore: {
-                      ...settings.hoursBefore,
-                      enabled: !settings.hoursBefore.enabled,
-                    },
-                  })
-                }
-                className={cn(
-                  'relative h-6 w-11 rounded-full transition-colors',
-                  settings.hoursBefore.enabled ? 'bg-violet-500' : 'bg-gray-300'
-                )}
-              >
-                <span
-                  className={cn(
-                    'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
-                    settings.hoursBefore.enabled ? 'translate-x-5' : 'translate-x-0.5'
-                  )}
-                />
-              </button>
-            </div>
-
+          <SettingRow
+            icon={<Clock className="h-5 w-5 text-orange-600 dark:text-orange-400" />}
+            iconBg="bg-orange-100 dark:bg-orange-900/30"
+            title="Horas Antes"
+            description="Enviar lembrete algumas horas antes"
+            enabled={settings.hoursBefore.enabled}
+            onChange={() => handleChange({ hoursBefore: { ...settings.hoursBefore, enabled: !settings.hoursBefore.enabled } })}
+          >
             {settings.hoursBefore.enabled && (
-              <div className="mt-4 flex items-center gap-2">
-                <Clock className="h-5 w-5 text-gray-400" />
-                <label className="text-sm text-gray-600">Horas antes:</label>
+              <div className="mt-4 ml-14 flex items-center gap-2">
+                <label className="text-sm text-gray-600 dark:text-gray-400">Horas antes:</label>
                 <select
                   value={settings.hoursBefore.hours}
-                  onChange={e =>
-                    handleChange({
-                      hoursBefore: {
-                        ...settings.hoursBefore,
-                        hours: Number(e.target.value),
-                      },
-                    })
-                  }
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+                  onChange={e => handleChange({ hoursBefore: { ...settings.hoursBefore, hours: Number(e.target.value) } })}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-violet-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 >
                   <option value={1}>1 hora</option>
                   <option value={2}>2 horas</option>
@@ -306,26 +268,26 @@ export default function ReminderSettingsPage() {
                 </select>
               </div>
             )}
-          </div>
+          </SettingRow>
         </div>
 
         {/* Channels */}
-        <div className="rounded-xl bg-white p-4 shadow-sm">
-          <h3 className="mb-4 font-medium text-gray-900">Canais de Envio</h3>
-          <p className="mb-4 text-sm text-gray-500">
+        <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+          <h3 className="mb-2 font-medium text-gray-900 dark:text-white">Canais de Envio</h3>
+          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
             Selecione os canais para enviar os lembretes
           </p>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {(Object.keys(channelIcons) as ReminderChannel[]).map(channel => (
               <button
                 key={channel}
                 onClick={() => toggleChannel(channel)}
                 className={cn(
-                  'flex items-center gap-3 rounded-xl border-2 p-4 transition-all',
+                  'flex items-center gap-3 rounded-lg border-2 p-4 transition-all',
                   settings.defaultChannels.includes(channel)
-                    ? 'border-violet-500 bg-violet-50'
-                    : 'border-gray-200 bg-white hover:bg-gray-50'
+                    ? 'border-violet-500 bg-violet-50 dark:border-violet-400 dark:bg-violet-900/20'
+                    : 'border-gray-200 bg-white hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600'
                 )}
               >
                 <div
@@ -333,7 +295,7 @@ export default function ReminderSettingsPage() {
                     'flex h-10 w-10 items-center justify-center rounded-full',
                     settings.defaultChannels.includes(channel)
                       ? 'bg-violet-500 text-white'
-                      : 'bg-gray-100 text-gray-500'
+                      : 'bg-gray-100 text-gray-500 dark:bg-gray-600 dark:text-gray-400'
                   )}
                 >
                   {channelIcons[channel]}
@@ -342,8 +304,8 @@ export default function ReminderSettingsPage() {
                   className={cn(
                     'font-medium',
                     settings.defaultChannels.includes(channel)
-                      ? 'text-violet-900'
-                      : 'text-gray-700'
+                      ? 'text-violet-900 dark:text-violet-300'
+                      : 'text-gray-700 dark:text-gray-300'
                   )}
                 >
                   {channelLabels[channel]}
@@ -354,29 +316,25 @@ export default function ReminderSettingsPage() {
         </div>
 
         {/* Custom Message */}
-        <div className="rounded-xl bg-white p-4 shadow-sm">
-          <h3 className="mb-2 font-medium text-gray-900">Mensagem Personalizada</h3>
-          <p className="mb-4 text-sm text-gray-500">
+        <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+          <h3 className="mb-2 font-medium text-gray-900 dark:text-white">Mensagem Personalizada</h3>
+          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
             Use {'{servico}'}, {'{profissional}'}, {'{hora}'}, {'{data}'} como variaveis
           </p>
 
           <textarea
             value={settings.customMessage || ''}
-            onChange={e =>
-              handleChange({
-                customMessage: e.target.value || undefined,
-              })
-            }
+            onChange={e => handleChange({ customMessage: e.target.value || undefined })}
             placeholder="Ola! Lembrete: {servico} com {profissional} {data} as {hora}. Te esperamos!"
-            className="w-full rounded-xl border border-gray-200 p-4 text-sm focus:border-violet-500 focus:outline-none"
+            className="w-full rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-900 focus:border-violet-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
             rows={3}
           />
 
           {settings.customMessage && (
-            <div className="mt-3 rounded-lg bg-blue-50 p-3">
+            <div className="mt-3 rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
               <div className="flex items-start gap-2">
-                <Info className="h-4 w-4 text-blue-500 mt-0.5" />
-                <div className="text-sm text-blue-700">
+                <Info className="mt-0.5 h-4 w-4 text-blue-500 dark:text-blue-400" />
+                <div className="text-sm text-blue-700 dark:text-blue-300">
                   <strong>Preview:</strong>
                   <p className="mt-1">
                     {settings.customMessage
@@ -392,16 +350,16 @@ export default function ReminderSettingsPage() {
         </div>
 
         {/* Reset Button */}
-        <div className="flex justify-center">
+        <div className="flex justify-center pb-6">
           <button
             onClick={handleReset}
-            className="flex items-center gap-2 text-gray-500 hover:text-gray-700"
+            className="flex items-center gap-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
           >
             <RotateCcw className="h-4 w-4" />
             Restaurar padrao
           </button>
         </div>
       </div>
-    </div>
+    </SalonLayout>
   );
 }

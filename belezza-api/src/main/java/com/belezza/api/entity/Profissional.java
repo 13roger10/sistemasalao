@@ -40,8 +40,19 @@ public class Profissional {
     @JoinColumn(name = "salon_id", nullable = false)
     private Salon salon;
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 30)
+    private CategoriaProfissional categoria;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private NivelProfissional nivel;
+
     @Column(length = 300)
     private String especialidade;
+
+    @Column(length = 200)
+    private String especializacoes;
 
     @Column(length = 500)
     private String bio;

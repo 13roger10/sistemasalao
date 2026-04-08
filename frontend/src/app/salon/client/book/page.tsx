@@ -52,11 +52,11 @@ export default function ClientBookPage() {
   };
 
   const handleCancel = () => {
-    router.push('/salon/client/appointments');
+    router.push('/salon/book');
   };
 
   const handleGoToAppointments = () => {
-    router.push('/salon/client/appointments');
+    router.push('/salon/book');
   };
 
   const handleNewBooking = () => {

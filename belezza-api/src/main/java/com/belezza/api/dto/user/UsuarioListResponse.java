@@ -37,6 +37,9 @@ public class UsuarioListResponse {
     private Long salonId;
     private String salonNome;
 
+    // Informações do profissional (se for profissional)
+    private Long profissionalId;
+
     public static UsuarioListResponse fromEntity(Usuario usuario) {
         return UsuarioListResponse.builder()
                 .id(usuario.getId())
@@ -56,9 +59,12 @@ public class UsuarioListResponse {
 
     public static UsuarioListResponse fromEntityWithProfissional(Usuario usuario, Profissional profissional) {
         UsuarioListResponse response = fromEntity(usuario);
-        if (profissional != null && profissional.getSalon() != null) {
-            response.setSalonId(profissional.getSalon().getId());
-            response.setSalonNome(profissional.getSalon().getNome());
+        if (profissional != null) {
+            response.setProfissionalId(profissional.getId());
+            if (profissional.getSalon() != null) {
+                response.setSalonId(profissional.getSalon().getId());
+                response.setSalonNome(profissional.getSalon().getNome());
+            }
         }
         return response;
     }

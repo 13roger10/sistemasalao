@@ -4,8 +4,11 @@ import com.belezza.api.dto.agendamento.AgendamentoRequest;
 import com.belezza.api.dto.agendamento.AgendamentoResponse;
 import com.belezza.api.dto.agendamento.CancelamentoRequest;
 import com.belezza.api.dto.agendamento.ReagendamentoRequest;
+import com.belezza.api.dto.disponibilidade.DisponibilidadeRequest;
+import com.belezza.api.dto.disponibilidade.DisponibilidadeResponse;
 import com.belezza.api.security.annotation.ProfissionalOrAdmin;
 import com.belezza.api.service.AgendamentoService;
+import com.belezza.api.service.DisponibilidadeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -21,6 +24,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -32,14 +36,36 @@ import java.util.List;
 public class AgendamentoController {
 
     private final AgendamentoService agendamentoService;
+    private final DisponibilidadeService disponibilidadeService;
 
     @PostMapping
     @Operation(summary = "Criar agendamento", description = "Cria um novo agendamento")
     public ResponseEntity<AgendamentoResponse> criar(
             @Valid @RequestBody AgendamentoRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
-        AgendamentoResponse response = agendamentoService.criar(request, userDetails.getUsername());
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        // Debug logging
+        log.info("=== POST /api/agendamentos - Request received ===");
+        log.info("Request body: profissionalId={}, servicoId={}, servicoIds={}, dataHora={}, clienteId={}",
+            request.getProfissionalId(), request.getServicoId(), request.getServicoIds(),
+            request.getDataHora(), request.getClienteId());
+        log.info("Request valid: {}, validation error: {}", request.isValid(), request.getValidationError());
+        log.info("Authenticated user: {}", userDetails != null ? userDetails.getUsername() : "ANONYMOUS");
+
+        if (userDetails != null) {
+            log.info("User authorities: {}", userDetails.getAuthorities());
+        }
+
+        // Se não há usuário autenticado, usar null (clienteId deve estar no request)
+        String emailUsuario = userDetails != null ? userDetails.getUsername() : null;
+
+        try {
+            AgendamentoResponse response = agendamentoService.criar(request, emailUsuario);
+            log.info("=== Agendamento created successfully: id={} ===", response.getId());
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (Exception e) {
+            log.error("=== Error creating agendamento: {} ===", e.getMessage(), e);
+            throw e; // Re-throw to be handled by GlobalExceptionHandler
+        }
     }
 
     @GetMapping("/{id}")
@@ -50,11 +76,10 @@ public class AgendamentoController {
     }
 
     @GetMapping("/salon/{salonId}")
-    @ProfissionalOrAdmin
     @Operation(summary = "Listar por salão", description = "Lista agendamentos de um salão com paginação")
     public ResponseEntity<Page<AgendamentoResponse>> listarPorSalon(
             @PathVariable Long salonId,
-            @PageableDefault(size = 20, sort = "dataHora") Pageable pageable) {
+            @PageableDefault(size = 100, sort = "dataHora") Pageable pageable) {
         Page<AgendamentoResponse> response = agendamentoService.listarPorSalon(salonId, pageable);
         return ResponseEntity.ok(response);
     }
@@ -135,6 +160,28 @@ public class AgendamentoController {
     @Operation(summary = "Marcar no-show", description = "Marca cliente como não compareceu")
     public ResponseEntity<AgendamentoResponse> marcarNoShow(@PathVariable Long id) {
         AgendamentoResponse response = agendamentoService.marcarNoShow(id);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/disponibilidade")
+    @Operation(summary = "Consultar disponibilidade",
+               description = "Consulta horários disponíveis para agendamento considerando horário de trabalho, bloqueios e agendamentos existentes")
+    public ResponseEntity<DisponibilidadeResponse> consultarDisponibilidade(
+            @RequestParam Long salonId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate data,
+            @RequestParam List<Long> servicoIds,
+            @RequestParam(required = false) Long profissionalId,
+            @RequestParam(required = false) Integer intervaloMinutos) {
+
+        DisponibilidadeRequest request = DisponibilidadeRequest.builder()
+                .salonId(salonId)
+                .data(data)
+                .servicoIds(servicoIds)
+                .profissionalId(profissionalId)
+                .intervaloMinutos(intervaloMinutos)
+                .build();
+
+        DisponibilidadeResponse response = disponibilidadeService.consultarDisponibilidade(request);
         return ResponseEntity.ok(response);
     }
 }

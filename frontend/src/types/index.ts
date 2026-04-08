@@ -394,6 +394,7 @@ export interface UsuarioListItem {
   ultimoLogin?: string;
   salonId?: number;
   salonNome?: string;
+  profissionalId?: number;
 }
 
 export interface UsuarioPageResponse {

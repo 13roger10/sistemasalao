@@ -65,6 +65,12 @@ public class UsuarioController {
             @Valid @RequestBody CreateUsuarioRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
 
+        if (userDetails == null) {
+            log.error("Tentativa de criar usuário sem autenticação válida");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        log.info("Requisição para criar usuário: {} por {}", request.getEmail(), userDetails.getUsername());
         UsuarioListResponse response = usuarioService.criar(request, userDetails.getUsername());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }

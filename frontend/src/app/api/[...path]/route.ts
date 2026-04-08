@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 const BACKEND_URL = process.env.BACKEND_API_URL || "http://localhost:8080";
 
 async function proxyRequest(request: NextRequest, path: string[]) {
-  const targetPath = `/api/${path.join("/")}`;
+  const joinedPath = path.join("/");
+  const targetPath = `/api/${joinedPath}`;
   const url = new URL(request.url);
   const queryString = url.search;
   const targetUrl = `${BACKEND_URL}${targetPath}${queryString}`;
@@ -32,6 +33,10 @@ async function proxyRequest(request: NextRequest, path: string[]) {
       ? await request.text()
       : undefined;
 
+    if (body) {
+      console.log(`[Proxy] Request body:`, body.substring(0, 500));
+    }
+
     const response = await fetch(targetUrl, {
       method: request.method,
       headers,
@@ -39,21 +44,26 @@ async function proxyRequest(request: NextRequest, path: string[]) {
     });
 
     const contentType = response.headers.get("content-type");
+    console.log(`[Proxy] Response status: ${response.status}, content-type: ${contentType}`);
+
+    // Read response body as text first for logging
+    const responseText = await response.text();
+    console.log(`[Proxy] Response body (${responseText.length} chars):`, responseText.substring(0, 500));
 
     if (contentType?.includes("application/json")) {
-      const data = await response.json();
+      // Parse the text as JSON
+      const data = responseText ? JSON.parse(responseText) : {};
       return NextResponse.json(data, { status: response.status });
     }
 
-    const text = await response.text();
-    return new NextResponse(text, {
+    return new NextResponse(responseText, {
       status: response.status,
       headers: { "Content-Type": contentType || "text/plain" },
     });
   } catch (error) {
     console.error("Proxy error:", error);
     return NextResponse.json(
-      { message: "Erro ao conectar com o servidor" },
+      { message: "Erro ao conectar com o servidor", error: String(error) },
       { status: 503 }
     );
   }

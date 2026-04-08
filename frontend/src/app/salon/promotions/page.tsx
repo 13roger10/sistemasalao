@@ -401,6 +401,8 @@ export default function PromotionsPage() {
     validFrom: new Date(),
     validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     isPublic: true,
+    isFirstPurchaseOnly: false,
+    isBirthdayOnly: false,
   });
 
   const [campaignForm, setCampaignForm] = useState<CampaignCreateInput>({
@@ -566,6 +568,8 @@ export default function PromotionsPage() {
       validFrom: new Date(),
       validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       isPublic: true,
+      isFirstPurchaseOnly: false,
+      isBirthdayOnly: false,
     });
   };
 

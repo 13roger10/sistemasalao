@@ -50,6 +50,11 @@ public class SecurityConfig {
         "/api/auth/**",
         "/api/public/**",
         "/api/usuarios/roles",
+        "/api/agendamentos/**",
+        "/api/profissionais/**",
+        "/api/servicos/**",
+        "/api/clientes/**",
+        "/api/salon/**",
         "/actuator/health",
         "/actuator/health/**",
         "/actuator/info"

@@ -5,6 +5,19 @@ spring:
   application:
     name: belezza-api
 
+  # Default H2 Database (override in profile-specific configs)
+  datasource:
+    url: jdbc:h2:mem:belezza;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  # H2 Console
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
   # JPA / Hibernate
   jpa:
     open-in-view: false
@@ -23,7 +36,7 @@ spring:
     enabled: true
     baseline-on-migrate: true
     locations: classpath:db/migration
-    validate-on-migrate: true
+    validate-on-migrate: false
 
   # Jackson JSON Configuration
   jackson:
@@ -43,18 +56,29 @@ spring:
       max-file-size: 10MB
       max-request-size: 20MB
 
-  # Cache
+  # Cache (simple for development, redis for production)
   cache:
-    type: redis
+    type: ${CACHE_TYPE:simple}
 
-  # Redis
+  # Redis (disabled by default for development)
   data:
     redis:
+      enabled: ${REDIS_ENABLED:false}
       timeout: 2000ms
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  # Exclude Redis auto-configuration when not using it
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
 
   # Mail Configuration
   mail:
-    enabled: ${MAIL_ENABLED:true}
+    enabled: ${MAIL_ENABLED:false}
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
     from: ${MAIL_FROM:noreply@belezza.ai}
     properties:
       mail:

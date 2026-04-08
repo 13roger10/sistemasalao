@@ -63,6 +63,35 @@ export function MobileBooking({
   // Calendar state
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { locale: ptBR }));
 
+  // Category filter state
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  // Categorias disponíveis baseadas no TipoServico do backend
+  const serviceCategories = [
+    { id: "1", name: "Cabelo", icon: "✂️", names: ["Cabelo", "CABELO"] },
+    { id: "2", name: "Barba", icon: "🧔", names: ["Barba", "BARBA"] },
+    { id: "3", name: "Estética", icon: "✨", names: ["Estética", "Estetica", "ESTETICA"] },
+    { id: "4", name: "Unha", icon: "💅", names: ["Unha", "UNHA"] },
+    { id: "5", name: "Maquiagem", icon: "💄", names: ["Maquiagem", "MAQUIAGEM"] },
+    { id: "6", name: "Depilação", icon: "🌸", names: ["Depilação", "Depilacao", "DEPILACAO"] },
+    { id: "7", name: "Sobrancelha", icon: "👁️", names: ["Sobrancelha", "SOBRANCELHA"] },
+    { id: "8", name: "Massagem", icon: "💆", names: ["Massagem", "MASSAGEM"] },
+    { id: "9", name: "Outro", icon: "📦", names: ["Outro", "OUTRO"] },
+  ];
+
+  // Função helper para verificar se um serviço pertence a uma categoria
+  const matchesCategory = (service: Service, categoryId: string) => {
+    const category = serviceCategories.find(c => c.id === categoryId);
+    if (!category) return false;
+    return service.categoryId === categoryId ||
+           category.names.some(name => service.category?.name === name);
+  };
+
+  // Serviços filtrados por categoria
+  const filteredServices = selectedCategory
+    ? services.filter(s => matchesCategory(s, selectedCategory))
+    : services;
+
   // Load services - tenta endpoint de cliente, depois público, depois admin
   useEffect(() => {
     const loadServices = async () => {
@@ -299,8 +328,67 @@ export function MobileBooking({
 
         {/* Service Selection */}
         {step === 'service' && (
-          <div className="space-y-3">
-            {services.map(service => (
+          <div className="space-y-4">
+            {/* Category Filter */}
+            <div className="overflow-x-auto pb-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSelectedCategory(null)}
+                  className={cn(
+                    'flex flex-shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-all',
+                    selectedCategory === null
+                      ? 'bg-violet-500 text-white'
+                      : 'bg-white text-gray-700 border border-gray-200'
+                  )}
+                >
+                  <span>🏠</span>
+                  <span>Todos</span>
+                </button>
+                {serviceCategories.map((category) => {
+                  const categoryServices = services.filter(s => matchesCategory(s, category.id));
+                  if (categoryServices.length === 0) return null;
+
+                  return (
+                    <button
+                      key={category.id}
+                      onClick={() => setSelectedCategory(category.id)}
+                      className={cn(
+                        'flex flex-shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-all',
+                        selectedCategory === category.id
+                          ? 'bg-violet-500 text-white'
+                          : 'bg-white text-gray-700 border border-gray-200'
+                      )}
+                    >
+                      <span>{category.icon}</span>
+                      <span>{category.name}</span>
+                      <span className={cn(
+                        'rounded-full px-1.5 text-xs',
+                        selectedCategory === category.id ? 'bg-white/20' : 'bg-gray-100'
+                      )}>
+                        {categoryServices.length}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Service List */}
+            <div className="space-y-3">
+            {filteredServices.length === 0 ? (
+              <div className="rounded-xl bg-gray-100 p-8 text-center">
+                <Scissors className="mx-auto h-12 w-12 text-gray-400" />
+                <p className="mt-2 text-gray-600">
+                  Nenhum serviço nesta categoria
+                </p>
+                <button
+                  onClick={() => setSelectedCategory(null)}
+                  className="mt-2 text-sm text-violet-600 hover:text-violet-700"
+                >
+                  Ver todas as categorias
+                </button>
+              </div>
+            ) : filteredServices.map(service => (
               <button
                 key={service.id}
                 onClick={() => toggleService(service)}
@@ -335,6 +423,7 @@ export function MobileBooking({
                 </div>
               </button>
             ))}
+            </div>
           </div>
         )}
 
@@ -404,12 +493,14 @@ export function MobileBooking({
                 const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
                 const isSelected = bookingData.date && isSameDay(day, bookingData.date);
                 const isToday = isSameDay(day, new Date());
+                const isSunday = day.getDay() === 0;
 
                 return (
                   <button
                     key={day.toISOString()}
                     onClick={() => !isPast && setBookingData(prev => ({ ...prev, date: day, time: null }))}
                     disabled={isPast}
+                    title={isSunday ? "Salao fechado aos domingos" : undefined}
                     className={cn(
                       'flex flex-col items-center rounded-xl p-3 transition-all',
                       isPast && 'cursor-not-allowed opacity-40',
@@ -417,6 +508,8 @@ export function MobileBooking({
                         ? 'bg-violet-500 text-white'
                         : isToday
                         ? 'border-2 border-violet-500 bg-white'
+                        : isSunday
+                        ? 'bg-orange-50 text-orange-400'
                         : 'bg-white hover:bg-gray-50'
                     )}
                   >
@@ -457,9 +550,15 @@ export function MobileBooking({
               </div>
             ) : availableSlots.length === 0 ? (
               <div className="rounded-xl bg-gray-100 p-8 text-center">
-                <Clock className="mx-auto h-12 w-12 text-gray-400" />
-                <p className="mt-2 text-gray-600">
-                  Nenhum horario disponivel para esta data
+                <Calendar className="mx-auto h-12 w-12 text-gray-400" />
+                <p className="mt-2 font-medium text-gray-700">
+                  Nenhum horario disponivel
+                </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  {bookingData.professional?.name} nao trabalha neste dia ou todos os horarios ja estao ocupados.
+                </p>
+                <p className="mt-2 text-sm text-gray-500">
+                  Tente outra data.
                 </p>
               </div>
             ) : (

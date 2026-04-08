@@ -1405,19 +1405,21 @@ export default function ServicesPage() {
                   <DollarSign className="h-5 w-5 text-green-500" />
                   <label className="font-medium text-gray-900 dark:text-white">Valor Regular *</label>
                 </div>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                <div className="relative flex items-center">
+                  <span className="absolute left-3 text-xl font-semibold text-gray-500">R$</span>
                   <input
                     type="number"
                     min="0"
                     step="0.01"
-                    value={formData.price}
+                    value={formData.price || ""}
                     onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-                    className={`w-full rounded-lg border pl-12 pr-4 py-3 text-xl font-semibold focus:outline-none focus:ring-2 ${
+                    onFocus={(e) => e.target.select()}
+                    placeholder="0,00"
+                    className={`w-full rounded-lg border pl-11 pr-4 py-3 text-xl font-semibold text-right focus:outline-none focus:ring-2 ${
                       formErrors.price
                         ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
                         : "border-gray-300 focus:border-violet-500 focus:ring-violet-500/20 dark:border-gray-600"
-                    } bg-white text-gray-900 dark:bg-gray-700 dark:text-white`}
+                    } bg-white text-gray-900 placeholder-gray-400 dark:bg-gray-700 dark:text-white`}
                   />
                 </div>
                 {formErrors.price && (
@@ -1431,16 +1433,17 @@ export default function ServicesPage() {
                   <label className="font-medium text-gray-900 dark:text-white">Valor Promocional</label>
                   <span className="text-xs text-gray-500">(opcional)</span>
                 </div>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                <div className="relative flex items-center">
+                  <span className="absolute left-3 text-xl font-semibold text-gray-500">R$</span>
                   <input
                     type="number"
                     min="0"
                     step="0.01"
                     value={formData.promotionalPrice || ""}
                     onChange={(e) => setFormData({ ...formData, promotionalPrice: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    onFocus={(e) => e.target.select()}
                     placeholder="0,00"
-                    className="w-full rounded-lg border border-gray-300 bg-white pl-12 pr-4 py-3 text-xl font-semibold text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    className="w-full rounded-lg border border-gray-300 bg-white pl-11 pr-4 py-3 text-xl font-semibold text-right text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                   />
                 </div>
                 {formData.promotionalPrice && formData.promotionalPrice < formData.price && (
@@ -1753,17 +1756,19 @@ export default function ServicesPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Valor do Combo (R$) *
+                Valor do Combo *
               </label>
-              <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <div className="relative flex items-center">
+                <span className="absolute left-3 text-sm font-medium text-gray-500">R$</span>
                 <input
                   type="number"
                   min="0"
                   step="0.01"
-                  value={comboFormData.comboPrice}
+                  value={comboFormData.comboPrice || ""}
                   onChange={(e) => setComboFormData({ ...comboFormData, comboPrice: parseFloat(e.target.value) || 0 })}
-                  className="w-full rounded-lg border border-gray-300 bg-white pl-10 pr-4 py-2.5 text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  onFocus={(e) => e.target.select()}
+                  placeholder="0,00"
+                  className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-4 py-2.5 text-right text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 />
               </div>
             </div>

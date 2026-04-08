@@ -56,8 +56,9 @@ public class AgendamentoService {
 
     @Transactional
     @Auditable(action = "CREATE", entityType = "Agendamento", captureNewState = true)
-    public AgendamentoResponse criar(AgendamentoRequest request, String emailCliente) {
-        log.info("Criando agendamento para cliente: {}", emailCliente);
+    public AgendamentoResponse criar(AgendamentoRequest request, String emailUsuarioAutenticado) {
+        log.info("Criando agendamento - usuário autenticado: {}, clienteId fornecido: {}",
+                emailUsuarioAutenticado, request.getClienteId());
 
         // Validate request
         if (!request.isValid()) {
@@ -67,21 +68,37 @@ public class AgendamentoService {
         Profissional profissional = profissionalService.getProfissionalEntity(request.getProfissionalId());
         Salon salon = profissional.getSalon();
 
-        // Get or create client for this salon
-        Cliente cliente = clienteService.getOrCreateCliente(salon.getId(), emailCliente);
+        // Get client: use clienteId from request if provided, otherwise use authenticated user
+        Cliente cliente;
+        if (request.getClienteId() != null) {
+            // Admin/receptionist creating appointment for a specific client
+            cliente = clienteRepository.findById(request.getClienteId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Cliente", request.getClienteId()));
+            log.info("Usando cliente fornecido: {} (ID: {})",
+                    cliente.getUsuario() != null ? cliente.getUsuario().getNome() : "N/A",
+                    cliente.getId());
+        } else if (emailUsuarioAutenticado != null && !emailUsuarioAutenticado.isBlank()) {
+            // Client booking their own appointment
+            cliente = clienteService.getOrCreateCliente(salon.getId(), emailUsuarioAutenticado);
+            log.info("Usando cliente autenticado: {} (ID: {})",
+                    cliente.getUsuario() != null ? cliente.getUsuario().getNome() : "N/A",
+                    cliente.getId());
+        } else {
+            throw new BusinessException("É necessário fornecer o clienteId ou estar autenticado para criar um agendamento");
+        }
 
         // Check if multiple services or single service
         if (request.hasMultipleServices()) {
-            return criarComMultiplosServicos(request, emailCliente, profissional, salon, cliente);
+            return criarComMultiplosServicos(request, profissional, salon, cliente);
         } else {
-            return criarComServicoUnico(request, emailCliente, profissional, salon, cliente);
+            return criarComServicoUnico(request, profissional, salon, cliente);
         }
     }
 
     /**
      * Create appointment with single service (legacy approach).
      */
-    private AgendamentoResponse criarComServicoUnico(AgendamentoRequest request, String emailCliente,
+    private AgendamentoResponse criarComServicoUnico(AgendamentoRequest request,
                                                       Profissional profissional, Salon salon, Cliente cliente) {
         Servico servico = servicoService.getServicoEntity(request.getServicoId());
 
@@ -113,7 +130,8 @@ public class AgendamentoService {
         // Increment client appointment count
         clienteRepository.incrementTotalAgendamentos(cliente.getId());
 
-        log.info("Agendamento criado: {} para {} em {}", agendamento.getId(), emailCliente, request.getDataHora());
+        String clienteEmail = cliente.getUsuario() != null ? cliente.getUsuario().getEmail() : "N/A";
+        log.info("Agendamento criado: {} para {} em {}", agendamento.getId(), clienteEmail, request.getDataHora());
 
         // Enviar confirmação via WhatsApp
         enviarNotificacaoConfirmacao(agendamento);
@@ -124,7 +142,7 @@ public class AgendamentoService {
     /**
      * Create appointment with multiple services (new approach).
      */
-    private AgendamentoResponse criarComMultiplosServicos(AgendamentoRequest request, String emailCliente,
+    private AgendamentoResponse criarComMultiplosServicos(AgendamentoRequest request,
                                                            Profissional profissional, Salon salon, Cliente cliente) {
         log.info("Criando agendamento com {} serviços", request.getServicoIds().size());
 
@@ -193,8 +211,9 @@ public class AgendamentoService {
         // Increment client appointment count
         clienteRepository.incrementTotalAgendamentos(cliente.getId());
 
+        String clienteEmail = cliente.getUsuario() != null ? cliente.getUsuario().getEmail() : "N/A";
         log.info("Agendamento com múltiplos serviços criado: {} para {} em {}",
-            agendamento.getId(), emailCliente, request.getDataHora());
+            agendamento.getId(), clienteEmail, request.getDataHora());
 
         // Enviar confirmação via WhatsApp
         enviarNotificacaoConfirmacao(agendamento);
@@ -563,11 +582,9 @@ public class AgendamentoService {
             throw new BusinessException("Cliente bloqueado. Entre em contato com o salão.");
         }
 
-        // 6. Minimum advance time
-        LocalDateTime minDateTime = LocalDateTime.now().plusHours(salon.getAntecedenciaMinimaHoras());
-        if (dataHora.isBefore(minDateTime)) {
-            throw new BusinessException("Agendamento deve ser feito com pelo menos " +
-                    salon.getAntecedenciaMinimaHoras() + " horas de antecedência");
+        // 6. Cannot schedule in the past
+        if (dataHora.isBefore(LocalDateTime.now())) {
+            throw new BusinessException("Não é possível agendar em horários passados");
         }
 
         // 7. Within salon business hours

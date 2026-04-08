@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, ReactNode } from "react";
 import {
   Star,
   Gift,
@@ -21,43 +21,45 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { loyaltyService } from "@/services/salon/loyaltyService";
-import type { LoyaltyLevel } from "@/types/salon";
+import { SalonLayout } from "@/components/layout/SalonLayout";
 import type {
+  LoyaltyLevel,
   LoyaltyMemberSummary,
   PointsTransaction,
+  PointsTransactionType,
   Reward,
+  RewardType,
 } from "@/types/salon";
 
 // ===== COMPONENTES AUXILIARES =====
 
-// Badge de Nível com mais destaque
+// Badge de Nivel com mais destaque
 const LevelDisplay = ({ level }: { level: LoyaltyLevel }) => {
-  const config = {
+  const config: Record<string, { icon: ReactNode; bg: string; ring: string; label: string; description: string }> = {
     bronze: {
       icon: <Medal className="h-8 w-8" />,
       bg: "bg-gradient-to-br from-amber-400 to-amber-600",
       ring: "ring-amber-400",
       label: "Bronze",
-      description: "Continue acumulando para subir de nível!",
+      description: "Continue acumulando para subir de nivel!",
     },
     silver: {
       icon: <Award className="h-8 w-8" />,
       bg: "bg-gradient-to-br from-gray-300 to-gray-500",
       ring: "ring-gray-400",
       label: "Prata",
-      description: "Você está no caminho certo!",
+      description: "Voce esta no caminho certo!",
     },
     gold: {
       icon: <Crown className="h-8 w-8" />,
       bg: "bg-gradient-to-br from-yellow-400 to-yellow-600",
       ring: "ring-yellow-400",
       label: "Ouro",
-      description: "Você é um cliente VIP!",
+      description: "Voce e um cliente VIP!",
     },
   };
 
-  const c = config[level];
+  const c = config[level] || config.bronze;
 
   return (
     <div className="flex items-center gap-4">
@@ -216,9 +218,9 @@ const PointsBalanceCard = ({
   );
 };
 
-// Item de Transação
+// Item de Transacao
 const TransactionItem = ({ transaction }: { transaction: PointsTransaction }) => {
-  const config = {
+  const config: Record<string, { icon: ReactNode; bg: string; iconColor: string; pointsColor: string; prefix: string }> = {
     earn: {
       icon: <ArrowUp className="h-4 w-4" />,
       bg: "bg-green-100 dark:bg-green-900/30",
@@ -259,7 +261,7 @@ const TransactionItem = ({ transaction }: { transaction: PointsTransaction }) =>
     },
   };
 
-  const c = config[transaction.type];
+  const c = config[transaction.type] || config.earn;
 
   return (
     <div className="flex items-center justify-between rounded-lg border border-gray-100 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
@@ -383,26 +385,117 @@ export default function ClientLoyaltyPage() {
   const discountValue = convertPoints / conversionRate;
 
   // ===== CARREGAR DADOS =====
-  const loadData = async () => {
+  // Nota: API de fidelidade ainda nao implementada no backend
+  // Usando dados de demonstracao
+  const loadData = () => {
     setIsLoading(true);
     setError(null);
 
-    try {
-      const [summaryData, transactionsData, rewardsData] = await Promise.all([
-        loyaltyService.getMyLoyaltySummary(),
-        loyaltyService.getMyTransactions({ limit: 10 }),
-        loyaltyService.getMyAvailableRewards(),
-      ]);
+    // Simula carregamento
+    setTimeout(() => {
+      // Dados de demonstracao
+      const mockSummary: LoyaltyMemberSummary = {
+        clientId: '1',
+        clientName: 'Cliente',
+        currentLevel: 'bronze' as LoyaltyLevel,
+        currentPoints: 150,
+        lifetimePoints: 450,
+        pointsExpiringSoon: 0,
+        nextLevel: 'silver' as LoyaltyLevel,
+        pointsToNextLevel: 350,
+        availableRewards: [],
+        redeemedRewards: [],
+        memberSince: new Date(),
+      };
+      setMemberSummary(mockSummary);
 
-      setMemberSummary(summaryData);
-      setTransactions(transactionsData.items);
-      setRewards(rewardsData);
-    } catch (err) {
-      console.error("[ClientLoyalty] Erro ao carregar dados:", err);
-      setError("Não foi possível carregar seus dados de fidelidade.");
-    } finally {
+      // Transacoes de demonstracao
+      const mockTransactions: PointsTransaction[] = [
+        {
+          id: '1',
+          clientId: '1',
+          type: 'earn' as PointsTransactionType,
+          points: 50,
+          balanceAfter: 150,
+          description: 'Corte de cabelo',
+          createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+          updatedAt: new Date(),
+          unitId: '1',
+        },
+        {
+          id: '2',
+          clientId: '1',
+          type: 'earn' as PointsTransactionType,
+          points: 30,
+          balanceAfter: 100,
+          description: 'Barba',
+          createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+          updatedAt: new Date(),
+          unitId: '1',
+        },
+        {
+          id: '3',
+          clientId: '1',
+          type: 'bonus' as PointsTransactionType,
+          points: 70,
+          balanceAfter: 70,
+          description: 'Bonus de boas-vindas',
+          createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
+          updatedAt: new Date(),
+          unitId: '1',
+        },
+      ];
+      setTransactions(mockTransactions);
+
+      // Recompensas de demonstracao
+      const mockRewards: Reward[] = [
+        {
+          id: '1',
+          name: 'Desconto de 10%',
+          description: 'Desconto de 10% em qualquer servico',
+          type: 'discount_percentage' as RewardType,
+          pointsCost: 100,
+          discountValue: 10,
+          validityDays: 30,
+          isActive: true,
+          currentRedemptions: 0,
+          totalRedemptions: 50,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          id: '2',
+          name: 'Corte Gratis',
+          description: 'Um corte de cabelo gratuito',
+          type: 'free_service' as RewardType,
+          pointsCost: 500,
+          validityDays: 60,
+          isActive: true,
+          currentRedemptions: 0,
+          totalRedemptions: 20,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          id: '3',
+          name: 'Desconto de R$20',
+          description: 'R$20 de desconto em servicos acima de R$50',
+          type: 'discount_fixed' as RewardType,
+          pointsCost: 200,
+          discountValue: 20,
+          minPurchaseAmount: 50,
+          validityDays: 30,
+          isActive: true,
+          currentRedemptions: 0,
+          totalRedemptions: 30,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ];
+      setRewards(mockRewards);
+
       setIsLoading(false);
-    }
+    }, 500);
   };
 
   useEffect(() => {
@@ -410,35 +503,18 @@ export default function ClientLoyaltyPage() {
   }, []);
 
   // ===== HANDLERS =====
-  const handleConvertPoints = async () => {
-    try {
-      await loyaltyService.convertMyPoints(convertPoints);
-      setShowConvertModal(false);
-      loadData(); // Recarrega os dados
-    } catch (err) {
-      console.error("Erro ao converter pontos:", err);
-      alert("Não foi possível converter os pontos. Tente novamente.");
-    }
+  const handleConvertPoints = () => {
+    alert("Funcionalidade em desenvolvimento. Em breve voce podera converter seus pontos!");
+    setShowConvertModal(false);
   };
 
   const handleRedeemFree = () => {
     setShowRedeemFreeModal(true);
   };
 
-  const handleConfirmRedeemFree = async () => {
-    if (!memberSummary?.programProgress) return;
-
-    try {
-      await loyaltyService.programs.redeemFreeService(
-        memberSummary.programProgress.programId,
-        { clientId: memberSummary.clientId }
-      );
-      setShowRedeemFreeModal(false);
-      loadData(); // Recarrega os dados
-    } catch (err) {
-      console.error("Erro ao resgatar serviço grátis:", err);
-      alert("Não foi possível resgatar o serviço. Tente novamente.");
-    }
+  const handleConfirmRedeemFree = () => {
+    alert("Funcionalidade em desenvolvimento. Em breve voce podera resgatar servicos gratis!");
+    setShowRedeemFreeModal(false);
   };
 
   const handleRedeemReward = (reward: Reward) => {
@@ -446,65 +522,60 @@ export default function ClientLoyaltyPage() {
     setShowRewardModal(true);
   };
 
-  const handleConfirmRedeemReward = async () => {
-    if (!selectedReward) return;
-
-    try {
-      await loyaltyService.redeemMyReward(selectedReward.id);
-      setShowRewardModal(false);
-      setSelectedReward(null);
-      loadData(); // Recarrega os dados
-    } catch (err) {
-      console.error("Erro ao resgatar recompensa:", err);
-      alert("Não foi possível resgatar a recompensa. Tente novamente.");
-    }
+  const handleConfirmRedeemReward = () => {
+    alert("Funcionalidade em desenvolvimento. Em breve voce podera resgatar recompensas!");
+    setShowRewardModal(false);
+    setSelectedReward(null);
   };
 
   // ===== RENDER =====
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
-          <p className="text-sm text-gray-500 dark:text-gray-400">Carregando...</p>
+      <SalonLayout>
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+            <p className="text-sm text-gray-500 dark:text-gray-400">Carregando...</p>
+          </div>
         </div>
-      </div>
+      </SalonLayout>
     );
   }
 
   if (error || !memberSummary) {
     return (
-      <div className="flex min-h-screen items-center justify-center p-4">
-        <div className="text-center">
-          <AlertCircle className="mx-auto h-12 w-12 text-red-400" />
-          <h2 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">
-            Erro ao carregar
-          </h2>
-          <p className="mt-2 text-gray-500 dark:text-gray-400">
-            {error || "Não foi possível carregar seus dados de fidelidade."}
-          </p>
-          <Button variant="primary" className="mt-4" onClick={loadData}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Tentar novamente
-          </Button>
+      <SalonLayout>
+        <div className="flex min-h-[60vh] items-center justify-center p-4">
+          <div className="text-center">
+            <AlertCircle className="mx-auto h-12 w-12 text-red-400" />
+            <h2 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">
+              Erro ao carregar
+            </h2>
+            <p className="mt-2 text-gray-500 dark:text-gray-400">
+              {error || "Nao foi possivel carregar seus dados de fidelidade."}
+            </p>
+            <Button variant="primary" className="mt-4" onClick={loadData}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Tentar novamente
+            </Button>
+          </div>
         </div>
-      </div>
+      </SalonLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-violet-600 px-4 py-4 text-white">
-        <h1 className="text-lg font-semibold">Meus Pontos</h1>
-        <p className="text-sm text-violet-200">
-          Acompanhe seus pontos e recompensas
-        </p>
-      </div>
+    <SalonLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Meus Pontos</h1>
+          <p className="text-gray-500 dark:text-gray-400">
+            Acompanhe seus pontos e recompensas
+          </p>
+        </div>
 
-      {/* Content */}
-      <div className="space-y-6 p-4">
-        {/* Nível e Saldo */}
+        {/* Nivel e Saldo */}
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Nível */}
           <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
@@ -796,6 +867,6 @@ export default function ClientLoyaltyPage() {
           </div>
         )}
       </Modal>
-    </div>
+    </SalonLayout>
   );
 }

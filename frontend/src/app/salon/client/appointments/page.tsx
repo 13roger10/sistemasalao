@@ -1,388 +1,466 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import {
   Calendar,
   Clock,
   User,
   Scissors,
-  MapPin,
-  Plus,
+  ChevronRight,
+  AlertCircle,
   CheckCircle,
   XCircle,
-  AlertCircle,
-  Phone,
+  Loader2,
+  CalendarDays,
+  History,
   RefreshCw,
-} from 'lucide-react';
-import { format, isSameDay, isAfter, isBefore } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { cn } from '@/lib/utils';
-import { appointmentService } from '@/services/salon/appointmentService';
-import type { Appointment, AppointmentStatus } from '@/types/salon';
+} from "lucide-react";
+import { format, isPast, isToday, isFuture, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { Button } from "@/components/ui/Button";
+import { SalonLayout } from "@/components/layout/SalonLayout";
+import { appointmentService } from "@/services/salon/appointmentService";
+import { useSalonAuth } from "@/contexts/SalonAuthContext";
+import { cn } from "@/lib/utils";
+import type { Appointment, AppointmentStatus } from "@/types/salon";
 
-const statusConfig: Record<
-  AppointmentStatus,
-  { label: string; color: string; icon: React.ReactNode }
-> = {
+// Status configuration
+const STATUS_CONFIG: Record<AppointmentStatus, { label: string; color: string; icon: ReactNode }> = {
   pending: {
-    label: 'Pendente',
-    color: 'bg-yellow-100 text-yellow-700',
-    icon: <AlertCircle className="h-4 w-4" />,
+    label: "Pendente",
+    color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+    icon: <Clock className="h-4 w-4" />,
   },
   confirmed: {
-    label: 'Confirmado',
-    color: 'bg-green-100 text-green-700',
+    label: "Confirmado",
+    color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
     icon: <CheckCircle className="h-4 w-4" />,
   },
   in_progress: {
-    label: 'Em Atendimento',
-    color: 'bg-blue-100 text-blue-700',
-    icon: <Clock className="h-4 w-4" />,
+    label: "Em Andamento",
+    color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+    icon: <RefreshCw className="h-4 w-4" />,
   },
   completed: {
-    label: 'Concluido',
-    color: 'bg-gray-100 text-gray-700',
+    label: "Concluido",
+    color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
     icon: <CheckCircle className="h-4 w-4" />,
   },
   canceled: {
-    label: 'Cancelado',
-    color: 'bg-red-100 text-red-700',
+    label: "Cancelado",
+    color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
     icon: <XCircle className="h-4 w-4" />,
   },
   no_show: {
-    label: 'Faltou',
-    color: 'bg-red-100 text-red-700',
-    icon: <XCircle className="h-4 w-4" />,
+    label: "Nao Compareceu",
+    color: "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400",
+    icon: <AlertCircle className="h-4 w-4" />,
   },
 };
 
-type TabType = 'upcoming' | 'past';
+type TabType = "upcoming" | "past";
 
 export default function ClientAppointmentsPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabType>('upcoming');
+  const { user, isLoading: authLoading } = useSalonAuth();
+
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>("upcoming");
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
 
-  // Load appointments for the authenticated client
+  // Load appointments
   useEffect(() => {
+    if (authLoading) return;
+    if (!user) return;
+
     const loadAppointments = async () => {
       setIsLoading(true);
       setError(null);
 
       try {
-        const response = await appointmentService.getMyAppointments({
-          limit: 50,
+        // Use the list endpoint and filter by client
+        const response = await appointmentService.list({
+          page: 1,
+          limit: 100,
+          salonId: "1",
         });
-        setAppointments(response.items);
+
+        // Filter appointments for the current client
+        const clientName = user.name?.toLowerCase();
+        const clientEmail = user.email?.toLowerCase();
+
+        const myAppointments = response.data.filter((apt) => {
+          const aptClientName = apt.client?.name?.toLowerCase();
+          const aptClientEmail = apt.client?.email?.toLowerCase();
+
+          return (
+            (clientName && aptClientName && aptClientName.includes(clientName)) ||
+            (clientEmail && aptClientEmail && aptClientEmail === clientEmail) ||
+            apt.clientId === String(user.id)
+          );
+        });
+
+        // Sort by date (most recent first for past, soonest first for upcoming)
+        myAppointments.sort((a, b) => {
+          const dateA = new Date(a.date);
+          const dateB = new Date(b.date);
+          return dateB.getTime() - dateA.getTime();
+        });
+
+        setAppointments(myAppointments);
       } catch (err) {
-        console.error('[ClientAppointments] Erro ao carregar agendamentos:', err);
-        setError('Não foi possível carregar seus agendamentos. Tente novamente.');
+        console.error("Erro ao carregar agendamentos:", err);
+        setError("Nao foi possivel carregar seus agendamentos. Tente novamente.");
       } finally {
         setIsLoading(false);
       }
     };
 
     loadAppointments();
-  }, []);
+  }, [user, authLoading]);
 
-  // Filter appointments
-  const now = new Date();
-  const upcomingAppointments = appointments.filter(
-    apt => isAfter(new Date(apt.date), now) || isSameDay(new Date(apt.date), now)
-  );
-  const pastAppointments = appointments.filter(
-    apt => isBefore(new Date(apt.date), now) && !isSameDay(new Date(apt.date), now)
-  );
+  // Filter appointments by tab
+  const filteredAppointments = appointments.filter((apt) => {
+    const aptDate = new Date(apt.date);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
 
-  const displayedAppointments =
-    activeTab === 'upcoming' ? upcomingAppointments : pastAppointments;
+    if (activeTab === "upcoming") {
+      // Upcoming: today or future, and not canceled/completed
+      return (
+        (isToday(aptDate) || isFuture(aptDate)) &&
+        !["canceled", "completed", "no_show"].includes(apt.status)
+      );
+    } else {
+      // Past: past dates or completed/canceled
+      return (
+        isPast(aptDate) ||
+        ["completed", "canceled", "no_show"].includes(apt.status)
+      );
+    }
+  });
 
-  // Reload appointments
-  const reloadAppointments = async () => {
-    setIsLoading(true);
-    setError(null);
+  // Sort filtered appointments
+  const sortedAppointments = [...filteredAppointments].sort((a, b) => {
+    const dateA = new Date(a.date);
+    const dateB = new Date(b.date);
+    if (activeTab === "upcoming") {
+      return dateA.getTime() - dateB.getTime(); // Soonest first
+    }
+    return dateB.getTime() - dateA.getTime(); // Most recent first
+  });
+
+  // Handle cancel appointment
+  const handleCancel = async (appointmentId: string) => {
+    if (!confirm("Tem certeza que deseja cancelar este agendamento?")) return;
+
+    setCancelingId(appointmentId);
     try {
-      const response = await appointmentService.getMyAppointments({ limit: 50 });
-      setAppointments(response.items);
+      await appointmentService.cancel(appointmentId, "Cancelado pelo cliente");
+      setAppointments((prev) =>
+        prev.map((apt) =>
+          apt.id === appointmentId ? { ...apt, status: "canceled" as AppointmentStatus } : apt
+        )
+      );
     } catch (err) {
-      console.error('[ClientAppointments] Erro ao recarregar:', err);
-      setError('Não foi possível carregar seus agendamentos.');
+      console.error("Erro ao cancelar agendamento:", err);
+      alert("Nao foi possivel cancelar o agendamento. Tente novamente.");
     } finally {
-      setIsLoading(false);
+      setCancelingId(null);
     }
   };
 
-  // Handle appointment actions
-  const handleConfirm = async (id: string) => {
-    try {
-      await appointmentService.confirmMyAppointment(id);
-      setAppointments(prev =>
-        prev.map(apt =>
-          apt.id === id ? { ...apt, status: 'confirmed' as AppointmentStatus } : apt
-        )
-      );
-    } catch (err) {
-      console.error('Erro ao confirmar:', err);
-      alert('Não foi possível confirmar o agendamento. Tente novamente.');
+  // Format date for display
+  const formatAppointmentDate = (date: Date | string) => {
+    const dateObj = typeof date === "string" ? parseISO(date) : date;
+
+    if (isToday(dateObj)) {
+      return "Hoje";
     }
+
+    return format(dateObj, "EEEE, d 'de' MMMM", { locale: ptBR });
   };
 
-  const handleCancel = async (id: string) => {
-    const reason = prompt('Motivo do cancelamento (opcional):');
-    if (reason === null) return; // User clicked cancel on prompt
-
-    try {
-      await appointmentService.cancelMyAppointment(id, reason || undefined);
-      setAppointments(prev =>
-        prev.map(apt =>
-          apt.id === id ? { ...apt, status: 'canceled' as AppointmentStatus } : apt
-        )
-      );
-    } catch (err) {
-      console.error('Erro ao cancelar:', err);
-      alert('Não foi possível cancelar o agendamento. Tente novamente.');
+  // Get service names
+  const getServiceNames = (apt: Appointment) => {
+    if (apt.services && apt.services.length > 0) {
+      return apt.services.map((s) => s.service?.name || "Servico").join(", ");
     }
+    return "Servico";
   };
+
+  // Loading state
+  if (authLoading || isLoading) {
+    return (
+      <SalonLayout>
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+            <p className="text-sm text-gray-500 dark:text-gray-400">Carregando seus agendamentos...</p>
+          </div>
+        </div>
+      </SalonLayout>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-violet-600 text-white">
-        <div className="flex items-center justify-between p-4">
-          <h1 className="text-lg font-semibold">Meus Agendamentos</h1>
-          <button
-            onClick={() => router.push('/salon/book')}
-            className="rounded-full bg-white/20 p-2 hover:bg-white/30"
-          >
-            <Plus className="h-6 w-6" />
-          </button>
+    <SalonLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Minha Agenda</h1>
+            <p className="text-gray-500 dark:text-gray-400">
+              Acompanhe seus agendamentos atuais e anteriores
+            </p>
+          </div>
+          <Button onClick={() => router.push("/salon/book")}>
+            <Calendar className="mr-2 h-4 w-4" />
+            Novo Agendamento
+          </Button>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
+                <CalendarDays className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Proximos</p>
+                <p className="text-xl font-semibold text-gray-900 dark:text-white">
+                  {appointments.filter((a) => {
+                    const d = new Date(a.date);
+                    return (isToday(d) || isFuture(d)) && !["canceled", "completed", "no_show"].includes(a.status);
+                  }).length}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
+                <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Concluidos</p>
+                <p className="text-xl font-semibold text-gray-900 dark:text-white">
+                  {appointments.filter((a) => a.status === "completed").length}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-gray-100 p-2 dark:bg-gray-700">
+                <History className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Total</p>
+                <p className="text-xl font-semibold text-gray-900 dark:text-white">
+                  {appointments.length}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex px-4 pb-2">
+        <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700">
           <button
-            onClick={() => setActiveTab('upcoming')}
+            onClick={() => setActiveTab("upcoming")}
             className={cn(
-              'flex-1 rounded-full py-2 text-sm font-medium transition-colors',
-              activeTab === 'upcoming'
-                ? 'bg-white text-violet-600'
-                : 'text-violet-200 hover:text-white'
+              "flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors",
+              activeTab === "upcoming"
+                ? "border-violet-500 text-violet-600 dark:text-violet-400"
+                : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
             )}
           >
-            Proximos ({upcomingAppointments.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('past')}
-            className={cn(
-              'flex-1 rounded-full py-2 text-sm font-medium transition-colors',
-              activeTab === 'past'
-                ? 'bg-white text-violet-600'
-                : 'text-violet-200 hover:text-white'
-            )}
-          >
-            Anteriores ({pastAppointments.length})
-          </button>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="p-4">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-200 border-t-violet-500" />
-          </div>
-        ) : error ? (
-          <div className="rounded-xl bg-red-50 p-6 text-center">
-            <AlertCircle className="mx-auto h-12 w-12 text-red-400" />
-            <p className="mt-2 text-red-600">{error}</p>
-            <button
-              onClick={reloadAppointments}
-              className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-white"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Tentar novamente
-            </button>
-          </div>
-        ) : displayedAppointments.length === 0 ? (
-          <div className="rounded-xl bg-white p-12 text-center shadow-sm">
-            <Calendar className="mx-auto h-16 w-16 text-gray-300" />
-            <h3 className="mt-4 text-lg font-medium text-gray-900">
-              {activeTab === 'upcoming'
-                ? 'Nenhum agendamento'
-                : 'Nenhum historico'}
-            </h3>
-            <p className="mt-2 text-gray-500">
-              {activeTab === 'upcoming'
-                ? 'Faca um novo agendamento'
-                : 'Seus agendamentos anteriores aparecerao aqui'}
-            </p>
-            {activeTab === 'upcoming' && (
-              <button
-                onClick={() => router.push('/salon/book')}
-                className="mt-6 inline-flex items-center gap-2 rounded-xl bg-violet-500 px-6 py-3 font-medium text-white hover:bg-violet-600"
-              >
-                <Plus className="h-5 w-5" />
-                Novo Agendamento
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {displayedAppointments.map(appointment => (
-              <AppointmentCard
-                key={appointment.id}
-                appointment={appointment}
-                onConfirm={() => handleConfirm(appointment.id)}
-                onCancel={() => handleCancel(appointment.id)}
-                isPast={activeTab === 'past'}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* FAB for new booking - posicionado acima da navegação inferior */}
-      {activeTab === 'upcoming' && displayedAppointments.length > 0 && (
-        <button
-          onClick={() => router.push('/salon/book')}
-          className="fixed bottom-24 right-4 flex h-14 w-14 items-center justify-center rounded-full bg-violet-500 text-white shadow-lg hover:bg-violet-600"
-        >
-          <Plus className="h-6 w-6" />
-        </button>
-      )}
-    </div>
-  );
-}
-
-interface AppointmentCardProps {
-  appointment: Appointment;
-  onConfirm: () => void;
-  onCancel: () => void;
-  isPast: boolean;
-}
-
-function AppointmentCard({
-  appointment,
-  onConfirm,
-  onCancel,
-  isPast,
-}: AppointmentCardProps) {
-  const status = statusConfig[appointment.status];
-  const isToday = isSameDay(new Date(appointment.date), new Date());
-
-  return (
-    <div className="overflow-hidden rounded-xl bg-white shadow-sm">
-      {/* Date header */}
-      <div
-        className={cn(
-          'flex items-center justify-between px-4 py-2',
-          isToday ? 'bg-violet-500 text-white' : 'bg-gray-50'
-        )}
-      >
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4" />
-          <span className="font-medium">
-            {isToday
-              ? 'Hoje'
-              : format(new Date(appointment.date), "EEEE, d 'de' MMMM", {
-                  locale: ptBR,
-                })}
-          </span>
-        </div>
-        <span
-          className={cn(
-            'rounded-full px-2 py-0.5 text-xs font-medium',
-            isToday ? 'bg-white/20' : status.color
-          )}
-        >
-          {status.label}
-        </span>
-      </div>
-
-      {/* Content */}
-      <div className="p-4">
-        <div className="flex items-start gap-4">
-          {/* Time */}
-          <div className="text-center">
-            <p className="text-2xl font-bold text-violet-600">
-              {appointment.startTime}
-            </p>
-            <p className="text-xs text-gray-500">
-              {appointment.totalDurationMinutes} min
-            </p>
-          </div>
-
-          {/* Details */}
-          <div className="flex-1">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-gray-700">
-                <Scissors className="h-4 w-4 text-violet-500" />
-                <span>
-                  {appointment.services.map(s => s.service?.name).join(', ')}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-gray-600">
-                <User className="h-4 w-4 text-violet-500" />
-                <span>{appointment.professional?.name}</span>
-              </div>
-              <div className="flex items-center gap-2 text-gray-600">
-                <MapPin className="h-4 w-4 text-violet-500" />
-                <span>Unidade Principal</span>
-              </div>
-            </div>
-
-            {/* Price */}
-            <div className="mt-3 flex items-center justify-between border-t pt-3">
-              <span className="text-gray-500">Total</span>
-              <span className="text-lg font-semibold text-gray-900">
-                R$ {appointment.finalPrice.toFixed(2)}
+            <CalendarDays className="h-4 w-4" />
+            Proximos
+            {appointments.filter((a) => {
+              const d = new Date(a.date);
+              return (isToday(d) || isFuture(d)) && !["canceled", "completed", "no_show"].includes(a.status);
+            }).length > 0 && (
+              <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-600 dark:bg-violet-900/50 dark:text-violet-400">
+                {appointments.filter((a) => {
+                  const d = new Date(a.date);
+                  return (isToday(d) || isFuture(d)) && !["canceled", "completed", "no_show"].includes(a.status);
+                }).length}
               </span>
-            </div>
-          </div>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("past")}
+            className={cn(
+              "flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors",
+              activeTab === "past"
+                ? "border-violet-500 text-violet-600 dark:text-violet-400"
+                : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+            )}
+          >
+            <History className="h-4 w-4" />
+            Historico
+          </button>
         </div>
 
-        {/* Actions */}
-        {!isPast && appointment.status === 'pending' && (
-          <div className="mt-4 flex gap-3">
-            <button
-              onClick={onConfirm}
-              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-green-500 py-3 font-medium text-white hover:bg-green-600"
-            >
-              <CheckCircle className="h-5 w-5" />
-              Confirmar
-            </button>
-            <button
-              onClick={onCancel}
-              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-red-200 py-3 font-medium text-red-600 hover:bg-red-50"
-            >
-              <XCircle className="h-5 w-5" />
-              Cancelar
-            </button>
+        {/* Error message */}
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-400">
+            <AlertCircle className="h-5 w-5" />
+            {error}
           </div>
         )}
 
-        {!isPast && appointment.status === 'confirmed' && (
-          <div className="mt-4 flex gap-3">
-            <a
-              href="tel:+5511999999999"
-              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 py-3 font-medium text-gray-700 hover:bg-gray-50"
-            >
-              <Phone className="h-5 w-5" />
-              Ligar
-            </a>
-            <button
-              onClick={onCancel}
-              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-red-200 py-3 font-medium text-red-600 hover:bg-red-50"
-            >
-              <XCircle className="h-5 w-5" />
-              Cancelar
-            </button>
-          </div>
-        )}
+        {/* Appointments List */}
+        <div className="space-y-4">
+          {sortedAppointments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 py-12 dark:border-gray-700 dark:bg-gray-800/50">
+              <Calendar className="mb-4 h-12 w-12 text-gray-400" />
+              <p className="mb-2 text-lg font-medium text-gray-900 dark:text-white">
+                {activeTab === "upcoming"
+                  ? "Nenhum agendamento proximo"
+                  : "Nenhum historico de agendamentos"}
+              </p>
+              <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+                {activeTab === "upcoming"
+                  ? "Faca um novo agendamento para comecar"
+                  : "Seus agendamentos anteriores aparecerão aqui"}
+              </p>
+              {activeTab === "upcoming" && (
+                <Button onClick={() => router.push("/salon/book")}>
+                  <Calendar className="mr-2 h-4 w-4" />
+                  Agendar Agora
+                </Button>
+              )}
+            </div>
+          ) : (
+            sortedAppointments.map((appointment) => {
+              const status = STATUS_CONFIG[appointment.status] || STATUS_CONFIG.pending;
+              const canCancel =
+                activeTab === "upcoming" &&
+                ["pending", "confirmed"].includes(appointment.status);
+
+              return (
+                <div
+                  key={appointment.id}
+                  className="rounded-lg border border-gray-200 bg-white p-4 transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+                >
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    {/* Left side - Appointment info */}
+                    <div className="flex-1 space-y-3">
+                      {/* Date and time */}
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-violet-500" />
+                          <span className="font-medium text-gray-900 dark:text-white capitalize">
+                            {formatAppointmentDate(appointment.date)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-violet-500" />
+                          <span className="text-gray-700 dark:text-gray-300">
+                            {appointment.startTime}
+                            {appointment.endTime && ` - ${appointment.endTime}`}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Services */}
+                      <div className="flex items-center gap-2">
+                        <Scissors className="h-4 w-4 text-gray-400" />
+                        <span className="text-gray-700 dark:text-gray-300">
+                          {getServiceNames(appointment)}
+                        </span>
+                      </div>
+
+                      {/* Professional */}
+                      {appointment.professional && (
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 text-gray-400" />
+                          <span className="text-gray-700 dark:text-gray-300">
+                            {appointment.professional.name}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Price */}
+                      {appointment.totalPrice > 0 && (
+                        <div className="text-sm font-medium text-violet-600 dark:text-violet-400">
+                          R$ {appointment.totalPrice.toFixed(2)}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right side - Status and actions */}
+                    <div className="flex flex-col items-end gap-3">
+                      {/* Status badge */}
+                      <div
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium",
+                          status.color
+                        )}
+                      >
+                        {status.icon}
+                        {status.label}
+                      </div>
+
+                      {/* Cancel button */}
+                      {canCancel && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCancel(appointment.id)}
+                          disabled={cancelingId === appointment.id}
+                          className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                        >
+                          {cancelingId === appointment.id ? (
+                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                          ) : (
+                            <XCircle className="mr-1 h-3 w-3" />
+                          )}
+                          Cancelar
+                        </Button>
+                      )}
+
+                      {/* Reschedule button for upcoming appointments */}
+                      {canCancel && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => router.push("/salon/book")}
+                          className="text-gray-600 dark:text-gray-400"
+                        >
+                          <RefreshCw className="mr-1 h-3 w-3" />
+                          Reagendar
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Appointment code */}
+                  <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 dark:border-gray-700">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Codigo: #{appointment.id.slice(-8).toUpperCase()}
+                    </span>
+                    {appointment.internalNotes && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        Obs: {appointment.internalNotes}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
       </div>
-    </div>
+    </SalonLayout>
   );
 }

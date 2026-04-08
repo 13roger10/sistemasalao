@@ -35,7 +35,9 @@ import { DataTable, ActionMenuItem, Column } from "@/components/ui/DataTable";
 import { appointmentService } from "@/services/salon/appointmentService";
 import { serviceService } from "@/services/salon/serviceService";
 import { professionalService } from "@/services/salon/professionalService";
+import { clientService } from "@/services/salon/clientService";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
+import { useUnit } from "@/contexts/UnitContext";
 import type {
   Appointment,
   AppointmentCreateInput,
@@ -183,9 +185,8 @@ const ViewSelector = ({
 }) => (
   <div className="flex rounded-lg border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-700">
     {[
-      { id: "day" as CalendarView, label: "Dia" },
-      { id: "week" as CalendarView, label: "Semana" },
       { id: "month" as CalendarView, label: "Mês" },
+      { id: "day" as CalendarView, label: "Dia" },
     ].map((v) => (
       <button
         key={v.id}
@@ -201,6 +202,292 @@ const ViewSelector = ({
     ))}
   </div>
 );
+
+// Month Calendar Component
+const MonthCalendar = ({
+  currentDate,
+  appointments,
+  onDayClick,
+  selectedDay,
+}: {
+  currentDate: Date;
+  appointments: Appointment[];
+  onDayClick: (date: Date) => void;
+  selectedDay: Date | null;
+}) => {
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+
+  // Primeiro dia do mês
+  const firstDay = new Date(year, month, 1);
+  // Último dia do mês
+  const lastDay = new Date(year, month + 1, 0);
+  // Dia da semana que o mês começa (0 = Domingo)
+  const startDayOfWeek = firstDay.getDay();
+  // Total de dias no mês
+  const daysInMonth = lastDay.getDate();
+
+  // Criar array de dias
+  const days: (number | null)[] = [];
+
+  // Adicionar dias vazios antes do primeiro dia
+  for (let i = 0; i < startDayOfWeek; i++) {
+    days.push(null);
+  }
+
+  // Adicionar dias do mês
+  for (let i = 1; i <= daysInMonth; i++) {
+    days.push(i);
+  }
+
+  // Verificar se um dia tem agendamentos
+  const getAppointmentsForDay = (day: number) => {
+    const date = new Date(year, month, day);
+    return appointments.filter(a => {
+      const appointmentDate = new Date(a.date);
+      return appointmentDate.toDateString() === date.toDateString();
+    });
+  };
+
+  const isToday = (day: number) => {
+    const today = new Date();
+    return today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
+  };
+
+  const isSelected = (day: number) => {
+    if (!selectedDay) return false;
+    return selectedDay.getDate() === day && selectedDay.getMonth() === month && selectedDay.getFullYear() === year;
+  };
+
+  const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+      {/* Header dos dias da semana */}
+      <div className="grid grid-cols-7 gap-1 mb-2">
+        {weekDays.map(day => (
+          <div key={day} className="text-center text-sm font-medium text-gray-500 dark:text-gray-400 py-2">
+            {day}
+          </div>
+        ))}
+      </div>
+
+      {/* Dias do mês */}
+      <div className="grid grid-cols-7 gap-1">
+        {days.map((day, index) => {
+          if (day === null) {
+            return <div key={`empty-${index}`} className="aspect-square" />;
+          }
+
+          const dayAppointments = getAppointmentsForDay(day);
+          const hasAppointments = dayAppointments.length > 0;
+          const confirmedCount = dayAppointments.filter(a => a.status === "confirmed").length;
+          const pendingCount = dayAppointments.filter(a => a.status === "pending").length;
+
+          return (
+            <button
+              key={day}
+              onClick={() => onDayClick(new Date(year, month, day))}
+              className={`aspect-square p-1 rounded-lg text-sm font-medium transition-all relative
+                ${isToday(day) ? "ring-2 ring-violet-500" : ""}
+                ${isSelected(day)
+                  ? "bg-violet-500 text-white"
+                  : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-white"
+                }
+              `}
+            >
+              <span className="block">{day}</span>
+              {hasAppointments && (
+                <div className="flex justify-center gap-0.5 mt-0.5">
+                  {confirmedCount > 0 && (
+                    <span className={`w-1.5 h-1.5 rounded-full ${isSelected(day) ? "bg-white" : "bg-blue-500"}`} />
+                  )}
+                  {pendingCount > 0 && (
+                    <span className={`w-1.5 h-1.5 rounded-full ${isSelected(day) ? "bg-yellow-200" : "bg-yellow-500"}`} />
+                  )}
+                  {dayAppointments.length > 2 && (
+                    <span className={`text-[10px] ${isSelected(day) ? "text-white" : "text-gray-500"}`}>
+                      +{dayAppointments.length - 2}
+                    </span>
+                  )}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// Day Schedule Panel (shows appointments for selected day)
+const DaySchedulePanel = ({
+  selectedDay,
+  appointments,
+  professionals,
+  onSlotClick,
+  onAppointmentClick,
+  workingHours,
+  formatCurrency,
+  formatDuration,
+}: {
+  selectedDay: Date;
+  appointments: Appointment[];
+  professionals: Professional[];
+  onSlotClick: (time: string, professionalId?: string) => void;
+  onAppointmentClick: (appointment: Appointment) => void;
+  workingHours: string[];
+  formatCurrency: (value: number) => string;
+  formatDuration: (minutes: number) => string;
+}) => {
+  const dayAppointments = appointments.filter(a => {
+    const appointmentDate = new Date(a.date);
+    return appointmentDate.toDateString() === selectedDay.toDateString();
+  });
+
+  const getStatusColor = (status: AppointmentStatus) => {
+    const colors: Record<AppointmentStatus, string> = {
+      pending: "border-l-yellow-500 bg-yellow-50 dark:bg-yellow-900/20",
+      confirmed: "border-l-blue-500 bg-blue-50 dark:bg-blue-900/20",
+      in_progress: "border-l-violet-500 bg-violet-50 dark:bg-violet-900/20",
+      completed: "border-l-green-500 bg-green-50 dark:bg-green-900/20",
+      canceled: "border-l-red-500 bg-red-50 dark:bg-red-900/20",
+      no_show: "border-l-gray-500 bg-gray-50 dark:bg-gray-700",
+    };
+    return colors[status];
+  };
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
+      {/* Header */}
+      <div className="border-b border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900">
+        <h3 className="font-semibold text-gray-900 dark:text-white">
+          {selectedDay.toLocaleDateString("pt-BR", {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+          })}
+        </h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          {dayAppointments.length} agendamento{dayAppointments.length !== 1 ? "s" : ""}
+        </p>
+      </div>
+
+      {/* Agendamentos do dia */}
+      <div className="max-h-[500px] overflow-y-auto">
+        {dayAppointments.length > 0 ? (
+          <div className="divide-y divide-gray-100 dark:divide-gray-700">
+            {dayAppointments
+              .sort((a, b) => a.startTime.localeCompare(b.startTime))
+              .map((appointment) => (
+                <div
+                  key={appointment.id}
+                  onClick={() => onAppointmentClick(appointment)}
+                  className={`p-4 border-l-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 ${getStatusColor(appointment.status)}`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-lg font-semibold text-gray-900 dark:text-white">
+                      {appointment.startTime} - {appointment.endTime}
+                    </span>
+                    <AppointmentStatusBadge status={appointment.status} />
+                  </div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-100 text-sm font-semibold text-violet-600 dark:bg-violet-900/50 dark:text-violet-400">
+                      {appointment.client?.name?.charAt(0).toUpperCase() || "C"}
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">
+                        {appointment.client?.name}
+                      </p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {appointment.client?.phone}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="h-3 w-3 rounded-full"
+                        style={{ backgroundColor: appointment.professional?.color || "#8B5CF6" }}
+                      />
+                      <span className="text-gray-600 dark:text-gray-300">
+                        {appointment.professional?.name}
+                      </span>
+                    </div>
+                    <span className="text-gray-600 dark:text-gray-300">
+                      {appointment.services.map(s => s.service?.name).join(", ")}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                      {formatDuration(appointment.totalDurationMinutes)}
+                    </span>
+                    <span className="font-semibold text-violet-600 dark:text-violet-400">
+                      {formatCurrency(appointment.finalPrice)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+          </div>
+        ) : (
+          <div className="p-8 text-center">
+            <CalendarIcon className="h-12 w-12 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+            <p className="text-gray-500 dark:text-gray-400 mb-4">
+              Nenhum agendamento neste dia
+            </p>
+            <Button
+              size="sm"
+              onClick={() => onSlotClick("09:00")}
+              leftIcon={<Plus className="h-4 w-4" />}
+            >
+              Novo Agendamento
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Horários disponíveis */}
+      {dayAppointments.length > 0 && (
+        <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Horários disponíveis:
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {workingHours
+              .filter(time => {
+                // Verificar se o horário não está ocupado
+                return !dayAppointments.some(a =>
+                  a.startTime <= time && time < a.endTime &&
+                  a.status !== "canceled"
+                );
+              })
+              .slice(0, 8)
+              .map(time => (
+                <button
+                  key={time}
+                  onClick={() => onSlotClick(time)}
+                  className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600
+                    hover:bg-violet-50 hover:border-violet-300 dark:hover:bg-violet-900/20
+                    text-gray-700 dark:text-gray-300 transition-colors"
+                >
+                  {time}
+                </button>
+              ))}
+            {workingHours.filter(time => !dayAppointments.some(a =>
+              a.startTime <= time && time < a.endTime && a.status !== "canceled"
+            )).length > 8 && (
+              <span className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400">
+                +{workingHours.filter(time => !dayAppointments.some(a =>
+                  a.startTime <= time && time < a.endTime && a.status !== "canceled"
+                )).length - 8} horários
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Time Slot Component
 const TimeSlotCell = ({
@@ -309,11 +596,13 @@ const TimeSlotCell = ({
 // ===== COMPONENTE PRINCIPAL =====
 export default function AppointmentsPage() {
   const { user } = useSalonAuth();
+  const { selectedUnitId } = useUnit();
 
   // Estados principais
   const [activeTab, setActiveTab] = useState<"agenda" | "list" | "waitlist">("agenda");
-  const [calendarView, setCalendarView] = useState<CalendarView>("day");
+  const [calendarView, setCalendarView] = useState<CalendarView>("month");
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState<Date | null>(new Date());
   const [selectedProfessionalId, setSelectedProfessionalId] = useState<string>("");
 
   // Estados de dados
@@ -385,9 +674,10 @@ export default function AppointmentsPage() {
   });
 
   // Horários do salão
+  // Horários de funcionamento do salão (09:00 - 18:00)
   const WORKING_HOURS = useMemo(() => {
     const hours: string[] = [];
-    for (let h = 8; h <= 20; h++) {
+    for (let h = 9; h < 18; h++) {
       hours.push(`${h.toString().padStart(2, "0")}:00`);
       hours.push(`${h.toString().padStart(2, "0")}:30`);
     }
@@ -432,121 +722,78 @@ export default function AppointmentsPage() {
   };
 
   const goToToday = () => {
-    setCurrentDate(new Date());
+    const today = new Date();
+    setCurrentDate(today);
+    setSelectedDay(today);
   };
 
   // Carregar dados
   const loadAppointments = useCallback(async () => {
     setIsLoading(true);
     try {
+      // Usar o método list para buscar agendamentos reais do backend
+      const response = await appointmentService.list({
+        salonId: selectedUnitId || '1',
+        page: 1,
+        limit: 100, // Buscar mais agendamentos para cobrir o período
+      });
+
+      const allAppointments = response.data || response.items || [];
+      console.log('Total de agendamentos da API:', allAppointments.length);
+
+      // Filtrar por período conforme a visualização
       const startDate = new Date(currentDate);
       const endDate = new Date(currentDate);
 
       if (calendarView === "day") {
-        endDate.setDate(endDate.getDate() + 1);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
       } else if (calendarView === "week") {
         startDate.setDate(startDate.getDate() - startDate.getDay());
-        endDate.setDate(startDate.getDate() + 7);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setDate(startDate.getDate() + 6);
+        endDate.setHours(23, 59, 59, 999);
       } else {
+        // Mês inteiro
         startDate.setDate(1);
+        startDate.setHours(0, 0, 0, 0);
         endDate.setMonth(endDate.getMonth() + 1);
         endDate.setDate(0);
+        endDate.setHours(23, 59, 59, 999);
       }
 
-      const events = await appointmentService.getCalendarEvents({
-        startDate,
-        endDate,
-        professionalId: selectedProfessionalId || undefined,
+      console.log('Filtrando período:', startDate.toISOString(), 'até', endDate.toISOString());
+
+      // Filtrar agendamentos pelo período
+      const filteredAppointments = allAppointments.filter(appointment => {
+        const appointmentDate = new Date(appointment.date);
+        const inRange = appointmentDate >= startDate && appointmentDate <= endDate;
+        if (!inRange) {
+          console.log('Agendamento fora do período:', appointment.id, appointmentDate.toISOString());
+        }
+        return inRange;
       });
 
-      // Mock data para desenvolvimento
-      if (!events || events.length === 0) {
-        const mockAppointments: Appointment[] = [
-          {
-            id: "1",
-            clientId: "1",
-            client: { id: "1", name: "João Silva", email: "joao@email.com", phone: "(11) 99999-1111", totalVisits: 5, totalSpent: 500, loyaltyPoints: 50, loyaltyLevel: "bronze", status: "active", acceptsMarketing: true, acceptsWhatsApp: true, acceptsEmail: true, averageTicket: 100, createdAt: new Date(), updatedAt: new Date() },
-            professionalId: "1",
-            professional: { id: "1", userId: "1", name: "Carlos", email: "carlos@salon.com", phone: "(11) 88888-1111", status: "active", serviceIds: ["1", "2"], specialties: ["Corte"], commissionType: "percentage", commissionValue: 50, schedule: { days: [] }, averageRating: 4.8, totalReviews: 50, totalAppointments: 200, totalRevenue: 10000, unitIds: ["1"], primaryUnitId: "1", acceptsOnlineBooking: true, showInPublicProfile: true, color: "#8B5CF6", createdAt: new Date(), updatedAt: new Date() },
-            services: [{ serviceId: "1", service: { id: "1", name: "Corte Masculino", categoryId: "1", price: 50, durationMinutes: 30, status: "active", createdAt: new Date(), updatedAt: new Date() } as Service, price: 50, durationMinutes: 30 }],
-            totalPrice: 50,
-            totalDurationMinutes: 30,
-            date: currentDate,
-            startTime: "09:00",
-            endTime: "09:30",
-            status: "confirmed",
-            source: "admin",
-            isPaid: false,
-            finalPrice: 50,
-            commissionTotal: 25,
-            commissionPaid: false,
-            unitId: "1",
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-          {
-            id: "2",
-            clientId: "2",
-            client: { id: "2", name: "Maria Souza", email: "maria@email.com", phone: "(11) 99999-2222", totalVisits: 3, totalSpent: 350, loyaltyPoints: 35, loyaltyLevel: "bronze", status: "active", acceptsMarketing: true, acceptsWhatsApp: true, acceptsEmail: true, averageTicket: 116, createdAt: new Date(), updatedAt: new Date() },
-            professionalId: "2",
-            professional: { id: "2", userId: "2", name: "Ana", email: "ana@salon.com", phone: "(11) 88888-2222", status: "active", serviceIds: ["1", "3"], specialties: ["Estética"], commissionType: "percentage", commissionValue: 40, schedule: { days: [] }, averageRating: 4.9, totalReviews: 80, totalAppointments: 300, totalRevenue: 15000, unitIds: ["1"], primaryUnitId: "1", acceptsOnlineBooking: true, showInPublicProfile: true, color: "#EC4899", createdAt: new Date(), updatedAt: new Date() },
-            services: [{ serviceId: "3", service: { id: "3", name: "Limpeza de Pele", categoryId: "3", price: 120, durationMinutes: 60, status: "active", createdAt: new Date(), updatedAt: new Date() } as Service, price: 120, durationMinutes: 60 }],
-            totalPrice: 120,
-            totalDurationMinutes: 60,
-            date: currentDate,
-            startTime: "10:00",
-            endTime: "11:00",
-            status: "pending",
-            source: "online",
-            isPaid: false,
-            finalPrice: 120,
-            commissionTotal: 48,
-            commissionPaid: false,
-            unitId: "1",
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-          {
-            id: "3",
-            clientId: "3",
-            client: { id: "3", name: "Pedro Santos", email: "pedro@email.com", phone: "(11) 99999-3333", totalVisits: 8, totalSpent: 800, loyaltyPoints: 80, loyaltyLevel: "silver", status: "active", acceptsMarketing: true, acceptsWhatsApp: true, acceptsEmail: true, averageTicket: 100, createdAt: new Date(), updatedAt: new Date() },
-            professionalId: "1",
-            professional: { id: "1", userId: "1", name: "Carlos", email: "carlos@salon.com", phone: "(11) 88888-1111", status: "active", serviceIds: ["1", "2"], specialties: ["Corte"], commissionType: "percentage", commissionValue: 50, schedule: { days: [] }, averageRating: 4.8, totalReviews: 50, totalAppointments: 200, totalRevenue: 10000, unitIds: ["1"], primaryUnitId: "1", acceptsOnlineBooking: true, showInPublicProfile: true, color: "#8B5CF6", createdAt: new Date(), updatedAt: new Date() },
-            services: [
-              { serviceId: "1", service: { id: "1", name: "Corte Masculino", categoryId: "1", price: 50, durationMinutes: 30, status: "active", createdAt: new Date(), updatedAt: new Date() } as Service, price: 50, durationMinutes: 30 },
-              { serviceId: "2", service: { id: "2", name: "Barba", categoryId: "2", price: 35, durationMinutes: 25, status: "active", createdAt: new Date(), updatedAt: new Date() } as Service, price: 35, durationMinutes: 25 },
-            ],
-            totalPrice: 85,
-            totalDurationMinutes: 55,
-            date: currentDate,
-            startTime: "14:00",
-            endTime: "14:55",
-            status: "in_progress",
-            source: "phone",
-            isPaid: false,
-            finalPrice: 85,
-            commissionTotal: 42.5,
-            commissionPaid: false,
-            unitId: "1",
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-        ];
-        setAppointments(mockAppointments);
-      } else {
-        // Convert calendar events to appointments if needed
-        setAppointments([]);
-      }
+      console.log('Agendamentos no período:', filteredAppointments.length);
+
+      // Filtrar por profissional se selecionado
+      const finalAppointments = selectedProfessionalId
+        ? filteredAppointments.filter(a => a.professionalId === selectedProfessionalId)
+        : filteredAppointments;
+
+      console.log('Agendamentos finais:', finalAppointments.length);
+      setAppointments(finalAppointments);
     } catch (error) {
       console.error("Erro ao carregar agendamentos:", error);
+      setAppointments([]);
     } finally {
       setIsLoading(false);
     }
-  }, [currentDate, calendarView, selectedProfessionalId]);
+  }, [currentDate, calendarView, selectedProfessionalId, selectedUnitId]);
 
   const loadProfessionals = useCallback(async () => {
     try {
-      const data = await professionalService.getAll({ salonId: '1' });
+      const data = await professionalService.getAll({ salonId: selectedUnitId || '1' });
       setProfessionals(data);
     } catch (error) {
       console.error("Erro ao carregar profissionais:", error);
@@ -557,24 +804,21 @@ export default function AppointmentsPage() {
         { id: "3", userId: "3", name: "Roberto", email: "roberto@salon.com", phone: "(11) 88888-3333", status: "active", serviceIds: ["1", "2"], specialties: ["Barba"], commissionType: "percentage", commissionValue: 50, schedule: { days: [] }, averageRating: 4.7, totalReviews: 30, totalAppointments: 150, totalRevenue: 8000, unitIds: ["1"], primaryUnitId: "1", acceptsOnlineBooking: true, showInPublicProfile: true, color: "#10B981", createdAt: new Date(), updatedAt: new Date() },
       ]);
     }
-  }, []);
+  }, [selectedUnitId]);
 
   const loadClients = useCallback(async () => {
     try {
-      // Mock data para desenvolvimento
-      setClients([
-        { id: "1", name: "João Silva", email: "joao@email.com", phone: "(11) 99999-1111", totalVisits: 5, totalSpent: 500, loyaltyPoints: 50, loyaltyLevel: "bronze", status: "active", acceptsMarketing: true, acceptsWhatsApp: true, acceptsEmail: true, averageTicket: 100, createdAt: new Date(), updatedAt: new Date() },
-        { id: "2", name: "Maria Souza", email: "maria@email.com", phone: "(11) 99999-2222", totalVisits: 3, totalSpent: 350, loyaltyPoints: 35, loyaltyLevel: "bronze", status: "active", acceptsMarketing: true, acceptsWhatsApp: true, acceptsEmail: true, averageTicket: 116, createdAt: new Date(), updatedAt: new Date() },
-        { id: "3", name: "Pedro Santos", email: "pedro@email.com", phone: "(11) 99999-3333", totalVisits: 8, totalSpent: 800, loyaltyPoints: 80, loyaltyLevel: "silver", status: "active", acceptsMarketing: true, acceptsWhatsApp: true, acceptsEmail: true, averageTicket: 100, createdAt: new Date(), updatedAt: new Date() },
-      ]);
+      const response = await clientService.list({ salonId: selectedUnitId || '1' });
+      setClients(response.data || response.items || []);
     } catch (error) {
       console.error("Erro ao carregar clientes:", error);
+      setClients([]);
     }
-  }, []);
+  }, [selectedUnitId]);
 
   const loadServices = useCallback(async () => {
     try {
-      const data = await serviceService.getAll({ salonId: '1' });
+      const data = await serviceService.getAll({ salonId: selectedUnitId || '1' });
       setServices(data);
     } catch (error) {
       console.error("Erro ao carregar serviços:", error);
@@ -586,7 +830,7 @@ export default function AppointmentsPage() {
         { id: "4", name: "Corte + Barba", description: "Combo completo", categoryId: "1", price: 75, promotionalPrice: 70, durationMinutes: 50, commissionPercentage: 50, status: "active", showInOnlineBooking: true, requiresConfirmation: false, usesStock: false, loyaltyPointsEarned: 15, unitIds: [], totalBookings: 200, averageRating: 4.9, createdAt: new Date(), updatedAt: new Date() },
       ] as Service[]);
     }
-  }, []);
+  }, [selectedUnitId]);
 
   const loadWaitlist = useCallback(async () => {
     setIsLoadingWaitlist(true);
@@ -681,6 +925,20 @@ export default function AppointmentsPage() {
     if (!formData.date) errors.date = "Selecione uma data";
     if (!formData.startTime) errors.startTime = "Selecione um horário";
 
+    // Verificar se o horário já passou
+    if (formData.date && formData.startTime) {
+      // Parse date components manually to avoid timezone issues
+      // new Date("2026-03-26") interprets as UTC midnight, causing day shift in local time
+      const [year, month, day] = formData.date.split("-").map(Number);
+      const [hours, minutes] = formData.startTime.split(":").map(Number);
+      const appointmentDateTime = new Date(year, month - 1, day, hours, minutes, 0, 0);
+
+      const now = new Date();
+      if (appointmentDateTime < now) {
+        errors.startTime = "Não é possível agendar em horários passados";
+      }
+    }
+
     // Verificar se horário está ocupado
     const isSlotOccupied = appointments.some(
       (a) =>
@@ -701,11 +959,16 @@ export default function AppointmentsPage() {
 
     setIsSubmitting(true);
     try {
+      // Parse date components manually to avoid timezone issues
+      // new Date("2026-03-26") interprets as UTC midnight, causing day shift
+      const [year, month, day] = formData.date.split("-").map(Number);
+      const dateObj = new Date(year, month - 1, day);
+
       const input: AppointmentCreateInput = {
         clientId: formData.clientId,
         professionalId: formData.professionalId,
         serviceIds: formData.serviceIds,
-        date: new Date(formData.date),
+        date: dateObj,
         startTime: formData.startTime,
         source: "admin",
         clientNotes: formData.clientNotes || undefined,
@@ -719,6 +982,11 @@ export default function AppointmentsPage() {
       loadAppointments();
     } catch (error) {
       console.error("Erro ao criar agendamento:", error);
+      if (error instanceof Error) {
+        setFormErrors({ submit: error.message });
+      } else {
+        setFormErrors({ submit: "Erro ao criar agendamento. Verifique os dados e tente novamente." });
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -827,9 +1095,11 @@ export default function AppointmentsPage() {
   };
 
   const handleSlotClick = (time: string, professionalId?: string) => {
+    setFormErrors({});
+    const dateToUse = selectedDay || currentDate;
     setFormData({
       ...formData,
-      date: currentDate.toISOString().split("T")[0],
+      date: dateToUse.toISOString().split("T")[0],
       startTime: time,
       professionalId: professionalId || "",
     });
@@ -1069,7 +1339,10 @@ export default function AppointmentsPage() {
               Link Público
             </Button>
             <Button
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={() => {
+                setFormErrors({});
+                setIsCreateModalOpen(true);
+              }}
               leftIcon={<Plus className="h-4 w-4" />}
             >
               Novo Agendamento
@@ -1133,7 +1406,10 @@ export default function AppointmentsPage() {
                   <ChevronRight className="h-5 w-5" />
                 </Button>
                 <span className="ml-2 text-lg font-semibold text-gray-900 dark:text-white capitalize">
-                  {formatDate(currentDate)}
+                  {calendarView === "month"
+                    ? currentDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
+                    : formatDate(currentDate)
+                  }
                 </span>
               </div>
 
@@ -1158,51 +1434,122 @@ export default function AppointmentsPage() {
               </div>
             </div>
 
-            {/* Calendário */}
-            <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
-              {/* Header com profissionais */}
-              {displayProfessionals.length > 0 && (
-                <div className="flex border-b border-gray-200 dark:border-gray-700">
-                  <div className="w-16 flex-shrink-0 border-r border-gray-200 dark:border-gray-700" />
-                  {displayProfessionals.map((prof) => (
-                    <div
-                      key={prof.id}
-                      className="flex-1 border-r border-gray-200 dark:border-gray-700 p-3 last:border-r-0"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-3 w-3 rounded-full"
-                          style={{ backgroundColor: prof.color || "#8B5CF6" }}
-                        />
-                        <span className="font-medium text-gray-900 dark:text-white text-sm">
-                          {prof.name}
-                        </span>
+            {/* Visualização Mensal - Calendário + Painel do Dia */}
+            {calendarView === "month" && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* Calendário do Mês */}
+                <div className="lg:col-span-1">
+                  <MonthCalendar
+                    currentDate={currentDate}
+                    appointments={appointments}
+                    onDayClick={(date) => {
+                      setSelectedDay(date);
+                      setFormData(prev => ({
+                        ...prev,
+                        date: date.toISOString().split("T")[0]
+                      }));
+                    }}
+                    selectedDay={selectedDay}
+                  />
+
+                  {/* Legenda */}
+                  <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Legenda:</p>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="w-3 h-3 rounded-full bg-blue-500" />
+                        <span className="text-gray-600 dark:text-gray-400">Confirmado</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="w-3 h-3 rounded-full bg-yellow-500" />
+                        <span className="text-gray-600 dark:text-gray-400">Pendente</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="w-4 h-4 rounded-lg ring-2 ring-violet-500" />
+                        <span className="text-gray-600 dark:text-gray-400">Hoje</span>
                       </div>
                     </div>
-                  ))}
+                  </div>
                 </div>
-              )}
 
-              {/* Time Slots */}
-              {isLoading ? (
-                <div className="flex h-96 items-center justify-center">
-                  <RefreshCw className="h-8 w-8 animate-spin text-violet-500" />
-                </div>
-              ) : (
-                <div className="max-h-[600px] overflow-y-auto">
-                  {WORKING_HOURS.map((time) => (
-                    <TimeSlotCell
-                      key={time}
-                      time={time}
+                {/* Painel de Agendamentos do Dia */}
+                <div className="lg:col-span-2">
+                  {isLoading ? (
+                    <div className="flex h-96 items-center justify-center rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+                      <RefreshCw className="h-8 w-8 animate-spin text-violet-500" />
+                    </div>
+                  ) : selectedDay ? (
+                    <DaySchedulePanel
+                      selectedDay={selectedDay}
                       appointments={appointments}
                       professionals={displayProfessionals}
                       onSlotClick={handleSlotClick}
                       onAppointmentClick={handleAppointmentClick}
+                      workingHours={WORKING_HOURS}
+                      formatCurrency={formatCurrency}
+                      formatDuration={formatDuration}
                     />
-                  ))}
+                  ) : (
+                    <div className="flex h-96 items-center justify-center rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+                      <div className="text-center">
+                        <CalendarIcon className="h-12 w-12 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+                        <p className="text-gray-500 dark:text-gray-400">
+                          Selecione um dia no calendário
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+
+            {/* Visualização Diária - Timeline */}
+            {calendarView === "day" && (
+              <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
+                {/* Header com profissionais */}
+                {displayProfessionals.length > 0 && (
+                  <div className="flex border-b border-gray-200 dark:border-gray-700">
+                    <div className="w-16 flex-shrink-0 border-r border-gray-200 dark:border-gray-700" />
+                    {displayProfessionals.map((prof) => (
+                      <div
+                        key={prof.id}
+                        className="flex-1 border-r border-gray-200 dark:border-gray-700 p-3 last:border-r-0"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="h-3 w-3 rounded-full"
+                            style={{ backgroundColor: prof.color || "#8B5CF6" }}
+                          />
+                          <span className="font-medium text-gray-900 dark:text-white text-sm">
+                            {prof.name}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Time Slots */}
+                {isLoading ? (
+                  <div className="flex h-96 items-center justify-center">
+                    <RefreshCw className="h-8 w-8 animate-spin text-violet-500" />
+                  </div>
+                ) : (
+                  <div className="max-h-[600px] overflow-y-auto">
+                    {WORKING_HOURS.map((time) => (
+                      <TimeSlotCell
+                        key={time}
+                        time={time}
+                        appointments={appointments}
+                        professionals={displayProfessionals}
+                        onSlotClick={handleSlotClick}
+                        onAppointmentClick={handleAppointmentClick}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -1330,6 +1677,7 @@ export default function AppointmentsPage() {
                     <ActionMenuItem
                       onClick={() => {
                         // Criar agendamento a partir da lista de espera
+                        setFormErrors({});
                         setFormData({
                           ...formData,
                           clientId: item.clientId,
@@ -1774,7 +2122,7 @@ export default function AppointmentsPage() {
               Confirmar Agendamento
             </Button>
           )}
-          {(selectedAppointment?.status === "pending" || selectedAppointment?.status === "confirmed") && (
+          {selectedAppointment?.status === "confirmed" && (
             <Button
               variant="secondary"
               className="w-full justify-start"
@@ -1796,29 +2144,31 @@ export default function AppointmentsPage() {
               Finalizar Atendimento
             </Button>
           )}
-          {selectedAppointment?.status !== "completed" && selectedAppointment?.status !== "canceled" && (
-            <>
-              <Button
-                variant="secondary"
-                className="w-full justify-start"
-                onClick={() => handleStatusChange("no_show")}
-                isLoading={isSubmitting}
-                leftIcon={<AlertTriangle className="h-4 w-4 text-gray-500" />}
-              >
-                Marcar como Não Compareceu
-              </Button>
-              <Button
-                variant="danger"
-                className="w-full justify-start"
-                onClick={() => {
-                  setIsStatusModalOpen(false);
-                  setIsCancelModalOpen(true);
-                }}
-                leftIcon={<X className="h-4 w-4" />}
-              >
-                Cancelar Agendamento
-              </Button>
-            </>
+          {selectedAppointment?.status === "confirmed" && (
+            <Button
+              variant="secondary"
+              className="w-full justify-start"
+              onClick={() => handleStatusChange("no_show")}
+              isLoading={isSubmitting}
+              leftIcon={<AlertTriangle className="h-4 w-4 text-gray-500" />}
+            >
+              Marcar como Não Compareceu
+            </Button>
+          )}
+          {selectedAppointment?.status !== "completed" &&
+           selectedAppointment?.status !== "canceled" &&
+           selectedAppointment?.status !== "no_show" && (
+            <Button
+              variant="danger"
+              className="w-full justify-start"
+              onClick={() => {
+                setIsStatusModalOpen(false);
+                setIsCancelModalOpen(true);
+              }}
+              leftIcon={<X className="h-4 w-4" />}
+            >
+              Cancelar Agendamento
+            </Button>
           )}
         </div>
       </Modal>

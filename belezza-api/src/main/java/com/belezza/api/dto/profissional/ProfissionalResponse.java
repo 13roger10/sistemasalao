@@ -1,5 +1,7 @@
 package com.belezza.api.dto.profissional;
 
+import com.belezza.api.entity.CategoriaProfissional;
+import com.belezza.api.entity.NivelProfissional;
 import com.belezza.api.entity.Profissional;
 import com.belezza.api.entity.TipoComissao;
 import lombok.AllArgsConstructor;
@@ -22,7 +24,12 @@ public class ProfissionalResponse {
     private String nome;
     private String email;
     private String telefone;
+    private CategoriaProfissional categoria;
+    private String categoriaDescricao;
+    private NivelProfissional nivel;
+    private String nivelDescricao;
     private String especialidade;
+    private String especializacoes;
     private String bio;
     private String fotoUrl;
     private boolean aceitaAgendamentoOnline;
@@ -51,7 +58,12 @@ public class ProfissionalResponse {
                 .nome(prof.getUsuario().getNome())
                 .email(prof.getUsuario().getEmail())
                 .telefone(prof.getUsuario().getTelefone())
+                .categoria(prof.getCategoria())
+                .categoriaDescricao(prof.getCategoria() != null ? prof.getCategoria().getDescricao() : null)
+                .nivel(prof.getNivel())
+                .nivelDescricao(prof.getNivel() != null ? prof.getNivel().getDescricao() : null)
                 .especialidade(prof.getEspecialidade())
+                .especializacoes(prof.getEspecializacoes())
                 .bio(prof.getBio())
                 .fotoUrl(prof.getFotoUrl())
                 .aceitaAgendamentoOnline(prof.isAceitaAgendamentoOnline())
