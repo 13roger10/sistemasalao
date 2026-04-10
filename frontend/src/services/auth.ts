@@ -48,8 +48,8 @@ function mapBackendUserToFrontend(backendUser: BackendLoginResponse["user"]): Us
 
 // Credenciais de administrador (usar variáveis de ambiente em produção)
 const ADMIN_CREDENTIALS = {
-  email: process.env.NEXT_PUBLIC_ADMIN_EMAIL || "admin@socialstudio.com",
-  password: process.env.ADMIN_PASSWORD || "Admin@2024!Secure",
+  email: process.env.NEXT_PUBLIC_ADMIN_EMAIL || "admin@belezza.ai",
+  password: process.env.ADMIN_PASSWORD || "Admin@123",
 };
 
 // Usuário mock para desenvolvimento
@@ -135,7 +135,14 @@ export const authService = {
       throw new Error("Credenciais inválidas");
     }
 
-    const mappedResponse: LoginResponse = await response.json();
+    const backendResponse: BackendLoginResponse = await response.json();
+
+    // Mapeia a resposta do backend para o formato esperado pelo frontend
+    const mappedResponse: LoginResponse = {
+      user: mapBackendUserToFrontend(backendResponse.user),
+      token: backendResponse.accessToken,
+    };
+
     logger.info("Login successful", {
       userId: mappedResponse.user.id,
       email: mappedResponse.user.email

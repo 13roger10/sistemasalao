@@ -35,8 +35,10 @@ public class HorarioTrabalhoService {
 
         LocalTime horaInicio = LocalTime.parse(request.getHoraInicio());
         LocalTime horaFim = LocalTime.parse(request.getHoraFim());
-        LocalTime intervaloInicio = LocalTime.parse(request.getIntervaloInicio());
-        LocalTime intervaloFim = LocalTime.parse(request.getIntervaloFim());
+        LocalTime intervaloInicio = request.getIntervaloInicio() != null && !request.getIntervaloInicio().isEmpty()
+                ? LocalTime.parse(request.getIntervaloInicio()) : null;
+        LocalTime intervaloFim = request.getIntervaloFim() != null && !request.getIntervaloFim().isEmpty()
+                ? LocalTime.parse(request.getIntervaloFim()) : null;
 
         validarHorarios(horaInicio, horaFim, intervaloInicio, intervaloFim);
 
@@ -69,8 +71,10 @@ public class HorarioTrabalhoService {
 
         LocalTime horaInicio = LocalTime.parse(request.getHoraInicio());
         LocalTime horaFim = LocalTime.parse(request.getHoraFim());
-        LocalTime intervaloInicio = LocalTime.parse(request.getIntervaloInicio());
-        LocalTime intervaloFim = LocalTime.parse(request.getIntervaloFim());
+        LocalTime intervaloInicio = request.getIntervaloInicio() != null && !request.getIntervaloInicio().isEmpty()
+                ? LocalTime.parse(request.getIntervaloInicio()) : null;
+        LocalTime intervaloFim = request.getIntervaloFim() != null && !request.getIntervaloFim().isEmpty()
+                ? LocalTime.parse(request.getIntervaloFim()) : null;
 
         validarHorarios(horaInicio, horaFim, intervaloInicio, intervaloFim);
 
@@ -99,11 +103,14 @@ public class HorarioTrabalhoService {
         if (horaInicio.isAfter(horaFim) || horaInicio.equals(horaFim)) {
             throw new BusinessException("Hora de início deve ser antes da hora de fim");
         }
-        if (intervaloInicio.isAfter(intervaloFim)) {
-            throw new BusinessException("Início do intervalo deve ser antes do fim do intervalo");
-        }
-        if (intervaloInicio.isBefore(horaInicio) || intervaloFim.isAfter(horaFim)) {
-            throw new BusinessException("Intervalo deve estar dentro do horário de trabalho");
+        // Validar intervalo apenas se ambos forem fornecidos
+        if (intervaloInicio != null && intervaloFim != null) {
+            if (intervaloInicio.isAfter(intervaloFim)) {
+                throw new BusinessException("Início do intervalo deve ser antes do fim do intervalo");
+            }
+            if (intervaloInicio.isBefore(horaInicio) || intervaloFim.isAfter(horaFim)) {
+                throw new BusinessException("Intervalo deve estar dentro do horário de trabalho");
+            }
         }
     }
 }

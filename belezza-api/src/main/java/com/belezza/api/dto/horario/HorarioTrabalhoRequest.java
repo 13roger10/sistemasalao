@@ -22,9 +22,9 @@ public class HorarioTrabalhoRequest {
     @NotNull(message = "Hora de fim é obrigatória")
     private String horaFim;
 
-    @NotNull(message = "Hora de início do intervalo é obrigatória")
+    // Intervalo é opcional - se não fornecido, profissional trabalha sem pausa
     private String intervaloInicio;
 
-    @NotNull(message = "Hora de fim do intervalo é obrigatória")
+    // Intervalo é opcional - se não fornecido, profissional trabalha sem pausa
     private String intervaloFim;
 }
