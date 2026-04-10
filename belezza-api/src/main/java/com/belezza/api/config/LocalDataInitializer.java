@@ -41,10 +41,10 @@ public class LocalDataInitializer {
                 return;
             }
 
-            // Create admin user
+            // Create admin user (same credentials as migration V2)
             Usuario admin = Usuario.builder()
-                    .email("admin@admin.com")
-                    .password(passwordEncoder.encode("admin123"))
+                    .email("admin@belezza.ai")
+                    .password(passwordEncoder.encode("Admin@123"))
                     .nome("Administrador Belezza")
                     .telefone("+5511999999999")
                     .role(Role.ADMIN)
@@ -143,7 +143,7 @@ public class LocalDataInitializer {
             log.info("=== Local development data initialized ===");
             log.info("");
             log.info("Test credentials:");
-            log.info("  Admin:        admin@admin.com / admin123");
+            log.info("  Admin:        admin@belezza.ai / Admin@123");
             log.info("  Professional: prof@prof.com / prof123");
             log.info("  Client:       cliente@cliente.com / cliente123");
             log.info("");

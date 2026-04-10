@@ -48,10 +48,9 @@ export default function SalonLoginPage() {
 
   // Usuários de demonstração
   const demoUsers = [
-    { email: "admin@belezza.com", password: "admin123", role: "ADMIN" as AuthUserRole },
-    { email: "recepcionista@belezza.com", password: "recep123", role: "RECEPCIONIST" as AuthUserRole },
-    { email: "profissional@belezza.com", password: "prof123", role: "PROFESSIONAL" as AuthUserRole },
-    { email: "cliente@belezza.com", password: "cliente123", role: "CLIENT" as AuthUserRole },
+    { email: "admin@belezza.ai", password: "Admin@123", role: "ADMIN" as AuthUserRole },
+    { email: "prof@prof.com", password: "prof123", role: "PROFESSIONAL" as AuthUserRole },
+    { email: "cliente@cliente.com", password: "cliente123", role: "CLIENT" as AuthUserRole },
   ];
 
   const fillDemoUser = (demoEmail: string, demoPassword: string) => {
