@@ -4,6 +4,8 @@ import com.belezza.api.dto.profissional.CategoriaResponse;
 import com.belezza.api.dto.profissional.ProfissionalRequest;
 import com.belezza.api.dto.profissional.ProfissionalResponse;
 import com.belezza.api.entity.CategoriaProfissional;
+import com.belezza.api.entity.DiaSemana;
+import com.belezza.api.entity.HorarioTrabalho;
 import com.belezza.api.entity.Profissional;
 import com.belezza.api.entity.Salon;
 import com.belezza.api.entity.Servico;
@@ -11,6 +13,7 @@ import com.belezza.api.entity.Usuario;
 import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.DuplicateResourceException;
 import com.belezza.api.exception.ResourceNotFoundException;
+import com.belezza.api.repository.HorarioTrabalhoRepository;
 import com.belezza.api.repository.ProfissionalRepository;
 import com.belezza.api.repository.ServicoRepository;
 import com.belezza.api.repository.UsuarioRepository;
@@ -19,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,6 +34,7 @@ public class ProfissionalService {
     private final ProfissionalRepository profissionalRepository;
     private final UsuarioRepository usuarioRepository;
     private final ServicoRepository servicoRepository;
+    private final HorarioTrabalhoRepository horarioTrabalhoRepository;
     private final SalonService salonService;
 
     @Transactional
@@ -68,7 +73,50 @@ public class ProfissionalService {
         profissional = profissionalRepository.save(profissional);
         log.info("Profissional criado: {} no salão {}", profissional.getId(), salon.getId());
 
+        // Criar horários de trabalho padrão baseados no horário do salão
+        criarHorariosTrabalhoDefault(profissional, salon);
+
         return ProfissionalResponse.fromEntity(profissional);
+    }
+
+    /**
+     * Cria horários de trabalho padrão para um novo profissional baseados no horário do salão.
+     */
+    private void criarHorariosTrabalhoDefault(Profissional profissional, Salon salon) {
+        LocalTime abertura = salon.getHorarioAbertura();
+        LocalTime fechamento = salon.getHorarioFechamento();
+        LocalTime intervaloInicio = LocalTime.of(12, 0);
+        LocalTime intervaloFim = LocalTime.of(13, 0);
+
+        // Criar horários para segunda a sexta
+        for (DiaSemana dia : List.of(DiaSemana.SEGUNDA, DiaSemana.TERCA, DiaSemana.QUARTA, DiaSemana.QUINTA, DiaSemana.SEXTA)) {
+            HorarioTrabalho horario = HorarioTrabalho.builder()
+                    .profissional(profissional)
+                    .diaSemana(dia)
+                    .horaInicio(abertura)
+                    .horaFim(fechamento)
+                    .intervaloInicio(intervaloInicio)
+                    .intervaloFim(intervaloFim)
+                    .ativo(true)
+                    .build();
+            horarioTrabalhoRepository.save(horario);
+        }
+
+        // Sábado com horário reduzido (até 17:00)
+        LocalTime fechamentoSabado = fechamento.isAfter(LocalTime.of(17, 0)) ? LocalTime.of(17, 0) : fechamento;
+        HorarioTrabalho horarioSabado = HorarioTrabalho.builder()
+                .profissional(profissional)
+                .diaSemana(DiaSemana.SABADO)
+                .horaInicio(abertura)
+                .horaFim(fechamentoSabado)
+                .intervaloInicio(intervaloInicio)
+                .intervaloFim(intervaloFim)
+                .ativo(true)
+                .build();
+        horarioTrabalhoRepository.save(horarioSabado);
+
+        log.info("Horários de trabalho padrão criados para profissional {}: {} - {}",
+                profissional.getId(), abertura, fechamento);
     }
 
     @Transactional(readOnly = true)

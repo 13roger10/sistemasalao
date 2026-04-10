@@ -1,10 +1,21 @@
 package com.belezza.api.controller;
 
+import com.belezza.api.entity.DiaSemana;
+import com.belezza.api.entity.HorarioTrabalho;
+import com.belezza.api.entity.Profissional;
+import com.belezza.api.entity.Salon;
+import com.belezza.api.repository.HorarioTrabalhoRepository;
+import com.belezza.api.repository.ProfissionalRepository;
+import com.belezza.api.service.SalonService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -19,27 +30,51 @@ import java.util.UUID;
 @Slf4j
 public class SalonScheduleController {
 
+    private final SalonService salonService;
+    private final ProfissionalRepository profissionalRepository;
+    private final HorarioTrabalhoRepository horarioTrabalhoRepository;
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
+
     // ==================== SCHEDULE ENDPOINTS ====================
 
     @GetMapping
-    public ResponseEntity<ScheduleSettingsResponse> getSchedule() {
-        log.info("Getting schedule settings");
+    public ResponseEntity<ScheduleSettingsResponse> getSchedule(@AuthenticationPrincipal UserDetails userDetails) {
+        log.info("Getting schedule settings for user: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
 
-        // Mock data for development
+        // Buscar dados do salão do banco de dados
+        Salon salon = null;
+        String abertura = "09:00";
+        String fechamento = "19:00";
+        int intervaloAgendamento = 30;
+        int antecedenciaMinima = 2;
+
+        try {
+            if (userDetails != null) {
+                salon = salonService.getSalonByAdminEmail(userDetails.getUsername());
+                abertura = salon.getHorarioAbertura().format(TIME_FORMATTER);
+                fechamento = salon.getHorarioFechamento().format(TIME_FORMATTER);
+                intervaloAgendamento = salon.getIntervaloAgendamentoMinutos();
+                antecedenciaMinima = salon.getAntecedenciaMinimaHoras();
+            }
+        } catch (Exception e) {
+            log.warn("Não foi possível buscar dados do salão: {}", e.getMessage());
+        }
+
+        // Montar resposta com os horários do salão
         List<DayScheduleResponse> days = new ArrayList<>();
         days.add(new DayScheduleResponse(0, false, List.of())); // Sunday
-        days.add(new DayScheduleResponse(1, true, List.of(new TimeRangeResponse("09:00", "19:00")))); // Monday
-        days.add(new DayScheduleResponse(2, true, List.of(new TimeRangeResponse("09:00", "19:00")))); // Tuesday
-        days.add(new DayScheduleResponse(3, true, List.of(new TimeRangeResponse("09:00", "19:00")))); // Wednesday
-        days.add(new DayScheduleResponse(4, true, List.of(new TimeRangeResponse("09:00", "19:00")))); // Thursday
-        days.add(new DayScheduleResponse(5, true, List.of(new TimeRangeResponse("09:00", "19:00")))); // Friday
-        days.add(new DayScheduleResponse(6, true, List.of(new TimeRangeResponse("09:00", "17:00")))); // Saturday
+        days.add(new DayScheduleResponse(1, true, List.of(new TimeRangeResponse(abertura, fechamento)))); // Monday
+        days.add(new DayScheduleResponse(2, true, List.of(new TimeRangeResponse(abertura, fechamento)))); // Tuesday
+        days.add(new DayScheduleResponse(3, true, List.of(new TimeRangeResponse(abertura, fechamento)))); // Wednesday
+        days.add(new DayScheduleResponse(4, true, List.of(new TimeRangeResponse(abertura, fechamento)))); // Thursday
+        days.add(new DayScheduleResponse(5, true, List.of(new TimeRangeResponse(abertura, fechamento)))); // Friday
+        days.add(new DayScheduleResponse(6, true, List.of(new TimeRangeResponse(abertura, "17:00")))); // Saturday
 
         ScheduleSettingsResponse settings = new ScheduleSettingsResponse(
                 new WeekScheduleResponse(days),
                 "America/Sao_Paulo",
-                30,     // slotDuration
-                2,      // minAdvanceBooking (hours)
+                intervaloAgendamento,
+                antecedenciaMinima,
                 30,     // maxAdvanceBooking (days)
                 true,   // allowSameDayBooking
                 10      // bufferBetweenAppointments (minutes)
@@ -49,10 +84,46 @@ public class SalonScheduleController {
     }
 
     @PutMapping
-    public ResponseEntity<ScheduleSettingsResponse> updateSchedule(@RequestBody ScheduleSettingsRequest request) {
-        log.info("Updating schedule settings");
+    public ResponseEntity<ScheduleSettingsResponse> updateSchedule(
+            @RequestBody ScheduleSettingsRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        log.info("Updating schedule settings for user: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
 
-        // In production, this would update the database
+        // Atualizar dados do salão no banco de dados
+        if (userDetails != null && request.schedule() != null && !request.schedule().days().isEmpty()) {
+            try {
+                Salon salon = salonService.getSalonByAdminEmail(userDetails.getUsername());
+
+                // Pegar o primeiro dia útil aberto para extrair o horário
+                for (DayScheduleResponse day : request.schedule().days()) {
+                    if (day.isOpen() && !day.timeRanges().isEmpty()) {
+                        TimeRangeResponse timeRange = day.timeRanges().get(0);
+                        LocalTime abertura = LocalTime.parse(timeRange.start(), TIME_FORMATTER);
+                        LocalTime fechamento = LocalTime.parse(timeRange.end(), TIME_FORMATTER);
+
+                        salon.setHorarioAbertura(abertura);
+                        salon.setHorarioFechamento(fechamento);
+                        break;
+                    }
+                }
+
+                if (request.slotDuration() != null) {
+                    salon.setIntervaloAgendamentoMinutos(request.slotDuration());
+                }
+                if (request.minAdvanceBooking() != null) {
+                    salon.setAntecedenciaMinimaHoras(request.minAdvanceBooking());
+                }
+
+                salonService.save(salon);
+                log.info("Horários do salão atualizados: {} - {}", salon.getHorarioAbertura(), salon.getHorarioFechamento());
+
+                // Atualizar horários de trabalho de todos os profissionais do salão
+                atualizarHorariosTrabalhoProfissionais(salon);
+            } catch (Exception e) {
+                log.error("Erro ao atualizar horários do salão: {}", e.getMessage());
+            }
+        }
+
         ScheduleSettingsResponse settings = new ScheduleSettingsResponse(
                 request.schedule() != null ? request.schedule() : new WeekScheduleResponse(List.of()),
                 request.timezone() != null ? request.timezone() : "America/Sao_Paulo",
@@ -64,6 +135,73 @@ public class SalonScheduleController {
         );
 
         return ResponseEntity.ok(settings);
+    }
+
+    /**
+     * Atualiza os horários de trabalho de todos os profissionais do salão
+     * para corresponder aos novos horários do salão.
+     */
+    private void atualizarHorariosTrabalhoProfissionais(Salon salon) {
+        List<Profissional> profissionais = profissionalRepository.findBySalonIdAndAtivoTrue(salon.getId());
+        LocalTime abertura = salon.getHorarioAbertura();
+        LocalTime fechamento = salon.getHorarioFechamento();
+        LocalTime fechamentoSabado = fechamento.isAfter(LocalTime.of(17, 0)) ? LocalTime.of(17, 0) : fechamento;
+
+        for (Profissional profissional : profissionais) {
+            List<HorarioTrabalho> horarios = horarioTrabalhoRepository.findByProfissionalIdAndAtivoTrue(profissional.getId());
+
+            if (horarios.isEmpty()) {
+                // Criar horários padrão se não existirem
+                criarHorariosPadrao(profissional, abertura, fechamento, fechamentoSabado);
+            } else {
+                // Atualizar horários existentes
+                for (HorarioTrabalho horario : horarios) {
+                    horario.setHoraInicio(abertura);
+                    if (horario.getDiaSemana() == DiaSemana.SABADO) {
+                        horario.setHoraFim(fechamentoSabado);
+                    } else if (horario.getDiaSemana() != DiaSemana.DOMINGO) {
+                        horario.setHoraFim(fechamento);
+                    }
+                    horarioTrabalhoRepository.save(horario);
+                }
+            }
+        }
+        log.info("Horários de trabalho atualizados para {} profissionais", profissionais.size());
+    }
+
+    /**
+     * Cria horários de trabalho padrão para um profissional.
+     */
+    private void criarHorariosPadrao(Profissional profissional, LocalTime abertura, LocalTime fechamento, LocalTime fechamentoSabado) {
+        LocalTime intervaloInicio = LocalTime.of(12, 0);
+        LocalTime intervaloFim = LocalTime.of(13, 0);
+
+        for (DiaSemana dia : List.of(DiaSemana.SEGUNDA, DiaSemana.TERCA, DiaSemana.QUARTA, DiaSemana.QUINTA, DiaSemana.SEXTA)) {
+            HorarioTrabalho horario = HorarioTrabalho.builder()
+                    .profissional(profissional)
+                    .diaSemana(dia)
+                    .horaInicio(abertura)
+                    .horaFim(fechamento)
+                    .intervaloInicio(intervaloInicio)
+                    .intervaloFim(intervaloFim)
+                    .ativo(true)
+                    .build();
+            horarioTrabalhoRepository.save(horario);
+        }
+
+        // Sábado
+        HorarioTrabalho horarioSabado = HorarioTrabalho.builder()
+                .profissional(profissional)
+                .diaSemana(DiaSemana.SABADO)
+                .horaInicio(abertura)
+                .horaFim(fechamentoSabado)
+                .intervaloInicio(intervaloInicio)
+                .intervaloFim(intervaloFim)
+                .ativo(true)
+                .build();
+        horarioTrabalhoRepository.save(horarioSabado);
+
+        log.info("Horários padrão criados para profissional {}", profissional.getId());
     }
 
     // ==================== HOLIDAYS ENDPOINTS ====================

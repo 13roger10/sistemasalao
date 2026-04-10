@@ -212,4 +212,13 @@ public class SalonService {
         }
         return auth.getName();
     }
+
+    /**
+     * Save salon entity directly.
+     */
+    @Transactional
+    public Salon save(Salon salon) {
+        log.info("Salvando salão id: {}", salon.getId());
+        return salonRepository.save(salon);
+    }
 }

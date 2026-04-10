@@ -26,8 +26,9 @@ import { Modal, ConfirmModal } from "@/components/ui/Modal";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import { useUnit } from "@/contexts/UnitContext";
 import { professionalService } from "@/services/salon/professionalService";
+import { serviceService } from "@/services/salon/serviceService";
 import { api } from "@/services/salon/api";
-import type { Professional, ProfessionalCreateInput, ProfessionalUpdateInput } from "@/types/salon";
+import type { Professional, ProfessionalCreateInput, ProfessionalUpdateInput, Service } from "@/types/salon";
 
 // Tipo para usuário do backend
 interface User {
@@ -50,6 +51,7 @@ interface ProfessionalFormData {
   specialty: string;
   bio: string;
   acceptsOnlineBooking: boolean;
+  serviceIds: string[];
 }
 
 // Badge de Status
@@ -119,7 +121,12 @@ export default function ProfessionalsPage() {
     specialty: "",
     bio: "",
     acceptsOnlineBooking: true,
+    serviceIds: [],
   });
+
+  // Lista de serviços disponíveis
+  const [availableServices, setAvailableServices] = useState<Service[]>([]);
+  const [isLoadingServices, setIsLoadingServices] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   // Lista de usuários disponíveis
@@ -170,6 +177,22 @@ export default function ProfessionalsPage() {
     }
   }, []);
 
+  // Carregar serviços disponíveis
+  const loadAvailableServices = useCallback(async () => {
+    setIsLoadingServices(true);
+    try {
+      const services = await serviceService.getAll({ salonId: selectedUnitId || "1" });
+      // Filtrar apenas serviços ativos
+      const activeServices = services.filter(s => s.status === "active");
+      setAvailableServices(activeServices);
+    } catch (error) {
+      console.error("Erro ao carregar serviços:", error);
+      setAvailableServices([]);
+    } finally {
+      setIsLoadingServices(false);
+    }
+  }, [selectedUnitId]);
+
   // Carregar profissionais da API
   const loadProfessionals = useCallback(async () => {
     setIsLoading(true);
@@ -199,12 +222,20 @@ export default function ProfessionalsPage() {
     loadProfessionals();
   }, [loadProfessionals]);
 
-  // Carregar usuários quando abrir modal de criação
+  // Carregar usuários e serviços quando abrir modal de criação
   useEffect(() => {
     if (isCreateModalOpen) {
       loadAvailableUsers();
+      loadAvailableServices();
     }
-  }, [isCreateModalOpen, loadAvailableUsers]);
+  }, [isCreateModalOpen, loadAvailableUsers, loadAvailableServices]);
+
+  // Carregar serviços quando abrir modal de edição
+  useEffect(() => {
+    if (isEditModalOpen) {
+      loadAvailableServices();
+    }
+  }, [isEditModalOpen, loadAvailableServices]);
 
   // Handlers
   const handleSearch = (e: React.FormEvent) => {
@@ -223,6 +254,7 @@ export default function ProfessionalsPage() {
         specialties: formData.specialty ? [formData.specialty] : [],
         bio: formData.bio,
         acceptsOnlineBooking: formData.acceptsOnlineBooking,
+        serviceIds: formData.serviceIds,
       };
       await professionalService.create(createData);
       setIsCreateModalOpen(false);
@@ -248,6 +280,7 @@ export default function ProfessionalsPage() {
         specialties: formData.specialty ? [formData.specialty] : [],
         bio: formData.bio,
         acceptsOnlineBooking: formData.acceptsOnlineBooking,
+        serviceIds: formData.serviceIds,
       };
       await professionalService.update(selectedProfessional.id, updateData);
       setIsEditModalOpen(false);
@@ -343,6 +376,7 @@ export default function ProfessionalsPage() {
       specialty: "",
       bio: "",
       acceptsOnlineBooking: true,
+      serviceIds: [],
     });
     setFormErrors({});
     setSelectedProfessional(null);
@@ -360,6 +394,7 @@ export default function ProfessionalsPage() {
       specialty: professional.specialties?.[0] || "",
       bio: professional.bio || "",
       acceptsOnlineBooking: professional.acceptsOnlineBooking ?? true,
+      serviceIds: professional.serviceIds || [],
     });
     setIsEditModalOpen(true);
   };
@@ -854,6 +889,70 @@ export default function ProfessionalsPage() {
                 </div>
               </label>
             </div>
+
+            {/* Seleção de Serviços */}
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Serviços que o profissional realiza
+              </label>
+              {isLoadingServices ? (
+                <div className="flex items-center justify-center py-4">
+                  <RefreshCw className="h-5 w-5 animate-spin text-violet-500" />
+                  <span className="ml-2 text-sm text-gray-500">Carregando serviços...</span>
+                </div>
+              ) : availableServices.length === 0 ? (
+                <div className="rounded-lg border-2 border-dashed border-gray-300 p-4 text-center dark:border-gray-600">
+                  <Scissors className="mx-auto h-8 w-8 text-gray-400" />
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Nenhum serviço cadastrado
+                  </p>
+                </div>
+              ) : (
+                <div className="max-h-[200px] space-y-2 overflow-y-auto rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                  {availableServices.map((service) => (
+                    <label
+                      key={service.id}
+                      className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-all hover:border-violet-300 hover:bg-violet-50 dark:hover:border-violet-700 dark:hover:bg-violet-900/20 ${
+                        formData.serviceIds.includes(service.id)
+                          ? "border-violet-500 bg-violet-50 dark:border-violet-500 dark:bg-violet-900/30"
+                          : "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formData.serviceIds.includes(service.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFormData({
+                              ...formData,
+                              serviceIds: [...formData.serviceIds, service.id],
+                            });
+                          } else {
+                            setFormData({
+                              ...formData,
+                              serviceIds: formData.serviceIds.filter((id) => id !== service.id),
+                            });
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
+                      />
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900 dark:text-white">{service.name}</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {service.category?.name} • {service.durationMinutes} min • R$ {service.price?.toFixed(2)}
+                        </p>
+                      </div>
+                      {formData.serviceIds.includes(service.id) && (
+                        <Check className="h-5 w-5 text-violet-500" />
+                      )}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {formData.serviceIds.length} serviço(s) selecionado(s)
+              </p>
+            </div>
           </div>
         )}
       </Modal>
@@ -933,6 +1032,70 @@ export default function ProfessionalsPage() {
               Aceita agendamento online
             </span>
           </label>
+
+          {/* Seleção de Serviços */}
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Serviços que o profissional realiza
+            </label>
+            {isLoadingServices ? (
+              <div className="flex items-center justify-center py-4">
+                <RefreshCw className="h-5 w-5 animate-spin text-violet-500" />
+                <span className="ml-2 text-sm text-gray-500">Carregando serviços...</span>
+              </div>
+            ) : availableServices.length === 0 ? (
+              <div className="rounded-lg border-2 border-dashed border-gray-300 p-4 text-center dark:border-gray-600">
+                <Scissors className="mx-auto h-8 w-8 text-gray-400" />
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                  Nenhum serviço cadastrado
+                </p>
+              </div>
+            ) : (
+              <div className="max-h-[200px] space-y-2 overflow-y-auto rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                {availableServices.map((service) => (
+                  <label
+                    key={service.id}
+                    className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-all hover:border-violet-300 hover:bg-violet-50 dark:hover:border-violet-700 dark:hover:bg-violet-900/20 ${
+                      formData.serviceIds.includes(service.id)
+                        ? "border-violet-500 bg-violet-50 dark:border-violet-500 dark:bg-violet-900/30"
+                        : "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.serviceIds.includes(service.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setFormData({
+                            ...formData,
+                            serviceIds: [...formData.serviceIds, service.id],
+                          });
+                        } else {
+                          setFormData({
+                            ...formData,
+                            serviceIds: formData.serviceIds.filter((id) => id !== service.id),
+                          });
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
+                    />
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900 dark:text-white">{service.name}</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {service.category?.name} • {service.durationMinutes} min • R$ {service.price?.toFixed(2)}
+                      </p>
+                    </div>
+                    {formData.serviceIds.includes(service.id) && (
+                      <Check className="h-5 w-5 text-violet-500" />
+                    )}
+                  </label>
+                ))}
+              </div>
+            )}
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {formData.serviceIds.length} serviço(s) selecionado(s)
+            </p>
+          </div>
 
           {selectedProfessional && (
             <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50">
