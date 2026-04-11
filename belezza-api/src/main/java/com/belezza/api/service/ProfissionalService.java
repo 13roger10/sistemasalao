@@ -102,8 +102,8 @@ public class ProfissionalService {
             horarioTrabalhoRepository.save(horario);
         }
 
-        // Sábado com horário reduzido (até 17:00)
-        LocalTime fechamentoSabado = fechamento.isAfter(LocalTime.of(17, 0)) ? LocalTime.of(17, 0) : fechamento;
+        // Sábado com horário reduzido (até 18:00)
+        LocalTime fechamentoSabado = fechamento.isAfter(LocalTime.of(18, 0)) ? LocalTime.of(18, 0) : fechamento;
         HorarioTrabalho horarioSabado = HorarioTrabalho.builder()
                 .profissional(profissional)
                 .diaSemana(DiaSemana.SABADO)

@@ -44,7 +44,7 @@ public class SalonScheduleController {
         // Buscar dados do salão do banco de dados
         Salon salon = null;
         String abertura = "09:00";
-        String fechamento = "19:00";
+        String fechamento = "20:00";
         int intervaloAgendamento = 30;
         int antecedenciaMinima = 2;
 
@@ -68,7 +68,7 @@ public class SalonScheduleController {
         days.add(new DayScheduleResponse(3, true, List.of(new TimeRangeResponse(abertura, fechamento)))); // Wednesday
         days.add(new DayScheduleResponse(4, true, List.of(new TimeRangeResponse(abertura, fechamento)))); // Thursday
         days.add(new DayScheduleResponse(5, true, List.of(new TimeRangeResponse(abertura, fechamento)))); // Friday
-        days.add(new DayScheduleResponse(6, true, List.of(new TimeRangeResponse(abertura, "17:00")))); // Saturday
+        days.add(new DayScheduleResponse(6, true, List.of(new TimeRangeResponse(abertura, "18:00")))); // Saturday
 
         ScheduleSettingsResponse settings = new ScheduleSettingsResponse(
                 new WeekScheduleResponse(days),
@@ -145,7 +145,7 @@ public class SalonScheduleController {
         List<Profissional> profissionais = profissionalRepository.findBySalonIdAndAtivoTrue(salon.getId());
         LocalTime abertura = salon.getHorarioAbertura();
         LocalTime fechamento = salon.getHorarioFechamento();
-        LocalTime fechamentoSabado = fechamento.isAfter(LocalTime.of(17, 0)) ? LocalTime.of(17, 0) : fechamento;
+        LocalTime fechamentoSabado = fechamento.isAfter(LocalTime.of(18, 0)) ? LocalTime.of(18, 0) : fechamento;
 
         for (Profissional profissional : profissionais) {
             List<HorarioTrabalho> horarios = horarioTrabalhoRepository.findByProfissionalIdAndAtivoTrue(profissional.getId());

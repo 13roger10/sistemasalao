@@ -19,7 +19,7 @@ SELECT
     '01001-000',
     '+5511999999999',
     '09:00',
-    '19:00',
+    '20:00',
     30, 0, 2, 3,
     TRUE, TRUE, u.id,
     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP

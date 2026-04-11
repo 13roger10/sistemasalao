@@ -48,12 +48,12 @@ public class SalonBusinessController {
                 new CoordinatesResponse(-23.5505, -46.6333),
                 new ScheduleResponse(List.of(
                         new DayScheduleResponse(0, false, List.of()),
-                        new DayScheduleResponse(1, true, List.of(new TimeRangeResponse("09:00", "19:00"))),
-                        new DayScheduleResponse(2, true, List.of(new TimeRangeResponse("09:00", "19:00"))),
-                        new DayScheduleResponse(3, true, List.of(new TimeRangeResponse("09:00", "19:00"))),
-                        new DayScheduleResponse(4, true, List.of(new TimeRangeResponse("09:00", "19:00"))),
-                        new DayScheduleResponse(5, true, List.of(new TimeRangeResponse("09:00", "19:00"))),
-                        new DayScheduleResponse(6, true, List.of(new TimeRangeResponse("09:00", "17:00")))
+                        new DayScheduleResponse(1, true, List.of(new TimeRangeResponse("09:00", "20:00"))),
+                        new DayScheduleResponse(2, true, List.of(new TimeRangeResponse("09:00", "20:00"))),
+                        new DayScheduleResponse(3, true, List.of(new TimeRangeResponse("09:00", "20:00"))),
+                        new DayScheduleResponse(4, true, List.of(new TimeRangeResponse("09:00", "20:00"))),
+                        new DayScheduleResponse(5, true, List.of(new TimeRangeResponse("09:00", "20:00"))),
+                        new DayScheduleResponse(6, true, List.of(new TimeRangeResponse("09:00", "18:00")))
                 )),
                 "America/Sao_Paulo",
                 "/images/logo.png",

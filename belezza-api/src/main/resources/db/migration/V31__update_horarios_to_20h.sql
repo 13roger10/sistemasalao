@@ -1,9 +1,16 @@
--- Belezza API - Migration V27
--- Update ALL work schedules to standard salon operating hours (09:00-20:00)
--- This fixes the issue where booking page shows limited hours
+-- Belezza API - Migration V31
+-- Update salon and work schedules to 09:00-20:00 operating hours
+-- Weekdays: 09:00-20:00, Saturday: 09:00-18:00
 
 -- =============================================
--- Update ALL work schedules to 09:00-20:00 for weekdays
+-- Update salon closing time to 20:00
+-- =============================================
+UPDATE salons
+SET horario_fechamento = TIME '20:00'
+WHERE horario_fechamento = TIME '19:00';
+
+-- =============================================
+-- Update ALL weekday work schedules to 09:00-20:00
 -- =============================================
 UPDATE horarios_trabalho
 SET hora_inicio = TIME '09:00',
