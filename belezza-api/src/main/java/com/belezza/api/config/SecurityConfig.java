@@ -1,5 +1,6 @@
 package com.belezza.api.config;
 
+import com.belezza.api.security.ApiKeyAuthFilter;
 import com.belezza.api.security.JwtAuthenticationFilter;
 import com.belezza.api.security.RateLimitFilter;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final ApiKeyAuthFilter apiKeyAuthFilter;
     private final RateLimitFilter rateLimitFilter;
     private final UserDetailsService userDetailsService;
     private final CorsConfigurationSource corsConfigurationSource;
@@ -49,6 +51,8 @@ public class SecurityConfig {
     private static final String[] PUBLIC_ENDPOINTS = {
         "/api/auth/**",
         "/api/public/**",
+        "/api/v1/**",      // Public API v1 — authenticated by ApiKeyAuthFilter via X-API-Key
+        "/ws/**",          // WebSocket handshake (auth happens inside STOMP CONNECT)
         "/api/usuarios/roles",
         "/api/agendamentos/**",
         "/api/profissionais/**",
@@ -120,6 +124,9 @@ public class SecurityConfig {
 
             // Add Rate Limit filter first
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+
+            // Add API Key filter (handles /api/v1/** requests)
+            .addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class)
 
             // Add JWT filter before UsernamePasswordAuthenticationFilter
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

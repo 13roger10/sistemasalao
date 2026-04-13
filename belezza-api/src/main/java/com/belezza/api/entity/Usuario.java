@@ -83,6 +83,14 @@ public class Usuario implements UserDetails {
 
     private LocalDateTime ultimoLogin;
 
+    // 2FA / TOTP fields
+    @Column(length = 255)
+    private String totpSecret;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean totpEnabled = false;
+
     // UserDetails implementation
 
     @Override

@@ -4,9 +4,11 @@ import com.belezza.api.dto.post.PostCreateRequest;
 import com.belezza.api.dto.post.PostResponse;
 import com.belezza.api.dto.post.PostScheduleRequest;
 import com.belezza.api.dto.post.PostUpdateRequest;
+import com.belezza.api.entity.FuncaoStudio;
 import com.belezza.api.entity.Post;
 import com.belezza.api.entity.StatusPost;
 import com.belezza.api.security.annotation.Authenticated;
+import com.belezza.api.service.EquipeStudioService;
 import com.belezza.api.service.PostService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -35,6 +37,7 @@ import org.springframework.web.bind.annotation.*;
 public class PostController {
 
     private final PostService postService;
+    private final EquipeStudioService equipeStudioService;
 
     // ====================================
     // CRUD Operations
@@ -51,6 +54,7 @@ public class PostController {
         @Valid @RequestBody PostCreateRequest request,
         @AuthenticationPrincipal UserDetails userDetails
     ) {
+        equipeStudioService.verificarAcesso(salonId, userDetails.getUsername(), FuncaoStudio.EDITOR);
         log.info("Create post for salon: {}", salonId);
 
         Long criadorId = extractUsuarioId(userDetails);
@@ -79,8 +83,10 @@ public class PostController {
     public ResponseEntity<PostResponse> updatePost(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Post ID") @PathVariable Long id,
-        @Valid @RequestBody PostUpdateRequest request
+        @Valid @RequestBody PostUpdateRequest request,
+        @AuthenticationPrincipal UserDetails userDetails
     ) {
+        equipeStudioService.verificarAcesso(salonId, userDetails.getUsername(), FuncaoStudio.EDITOR);
         log.info("Update post: {} for salon: {}", id, salonId);
 
         PostService.PostUpdateData data = new PostService.PostUpdateData(
@@ -105,8 +111,10 @@ public class PostController {
     )
     public ResponseEntity<PostResponse> getPost(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
-        @Parameter(description = "Post ID") @PathVariable Long id
+        @Parameter(description = "Post ID") @PathVariable Long id,
+        @AuthenticationPrincipal UserDetails userDetails
     ) {
+        equipeStudioService.verificarAcesso(salonId, userDetails.getUsername(), FuncaoStudio.VISUALIZADOR);
         log.info("Get post: {} for salon: {}", id, salonId);
 
         Post post = postService.getPost(salonId, id);
@@ -124,8 +132,10 @@ public class PostController {
     public ResponseEntity<Page<PostResponse>> listPosts(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Filter by status") @RequestParam(required = false) StatusPost status,
-        @PageableDefault(size = 20, sort = "criadoEm") Pageable pageable
+        @PageableDefault(size = 20, sort = "criadoEm") Pageable pageable,
+        @AuthenticationPrincipal UserDetails userDetails
     ) {
+        equipeStudioService.verificarAcesso(salonId, userDetails.getUsername(), FuncaoStudio.VISUALIZADOR);
         log.info("List posts for salon: {} with status: {}", salonId, status);
 
         Page<Post> posts = postService.listPosts(salonId, status, pageable);
@@ -142,8 +152,10 @@ public class PostController {
     )
     public ResponseEntity<Void> deletePost(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
-        @Parameter(description = "Post ID") @PathVariable Long id
+        @Parameter(description = "Post ID") @PathVariable Long id,
+        @AuthenticationPrincipal UserDetails userDetails
     ) {
+        equipeStudioService.verificarAcesso(salonId, userDetails.getUsername(), FuncaoStudio.EDITOR);
         log.info("Delete post: {} for salon: {}", id, salonId);
 
         postService.deletePost(salonId, id);
@@ -164,8 +176,10 @@ public class PostController {
     )
     public ResponseEntity<PostResponse> publishPost(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
-        @Parameter(description = "Post ID") @PathVariable Long id
+        @Parameter(description = "Post ID") @PathVariable Long id,
+        @AuthenticationPrincipal UserDetails userDetails
     ) {
+        equipeStudioService.verificarAcesso(salonId, userDetails.getUsername(), FuncaoStudio.GESTOR);
         log.info("Publish post: {} for salon: {}", id, salonId);
 
         Post post = postService.publishPost(salonId, id);
@@ -188,8 +202,10 @@ public class PostController {
     public ResponseEntity<PostResponse> schedulePost(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Post ID") @PathVariable Long id,
-        @Valid @RequestBody PostScheduleRequest request
+        @Valid @RequestBody PostScheduleRequest request,
+        @AuthenticationPrincipal UserDetails userDetails
     ) {
+        equipeStudioService.verificarAcesso(salonId, userDetails.getUsername(), FuncaoStudio.EDITOR);
         log.info("Schedule post: {} for salon: {} at: {}", id, salonId, request.getAgendadoPara());
 
         Post post = postService.schedulePost(salonId, id, request.getAgendadoPara());
@@ -211,8 +227,10 @@ public class PostController {
     )
     public ResponseEntity<PostResponse> syncMetrics(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
-        @Parameter(description = "Post ID") @PathVariable Long id
+        @Parameter(description = "Post ID") @PathVariable Long id,
+        @AuthenticationPrincipal UserDetails userDetails
     ) {
+        equipeStudioService.verificarAcesso(salonId, userDetails.getUsername(), FuncaoStudio.GESTOR);
         log.info("Sync metrics for post: {} in salon: {}", id, salonId);
 
         Post post = postService.syncPostMetrics(salonId, id);

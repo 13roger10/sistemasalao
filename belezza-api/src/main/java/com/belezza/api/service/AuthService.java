@@ -15,6 +15,7 @@ import com.belezza.api.repository.UsuarioRepository;
 import com.belezza.api.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
@@ -42,6 +43,7 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final EmailService emailService;
     private final TokenBlacklistService tokenBlacklistService;
+    private final TwoFactorService twoFactorService;
 
     /**
      * Registers a new user.
@@ -142,6 +144,18 @@ public class AuthService {
 
         Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(request.getEmail().toLowerCase().trim())
                 .orElseThrow(AuthenticationException::invalidCredentials);
+
+        // Check 2FA: if enabled and no code provided, signal client to ask for TOTP
+        if (usuario.isTotpEnabled()) {
+            if (request.getTotpCode() == null || request.getTotpCode().isBlank()) {
+                log.info("2FA required for user: {}", usuario.getId());
+                return AuthResponse.requireTwoFactor();
+            }
+            if (!twoFactorService.validateLoginCode(usuario, request.getTotpCode())) {
+                log.warn("Invalid 2FA code for user: {}", usuario.getId());
+                throw new AuthenticationException("Código 2FA inválido. Verifique o app autenticador.");
+            }
+        }
 
         // Update last login
         usuarioRepository.updateLastLogin(usuario.getId(), LocalDateTime.now());

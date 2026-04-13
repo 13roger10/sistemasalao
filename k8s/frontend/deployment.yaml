@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: belezza-frontend
+  namespace: belezza
+  labels:
+    app: belezza-frontend
+    app.kubernetes.io/part-of: belezza
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: belezza-frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: belezza-frontend
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: belezza-frontend
+          # Replace with your actual registry image:
+          # image: ghcr.io/<org>/belezza-frontend:latest
+          image: belezza/frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            # This env var is read at runtime by Next.js server for internal API calls.
+            # NEXT_PUBLIC_* vars (embedded at build time) are passed as Docker build-args.
+            - name: NEXT_PUBLIC_API_URL
+              value: "https://api.belezza.com.br"
+            - name: NODE_ENV
+              value: "production"
+            - name: NEXT_TELEMETRY_DISABLED
+              value: "1"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]

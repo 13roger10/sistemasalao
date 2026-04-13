@@ -68,11 +68,21 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
-  # Exclude Redis auto-configuration when not using it
+  # RabbitMQ connection (only used when belezza.rabbitmq.enabled=true)
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    connection-timeout: 5000
+
+  # Exclude auto-configurations for optional infrastructure
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration
 
   # Mail Configuration
   mail:
@@ -224,6 +234,22 @@ belezza:
     vapid-public-key: ${VAPID_PUBLIC_KEY:}
     vapid-private-key: ${VAPID_PRIVATE_KEY:}
     vapid-subject: ${VAPID_SUBJECT:mailto:contato@belezza.ai}
+
+  # RabbitMQ — async post publishing
+  rabbitmq:
+    enabled: ${RABBITMQ_ENABLED:false}   # true in prod; false for local dev (uses direct dispatch)
+    exchange: belezza.exchange
+    dlq-exchange: belezza.dlq.exchange
+    queues:
+      posts-publish: belezza.posts.publish
+      posts-publish-dlq: belezza.posts.publish.dlq
+    routing-keys:
+      posts-publish: posts.publish
+      posts-publish-dead: posts.publish.dead
+
+  # AES-256-GCM Encryption (OAuth tokens at rest)
+  encryption:
+    aes-key: ${AES_SECRET_KEY:belezza-dev-aes-key-32-chars!!}
 
   # Meta Graph API Configuration (Instagram/Facebook)
   meta:

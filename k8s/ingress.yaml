@@ -1,0 +1,69 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Belezza — Ingress
+#
+# Prerequisites:
+#   - ingress-nginx controller installed:
+#       helm upgrade --install ingress-nginx ingress-nginx \
+#         --repo https://kubernetes.github.io/ingress-nginx \
+#         --namespace ingress-nginx --create-namespace
+#
+#   - cert-manager installed (for TLS):
+#       helm upgrade --install cert-manager cert-manager \
+#         --repo https://charts.jetstack.io \
+#         --namespace cert-manager --create-namespace \
+#         --set installCRDs=true
+#
+#   - ClusterIssuer "letsencrypt-prod" configured (see k8s/cert-manager/cluster-issuer.yaml)
+# ──────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: belezza-ingress
+  namespace: belezza
+  labels:
+    app.kubernetes.io/part-of: belezza
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    # TLS — cert-manager auto-provisions Let's Encrypt certificates
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Security headers
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "20m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    # WebSocket support (required for STOMP /ws endpoint)
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+spec:
+  tls:
+    - hosts:
+        - app.belezza.com.br
+        - api.belezza.com.br
+      secretName: belezza-tls
+  rules:
+    # ── Frontend ──────────────────────────────────────────────────────────────
+    - host: app.belezza.com.br
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: belezza-frontend
+                port:
+                  number: 3000
+
+    # ── Backend API ───────────────────────────────────────────────────────────
+    - host: api.belezza.com.br
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: belezza-api
+                port:
+                  number: 8080

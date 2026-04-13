@@ -33,9 +33,11 @@ public interface PostRepository extends JpaRepository<Post, Long> {
            "AND p.agendadoPara <= :now")
     List<Post> findReadyToPublish(@Param("now") LocalDateTime now);
 
-    // Find failed posts that can be retried
-    @Query("SELECT p FROM Post p WHERE p.status = 'FALHOU' AND p.tentativasPublicacao < 3")
-    List<Post> findRetryable();
+    // Find failed posts whose back-off window has elapsed and still have retries left
+    @Query("SELECT p FROM Post p WHERE p.status = 'FALHOU' " +
+           "AND p.tentativasPublicacao < :maxRetries " +
+           "AND (p.proximaTentativaEm IS NULL OR p.proximaTentativaEm <= :now)")
+    List<Post> findRetryable(@Param("maxRetries") int maxRetries, @Param("now") LocalDateTime now);
 
     // Count posts by status for metrics
     @Query("SELECT p.status, COUNT(p) FROM Post p " +

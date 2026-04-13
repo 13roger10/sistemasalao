@@ -94,6 +94,68 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
+    @Override
+    @Async
+    public void sendPostFailureEmail(String email, String userName, String postId, String errorMessage) {
+        if (!emailEnabled) {
+            log.info("Email sending disabled. Would send post failure notification to: {}", email);
+            return;
+        }
+
+        try {
+            String postsUrl = frontendUrl + "/admin/social-studio";
+            String subject = "Falha na publicacao do seu post - Belezza.ai";
+            String htmlContent = buildPostFailureEmail(userName, postId, errorMessage, postsUrl);
+
+            sendHtmlEmail(email, subject, htmlContent);
+            log.info("Post failure email sent to: {}", email);
+        } catch (Exception e) {
+            log.error("Failed to send post failure email to: {}", email, e);
+        }
+    }
+
+    private String buildPostFailureEmail(String userName, String postId, String errorMessage, String postsUrl) {
+        String safeError = (errorMessage != null && !errorMessage.isBlank()) ? errorMessage : "Erro desconhecido";
+        return """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background: linear-gradient(135deg, #e53e3e 0%%, #c53030 100%%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+                    .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+                    .error-box { background: #fff5f5; border: 1px solid #feb2b2; border-radius: 6px; padding: 15px; margin: 15px 0; font-family: monospace; font-size: 13px; color: #742a2a; word-break: break-all; }
+                    .button { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+                    .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>Falha na Publicacao</h1>
+                    </div>
+                    <div class="content">
+                        <p>Ola <strong>%s</strong>,</p>
+                        <p>Infelizmente nao foi possivel publicar seu post <strong>#%s</strong> mesmo apos todas as tentativas automaticas.</p>
+                        <p><strong>Motivo do erro:</strong></p>
+                        <div class="error-box">%s</div>
+                        <p>Por favor, verifique se sua conta de rede social esta ainda conectada e tente publicar novamente.</p>
+                        <p style="text-align: center;">
+                            <a href="%s" class="button">Acessar Social Studio</a>
+                        </p>
+                        <p style="font-size: 13px; color: #666;">Se o problema persistir, entre em contato com nosso suporte.</p>
+                    </div>
+                    <div class="footer">
+                        <p>&copy; 2025 Belezza.ai - Social Studio para Saloes de Beleza</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """.formatted(userName, postId, safeError, postsUrl);
+    }
+
     private void sendHtmlEmail(String to, String subject, String htmlContent) throws MessagingException {
         MimeMessage message = mailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");

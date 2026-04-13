@@ -8,6 +8,7 @@ import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.integration.MetaGraphAPIService;
 import com.belezza.api.repository.ContaSocialRepository;
 import com.belezza.api.repository.SalonRepository;
+import com.belezza.api.security.AesEncryptionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,7 @@ public class SocialAccountService {
     private final ContaSocialRepository contaSocialRepository;
     private final SalonRepository salonRepository;
     private final MetaGraphAPIService metaGraphAPIService;
+    private final AesEncryptionService aesEncryptionService;
 
     // ====================================
     // 7.1 OAuth Flow
@@ -93,14 +95,14 @@ public class SocialAccountService {
                 ? LocalDateTime.now().plusSeconds(tokenResponse.expiresIn())
                 : LocalDateTime.now().plusDays(60); // Default 60 days for long-lived tokens
 
-            // Create and save account
+            // Create and save account (token encrypted at rest)
             ContaSocial contaSocial = ContaSocial.builder()
                 .salon(salon)
                 .plataforma(plataforma)
                 .accountId(accountInfo.accountId())
                 .accountName(accountInfo.accountName())
                 .accountImageUrl(accountInfo.accountImageUrl())
-                .accessToken(tokenResponse.accessToken())
+                .accessToken(aesEncryptionService.encrypt(tokenResponse.accessToken()))
                 .tokenExpira(tokenExpira)
                 .ativa(true)
                 .build();
@@ -174,11 +176,10 @@ public class SocialAccountService {
         ContaSocial contaSocial = getAccount(salonId, accountId);
 
         try {
-            MetaGraphAPIService.TokenResponse newToken = metaGraphAPIService.refreshToken(
-                contaSocial.getAccessToken()
-            );
+            String plainToken = aesEncryptionService.decrypt(contaSocial.getAccessToken());
+            MetaGraphAPIService.TokenResponse newToken = metaGraphAPIService.refreshToken(plainToken);
 
-            contaSocial.setAccessToken(newToken.accessToken());
+            contaSocial.setAccessToken(aesEncryptionService.encrypt(newToken.accessToken()));
 
             if (newToken.expiresIn() != null) {
                 contaSocial.setTokenExpira(LocalDateTime.now().plusSeconds(newToken.expiresIn()));
@@ -228,6 +229,29 @@ public class SocialAccountService {
     @Transactional(readOnly = true)
     public boolean hasActiveAccount(Long salonId, PlataformaSocial plataforma) {
         return contaSocialRepository.countActiveBySalonIdAndPlataforma(salonId, plataforma) > 0;
+    }
+
+    // ====================================
+    // Token Access (decrypt on demand)
+    // ====================================
+
+    /**
+     * Returns the decrypted access token for a connected account.
+     * Use this whenever the plain token is required to call an external API.
+     */
+    @Transactional(readOnly = true)
+    public String getDecryptedAccessToken(Long salonId, Long accountId) {
+        ContaSocial conta = getAccount(salonId, accountId);
+        return aesEncryptionService.decrypt(conta.getAccessToken());
+    }
+
+    /**
+     * Returns the decrypted access token for the active account of a given platform.
+     */
+    @Transactional(readOnly = true)
+    public String getDecryptedAccessTokenByPlatform(Long salonId, PlataformaSocial plataforma) {
+        ContaSocial conta = getAccountByPlatform(salonId, plataforma);
+        return aesEncryptionService.decrypt(conta.getAccessToken());
     }
 
     // ====================================

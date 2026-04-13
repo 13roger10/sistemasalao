@@ -4,9 +4,11 @@ import com.belezza.api.entity.*;
 import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.integration.MetaGraphAPIService;
+import com.belezza.api.integration.WhatsAppService;
 import com.belezza.api.repository.PostRepository;
 import com.belezza.api.repository.SalonRepository;
 import com.belezza.api.repository.UsuarioRepository;
+import com.belezza.api.security.AesEncryptionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -33,8 +35,19 @@ public class PostService {
     private final UsuarioRepository usuarioRepository;
     private final SocialAccountService socialAccountService;
     private final MetaGraphAPIService metaGraphAPIService;
+    private final AesEncryptionService aesEncryptionService;
+    private final NotificacaoService notificacaoService;
+    private final EmailService emailService;
+    private final WhatsAppService whatsAppService;
+    private final EquipeStudioService equipeStudioService;
 
     private static final int MAX_RETRY_ATTEMPTS = 3;
+
+    // Back-off delays in minutes for each attempt index (0-based)
+    // attempt 1 failed → wait  5 min before attempt 2
+    // attempt 2 failed → wait 30 min before attempt 3
+    // attempt 3 failed → definitive failure, no more retries
+    private static final int[] BACKOFF_MINUTES = {5, 30, 120};
 
     // ====================================
     // CRUD Operations
@@ -183,16 +196,14 @@ public class PostService {
                 post.setStatus(StatusPost.PUBLICADO);
                 post.setPublicadoEm(LocalDateTime.now());
                 post.setPublishErrorMessage(null);
+                post.setProximaTentativaEm(null);
                 log.info("Post published successfully: {}", postId);
             } else {
-                post.setStatus(StatusPost.FALHOU);
-                post.setPublishErrorMessage(errors.toString());
-                log.error("Post publishing failed: {}", postId);
+                handlePublishFailure(post, errors.toString());
             }
 
         } catch (Exception e) {
-            post.setStatus(StatusPost.FALHOU);
-            post.setPublishErrorMessage(e.getMessage());
+            handlePublishFailure(post, e.getMessage());
             log.error("Error publishing post {}: {}", postId, e.getMessage(), e);
         }
 
@@ -203,36 +214,26 @@ public class PostService {
      * Publish to a specific platform.
      */
     private void publishToPlatform(Post post, PlataformaSocial plataforma) {
-        // Get active account for platform
-        ContaSocial conta = socialAccountService.getAccountByPlatform(
-            post.getSalon().getId(),
-            plataforma
-        );
+        Long salonId = post.getSalon().getId();
+
+        // Retrieve account; decrypt token (it is AES-256-GCM encrypted at rest)
+        ContaSocial conta = socialAccountService.getAccountByPlatform(salonId, plataforma);
+        String plainToken = aesEncryptionService.decrypt(conta.getAccessToken());
 
         // Build caption with hashtags
         String caption = buildCaption(post.getLegenda(), post.getHashtags());
 
-        // Create publish request
         MetaGraphAPIService.PublishRequest request = new MetaGraphAPIService.PublishRequest(
             post.getImagemUrl(),
             caption
         );
 
-        // Publish
         MetaGraphAPIService.PublishResponse response;
 
         if (plataforma == PlataformaSocial.INSTAGRAM) {
-            response = metaGraphAPIService.publishToInstagram(
-                conta.getAccessToken(),
-                conta.getAccountId(),
-                request
-            );
+            response = metaGraphAPIService.publishToInstagram(plainToken, conta.getAccountId(), request);
         } else if (plataforma == PlataformaSocial.FACEBOOK) {
-            response = metaGraphAPIService.publishToFacebook(
-                conta.getAccessToken(),
-                conta.getAccountId(),
-                request
-            );
+            response = metaGraphAPIService.publishToFacebook(plainToken, conta.getAccountId(), request);
         } else {
             throw new BusinessException("Publishing to " + plataforma + " not yet implemented");
         }
@@ -296,17 +297,15 @@ public class PostService {
      * Called by scheduler job.
      */
     public void retryFailedPosts() {
-        List<Post> retryablePosts = postRepository.findRetryable();
+        List<Post> retryablePosts = postRepository.findRetryable(MAX_RETRY_ATTEMPTS, LocalDateTime.now());
 
-        log.info("Retrying {} failed posts", retryablePosts.size());
+        log.info("Retrying {} failed posts whose back-off window has elapsed", retryablePosts.size());
 
         for (Post post : retryablePosts) {
-            if (post.getTentativasPublicacao() < MAX_RETRY_ATTEMPTS) {
-                try {
-                    publishPost(post.getSalon().getId(), post.getId());
-                } catch (Exception e) {
-                    log.error("Retry failed for post {}: {}", post.getId(), e.getMessage());
-                }
+            try {
+                publishPost(post.getSalon().getId(), post.getId());
+            } catch (Exception e) {
+                log.error("Retry failed for post {}: {}", post.getId(), e.getMessage());
             }
         }
     }
@@ -374,6 +373,86 @@ public class PostService {
     // ====================================
     // Validation & Helper Methods
     // ====================================
+
+    // ====================================
+    // Back-off & Failure Handling
+    // ====================================
+
+    /**
+     * Called whenever a publish attempt fails.
+     * Schedules the next retry or marks the post as definitively failed.
+     */
+    private void handlePublishFailure(Post post, String errorMessage) {
+        int attempts = post.getTentativasPublicacao(); // already incremented before publish attempt
+
+        post.setStatus(StatusPost.FALHOU);
+        post.setPublishErrorMessage(
+            errorMessage != null && errorMessage.length() > 500
+                ? errorMessage.substring(0, 497) + "..."
+                : errorMessage
+        );
+
+        if (attempts < MAX_RETRY_ATTEMPTS) {
+            // Schedule next retry using exponential back-off
+            int delayMinutes = BACKOFF_MINUTES[attempts - 1]; // index: attempt 1→[0], 2→[1], 3→[2]
+            post.setProximaTentativaEm(LocalDateTime.now().plusMinutes(delayMinutes));
+            log.warn("Post {} failed (attempt {}/{}). Next retry in {} min at {}",
+                post.getId(), attempts, MAX_RETRY_ATTEMPTS, delayMinutes, post.getProximaTentativaEm());
+        } else {
+            // All retries exhausted — mark as definitively failed and notify
+            post.setProximaTentativaEm(null);
+            log.error("Post {} failed permanently after {} attempts. Notifying owner.", post.getId(), attempts);
+            notificarFalhaDefinitiva(post);
+        }
+    }
+
+    /**
+     * Sends in-app notification, email, and WhatsApp message to the post creator
+     * when all retry attempts are exhausted.
+     */
+    private void notificarFalhaDefinitiva(Post post) {
+        Usuario criador = post.getCriador();
+
+        // 1. In-app notification
+        try {
+            String titulo = "Falha na publicacao do post";
+            String mensagem = String.format(
+                "Seu post #%d nao pôde ser publicado apos %d tentativas. Verifique a conexao das redes sociais.",
+                post.getId(), MAX_RETRY_ATTEMPTS
+            );
+            String link = "/admin/social-studio";
+            notificacaoService.criarNotificacao(criador, TipoNotificacao.POST_FALHOU, titulo, mensagem, link, null);
+        } catch (Exception e) {
+            log.error("Failed to create in-app notification for post failure {}: {}", post.getId(), e.getMessage());
+        }
+
+        // 2. Email notification
+        try {
+            emailService.sendPostFailureEmail(
+                criador.getEmail(),
+                criador.getNome(),
+                post.getId().toString(),
+                post.getPublishErrorMessage()
+            );
+        } catch (Exception e) {
+            log.error("Failed to send failure email for post {}: {}", post.getId(), e.getMessage());
+        }
+
+        // 3. WhatsApp notification (only if phone number is available)
+        try {
+            String telefone = criador.getTelefone();
+            if (telefone != null && !telefone.isBlank()) {
+                String mensagemWpp = String.format(
+                    "Belezza.ai: Seu post #%d nao pôde ser publicado apos %d tentativas. " +
+                    "Acesse a plataforma para reagendar ou verificar a conexao das redes sociais.",
+                    post.getId(), MAX_RETRY_ATTEMPTS
+                );
+                whatsAppService.enviarMensagemDireta(telefone, mensagemWpp);
+            }
+        } catch (Exception e) {
+            log.error("Failed to send WhatsApp notification for post failure {}: {}", post.getId(), e.getMessage());
+        }
+    }
 
     private void validatePostForPublishing(Post post) {
         if (post.getImagemUrl() == null || post.getImagemUrl().isBlank()) {
@@ -466,4 +545,34 @@ public class PostService {
         List<String> hashtags,
         List<PlataformaSocial> plataformas
     ) {}
+
+    /** Lightweight projection used by the scheduler to dispatch jobs. */
+    public record PostDispatchInfo(Long postId, Long salonId) {}
+
+    // ====================================
+    // Scheduler Dispatch Helpers
+    // ====================================
+
+    /**
+     * Returns posts that are scheduled and ready to publish now.
+     * The scheduler uses this list to dispatch via {@code PostPublishGateway}.
+     */
+    @Transactional(readOnly = true)
+    public List<PostDispatchInfo> findReadyPosts() {
+        return postRepository.findReadyToPublish(LocalDateTime.now()).stream()
+            .map(p -> new PostDispatchInfo(p.getId(), p.getSalon().getId()))
+            .toList();
+    }
+
+    /**
+     * Returns failed posts whose back-off window has elapsed and that still
+     * have retry attempts remaining.
+     * The scheduler uses this list to dispatch via {@code PostPublishGateway}.
+     */
+    @Transactional(readOnly = true)
+    public List<PostDispatchInfo> findRetryablePosts() {
+        return postRepository.findRetryable(MAX_RETRY_ATTEMPTS, LocalDateTime.now()).stream()
+            .map(p -> new PostDispatchInfo(p.getId(), p.getSalon().getId()))
+            .toList();
+    }
 }

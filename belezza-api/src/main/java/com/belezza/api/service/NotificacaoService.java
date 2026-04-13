@@ -32,6 +32,7 @@ public class NotificacaoService {
     private final NotificacaoRepository notificacaoRepository;
     private final PushSubscriptionRepository pushSubscriptionRepository;
     private final UsuarioRepository usuarioRepository;
+    private final NotificacaoWebSocketService webSocketService;
 
     @Value("${app.push.vapid-public-key:}")
     private String vapidPublicKey;
@@ -95,7 +96,10 @@ public class NotificacaoService {
         notificacao = notificacaoRepository.save(notificacao);
         log.info("Notificação criada: {} para usuário {}", notificacao.getId(), usuario.getId());
 
-        // Tentar enviar push notification
+        // Real-time: push via WebSocket (async, non-blocking)
+        webSocketService.enviarParaUsuario(usuario.getEmail(), notificacao);
+
+        // Legacy push notification (browser push / PWA)
         enviarPushNotificationAsync(usuario.getId(), titulo, mensagem, link);
 
         return notificacao;
@@ -141,6 +145,10 @@ public class NotificacaoService {
         }
 
         notificacaoRepository.marcarComoLida(notificacaoId);
+
+        // Push updated badge counter via WebSocket
+        long naoLidas = notificacaoRepository.countByUsuarioIdAndLidaFalse(usuario.getId());
+        webSocketService.enviarContador(email, naoLidas);
     }
 
     @Transactional
@@ -150,6 +158,9 @@ public class NotificacaoService {
 
         notificacaoRepository.marcarTodasComoLidas(usuario.getId());
         log.info("Todas notificações marcadas como lidas para usuário: {}", usuario.getId());
+
+        // Badge goes to zero
+        webSocketService.enviarContador(email, 0);
     }
 
     // ==================== NOTIFICAÇÕES DE AGENDAMENTO ====================

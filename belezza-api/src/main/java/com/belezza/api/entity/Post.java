@@ -74,6 +74,9 @@ public class Post {
 
     private LocalDateTime publicadoEm;
 
+    /** Next allowed retry instant (exponential back-off). Null means no retry is pending. */
+    private LocalDateTime proximaTentativaEm;
+
     @Column(length = 200)
     private String publishErrorMessage;
 

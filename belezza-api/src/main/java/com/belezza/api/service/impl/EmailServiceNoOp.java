@@ -35,4 +35,10 @@ public class EmailServiceNoOp implements EmailService {
     public void sendWelcomeEmail(String email, String userName) {
         log.info("[NO-OP EMAIL] Welcome email - To: {}, User: {}", email, userName);
     }
+
+    @Override
+    public void sendPostFailureEmail(String email, String userName, String postId, String errorMessage) {
+        log.info("[NO-OP EMAIL] Post failure notification - To: {}, User: {}, PostId: {}, Error: {}",
+            email, userName, postId, errorMessage);
+    }
 }

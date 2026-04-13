@@ -21,6 +21,10 @@ public class AuthResponse {
     private String tokenType;
     private long expiresIn;
 
+    // True when the user has 2FA enabled and no totpCode was provided in the login request.
+    // Client must re-submit login with the totpCode field populated.
+    private boolean requiresTwoFactor;
+
     public static AuthResponse of(UserResponse user, String accessToken, String refreshToken, long expiresIn) {
         return AuthResponse.builder()
                 .user(user)
@@ -28,6 +32,13 @@ public class AuthResponse {
                 .refreshToken(refreshToken)
                 .tokenType("Bearer")
                 .expiresIn(expiresIn)
+                .requiresTwoFactor(false)
+                .build();
+    }
+
+    public static AuthResponse requireTwoFactor() {
+        return AuthResponse.builder()
+                .requiresTwoFactor(true)
                 .build();
     }
 }

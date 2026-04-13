@@ -13,7 +13,8 @@ import { authService } from "@/services/auth";
 import type { User, AuthState } from "@/types";
 
 interface AuthContextType extends AuthState {
-  login: (email: string, password: string) => Promise<void>;
+  // Returns true when the server requires a 2FA code to complete login
+  login: (email: string, password: string, totpCode?: string) => Promise<boolean>;
   logout: () => void;
   checkAuth: () => Promise<void>;
 }
@@ -50,12 +51,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string, totpCode?: string): Promise<boolean> => {
       setState((prev) => ({ ...prev, isLoading: true }));
 
       try {
-        const response = await authService.login(email, password);
+        const response = await authService.login(email, password, totpCode);
+
+        // Server requires 2FA code — do not store tokens yet
+        if (response.requiresTwoFactor) {
+          setState((prev) => ({ ...prev, isLoading: false }));
+          return true;
+        }
+
         setAuth(response.user, response.token);
+        return false;
       } catch (error) {
         setState((prev) => ({ ...prev, isLoading: false }));
         throw error;

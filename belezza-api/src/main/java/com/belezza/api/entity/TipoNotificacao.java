@@ -13,5 +13,6 @@ public enum TipoNotificacao {
     FIDELIDADE_CREDITO,
     FIDELIDADE_NIVEL,
     PROMOCAO,
-    SISTEMA
+    SISTEMA,
+    POST_FALHOU
 }

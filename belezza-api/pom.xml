@@ -257,6 +257,25 @@
             <version>${gatling.version}</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- TOTP - Two-Factor Authentication (Google Authenticator) -->
+        <dependency>
+            <groupId>dev.samstevens.totp</groupId>
+            <artifactId>totp</artifactId>
+            <version>1.7.1</version>
+        </dependency>
+
+        <!-- RabbitMQ / AMQP for async post publishing -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+
+        <!-- WebSocket / STOMP for real-time notifications -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
     </dependencies>
 
     <dependencyManagement>

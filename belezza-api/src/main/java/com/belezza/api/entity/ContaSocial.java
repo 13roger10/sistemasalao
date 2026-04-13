@@ -48,10 +48,10 @@ public class ContaSocial {
     @Column(length = 500)
     private String accountImageUrl;
 
-    @Column(nullable = false, length = 1000)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String accessToken;
 
-    @Column(length = 1000)
+    @Column(columnDefinition = "TEXT")
     private String refreshToken;
 
     private LocalDateTime tokenExpira;

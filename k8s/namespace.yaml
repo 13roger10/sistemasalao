@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: belezza
+  labels:
+    app.kubernetes.io/name: belezza
+    app.kubernetes.io/managed-by: kubectl

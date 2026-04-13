@@ -30,4 +30,15 @@ public interface EmailService {
      * @param userName User name
      */
     void sendWelcomeEmail(String email, String userName);
+
+    /**
+     * Notifies a user that a scheduled social media post failed permanently
+     * after all retry attempts were exhausted.
+     *
+     * @param email        User email
+     * @param userName     User name
+     * @param postId       Post identifier
+     * @param errorMessage Last error message from the publishing attempt
+     */
+    void sendPostFailureEmail(String email, String userName, String postId, String errorMessage);
 }

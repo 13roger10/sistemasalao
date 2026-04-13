@@ -22,4 +22,7 @@ public class LoginRequest {
 
     @NotBlank(message = "Senha é obrigatória")
     private String password;
+
+    // Optional: required only when the user has 2FA enabled
+    private String totpCode;
 }

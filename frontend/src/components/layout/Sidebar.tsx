@@ -11,7 +11,10 @@ import {
   LogOut,
   X,
   Users,
+  UserCog,
   Home,
+  BarChart2,
+  KeyRound,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
@@ -52,6 +55,21 @@ const menuItems = [
     label: "Usuários",
     href: "/admin/users",
     icon: Users,
+  },
+  {
+    label: "Equipe Studio",
+    href: "/admin/team",
+    icon: UserCog,
+  },
+  {
+    label: "Analytics",
+    href: "/admin/analytics",
+    icon: BarChart2,
+  },
+  {
+    label: "API Keys",
+    href: "/admin/api-keys",
+    icon: KeyRound,
   },
   {
     label: "Configurações",

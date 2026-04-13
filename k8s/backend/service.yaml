@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: belezza-api
+  namespace: belezza
+  labels:
+    app: belezza-api
+    app.kubernetes.io/part-of: belezza
+spec:
+  type: ClusterIP
+  selector:
+    app: belezza-api
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http

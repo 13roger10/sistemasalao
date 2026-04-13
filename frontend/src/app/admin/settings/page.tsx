@@ -20,6 +20,7 @@ import {
   Sun,
   Monitor,
 } from "lucide-react";
+import { TwoFactorSettings } from "@/components/settings/TwoFactorSettings";
 
 type ThemeMode = "light" | "dark" | "system";
 
@@ -525,15 +526,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-white">Autenticacao em Dois Fatores</p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Adicione uma camada extra de seguranca</p>
-                    </div>
-                    <Button variant="outline" size="sm">
-                      Configurar
-                    </Button>
-                  </div>
+                  <TwoFactorSettings />
                 </div>
 
                 <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">

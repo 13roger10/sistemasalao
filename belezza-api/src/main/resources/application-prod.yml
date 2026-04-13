@@ -58,6 +58,16 @@ spring:
   flyway:
     clean-disabled: true
 
+  # Re-enable RabbitMQ auto-configuration (excluded in base profile for dev)
+  autoconfigure:
+    exclude: []
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: ${RABBITMQ_VHOST:/}
+
 # Logging Configuration - Production
 logging:
   level:
@@ -75,6 +85,10 @@ belezza:
   # JWT must use strong secret in production
   jwt:
     secret: ${JWT_SECRET}
+
+  # RabbitMQ enabled in production
+  rabbitmq:
+    enabled: true
 
   # Strict CORS in production
   cors:
