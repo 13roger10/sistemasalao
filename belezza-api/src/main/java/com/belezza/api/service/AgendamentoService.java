@@ -501,14 +501,25 @@ public class AgendamentoService {
             profissional = profissionalService.getProfissionalEntity(request.getNovoProfissionalId());
         }
 
+        // Resolve service: single-service (legacy) or first of multi-service list.
+        // getServico() returns null for appointments created with multiple services.
         Servico servico = agendamento.getServico();
+        if (servico == null && !agendamento.getServicos().isEmpty()) {
+            servico = agendamento.getServicos().get(0).getServico();
+        }
+        if (servico == null) {
+            throw new BusinessException("Agendamento sem serviço definido — não é possível reagendar");
+        }
+
         Salon salon = agendamento.getSalon();
         Cliente cliente = agendamento.getCliente();
 
-        // Validate new datetime
+        // Validate new datetime using the resolved service for salon/hours checks
         validarAgendamento(salon, profissional, servico, cliente, request.getNovaDataHora());
 
-        LocalDateTime novoFim = request.getNovaDataHora().plusMinutes(servico.getDuracaoMinutos());
+        // Use total duration across all services (single or multi) for the end time
+        int duracaoTotal = agendamento.getDuracaoTotalMinutos();
+        LocalDateTime novoFim = request.getNovaDataHora().plusMinutes(duracaoTotal);
         validarConflitos(profissional.getId(), request.getNovaDataHora(), novoFim);
 
         agendamento.setDataHora(request.getNovaDataHora());
