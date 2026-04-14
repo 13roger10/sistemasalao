@@ -461,7 +461,7 @@ class PostServiceTest {
             // Given
             post.setStatus(StatusPost.FALHOU);
             post.setTentativasPublicacao(1);
-            when(postRepository.findRetryable()).thenReturn(List.of(post));
+            when(postRepository.findRetryable(anyInt(), any())).thenReturn(List.of(post));
             when(salonRepository.findById(1L)).thenReturn(Optional.of(salon));
             when(postRepository.findByIdAndSalon(1L, salon)).thenReturn(Optional.of(post));
             when(socialAccountService.hasActiveAccount(1L, PlataformaSocial.INSTAGRAM)).thenReturn(true);
@@ -474,7 +474,7 @@ class PostServiceTest {
             postService.retryFailedPosts();
 
             // Then
-            verify(postRepository).findRetryable();
+            verify(postRepository).findRetryable(anyInt(), any());
         }
 
         @Test
@@ -483,13 +483,13 @@ class PostServiceTest {
             // Given
             post.setStatus(StatusPost.FALHOU);
             post.setTentativasPublicacao(3); // MAX_RETRY_ATTEMPTS
-            when(postRepository.findRetryable()).thenReturn(List.of(post));
+            when(postRepository.findRetryable(anyInt(), any())).thenReturn(List.of(post));
 
             // When
             postService.retryFailedPosts();
 
             // Then
-            verify(postRepository).findRetryable();
+            verify(postRepository).findRetryable(anyInt(), any());
             verify(salonRepository, never()).findById(anyLong());
         }
     }

@@ -60,6 +60,7 @@ public class NotificacaoResponse {
             case FIDELIDADE_NIVEL -> "award";
             case PROMOCAO -> "tag";
             case SISTEMA -> "info";
+            case POST_FALHOU -> "alert-triangle";
         };
     }
 
