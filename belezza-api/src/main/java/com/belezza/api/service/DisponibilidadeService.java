@@ -9,6 +9,7 @@ import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.BloqueioHorarioRepository;
+import com.belezza.api.repository.HorarioFuncionamentoSalonRepository;
 import com.belezza.api.repository.HorarioTrabalhoRepository;
 import com.belezza.api.repository.ProfissionalRepository;
 import com.belezza.api.repository.ServicoRepository;
@@ -21,6 +22,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +39,7 @@ public class DisponibilidadeService {
     private final ProfissionalRepository profissionalRepository;
     private final ServicoRepository servicoRepository;
     private final HorarioTrabalhoRepository horarioTrabalhoRepository;
+    private final HorarioFuncionamentoSalonRepository horarioFuncionamentoSalonRepository;
     private final BloqueioHorarioRepository bloqueioHorarioRepository;
     private final AgendamentoRepository agendamentoRepository;
 
@@ -46,16 +49,27 @@ public class DisponibilidadeService {
      * Consulta a disponibilidade de horários para um profissional ou todos os profissionais do salão.
      */
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public DisponibilidadeResponse consultarDisponibilidade(DisponibilidadeRequest request) {
         log.info("Consultando disponibilidade para salão {} na data {}", request.getSalonId(), request.getData());
 
         // 1. Buscar salão
         Salon salon = salonService.getSalonEntity(request.getSalonId());
 
-        // 2. Validar data
-        LocalDate hoje = LocalDate.now();
+        // 2. Validar data — usar timezone do salão (America/Sao_Paulo) para evitar
+        // divergência entre o horário do browser do cliente (UTC-3) e o container Docker (UTC)
+        LocalDate hoje = LocalDate.now(ZoneId.of("America/Sao_Paulo"));
         if (request.getData().isBefore(hoje)) {
             throw new BusinessException("Não é possível consultar disponibilidade para datas passadas");
+        }
+
+        // Regras configuradas pelo administrador
+        if (!salon.isPermiteAgendamentoMesmoDia() && request.getData().isEqual(hoje)) {
+            throw new BusinessException("Agendamento no mesmo dia não é permitido neste salão");
+        }
+        if (request.getData().isAfter(hoje.plusDays(salon.getMaxAntecediaDias()))) {
+            throw new BusinessException("Não é possível agendar com mais de " +
+                    salon.getMaxAntecediaDias() + " dias de antecedência");
         }
 
         // 3. Calcular duração total dos serviços
@@ -136,42 +150,55 @@ public class DisponibilidadeService {
 
         List<TimeSlotDTO> slots = new ArrayList<>();
 
-        // 1. Verificar se o profissional trabalha neste dia
         DiaSemana diaSemana = toDiaSemana(data.getDayOfWeek());
-        log.info("Buscando horário de trabalho para profissional {} no dia {} ({})",
+        log.info("Buscando disponibilidade para profissional {} no dia {} ({})",
                 profissional.getId(), data, diaSemana);
 
+        // 1. Verificar configuração do salão para este dia (admin config)
+        HorarioFuncionamentoSalon horarioSalon = horarioFuncionamentoSalonRepository
+                .findBySalonIdAndDiaSemana(salon.getId(), diaSemana)
+                .orElse(null);
+
+        if (horarioSalon != null && !horarioSalon.isAtivo()) {
+            log.info("Salão fechado no dia {} conforme configuração do administrador", diaSemana);
+            return slots;
+        }
+
+        // 2. Verificar se o profissional trabalha neste dia
         HorarioTrabalho horarioTrabalho = horarioTrabalhoRepository
                 .findByProfissionalIdAndDiaSemana(profissional.getId(), diaSemana)
                 .filter(HorarioTrabalho::isAtivo)
                 .orElse(null);
 
         if (horarioTrabalho == null) {
-            // Profissional não trabalha neste dia - não retornar slots
-            log.warn("Profissional {} ({}) NÃO TEM horário de trabalho configurado para {} - retornando lista vazia",
+            log.warn("Profissional {} ({}) não tem horário ativo para {} - retornando lista vazia",
                     profissional.getId(), profissional.getUsuario().getNome(), diaSemana);
             return slots;
         }
 
-        log.info("Horário encontrado para profissional {}: {} - {} (intervalo: {} - {})",
-                profissional.getId(),
-                horarioTrabalho.getHoraInicio(),
-                horarioTrabalho.getHoraFim(),
-                horarioTrabalho.getIntervaloInicio(),
-                horarioTrabalho.getIntervaloFim());
+        log.info("Horário do profissional {}: {} - {}", profissional.getId(),
+                horarioTrabalho.getHoraInicio(), horarioTrabalho.getHoraFim());
 
-        // 2. Determinar horário de início e fim
+        // 3. Determinar horário efetivo: interseção do horário do salão com o do profissional
         LocalTime horaInicio = horarioTrabalho.getHoraInicio();
-        LocalTime horaFim = horarioTrabalho.getHoraFim();
+        LocalTime horaFim    = horarioTrabalho.getHoraFim();
 
-        // Também considerar horário do salão
-        if (salon.getHorarioAbertura().isAfter(horaInicio)) {
-            log.info("Ajustando hora de início de {} para {} (abertura do salão)", horaInicio, salon.getHorarioAbertura());
-            horaInicio = salon.getHorarioAbertura();
-        }
-        if (salon.getHorarioFechamento().isBefore(horaFim)) {
-            log.info("Ajustando hora de fim de {} para {} (fechamento do salão)", horaFim, salon.getHorarioFechamento());
-            horaFim = salon.getHorarioFechamento();
+        // Limitar pelo horário do salão para este dia (admin config)
+        if (horarioSalon != null && horarioSalon.getHoraInicio() != null) {
+            if (horarioSalon.getHoraInicio().isAfter(horaInicio)) {
+                horaInicio = horarioSalon.getHoraInicio();
+            }
+            if (horarioSalon.getHoraFim().isBefore(horaFim)) {
+                horaFim = horarioSalon.getHoraFim();
+            }
+        } else {
+            // Fallback: use salon global hours
+            if (salon.getHorarioAbertura().isAfter(horaInicio)) {
+                horaInicio = salon.getHorarioAbertura();
+            }
+            if (salon.getHorarioFechamento().isBefore(horaFim)) {
+                horaFim = salon.getHorarioFechamento();
+            }
         }
 
         log.info("Gerando slots de {} até {} com intervalo de {} minutos (duração serviço: {} min)",
@@ -186,6 +213,8 @@ public class DisponibilidadeService {
 
         List<Agendamento> agendamentos = agendamentoRepository.findDailyByProfissional(
                 profissional.getId(), inicioDia, fimDia);
+
+        int bufferMinutos = salon.getBufferEntreAgendamentosMinutos();
 
         // 4. Gerar slots
         LocalTime slotAtual = horaInicio;
@@ -204,6 +233,7 @@ public class DisponibilidadeService {
                     bloqueios,
                     agendamentos,
                     salon.getAntecedenciaMinimaHoras(),
+                    bufferMinutos,
                     agora);
 
             String horaFormatada = slotAtual.format(TIME_FORMATTER);
@@ -244,16 +274,21 @@ public class DisponibilidadeService {
             List<BloqueioHorario> bloqueios,
             List<Agendamento> agendamentos,
             int antecedenciaMinimaHoras,
+            int bufferMinutos,
             LocalDateTime agora) {
 
-        // 1. Verificar se o horário já passou
+        // 1. Verificar antecedência mínima configurada pelo administrador
+        if (antecedenciaMinimaHoras > 0 && inicioSlot.isBefore(agora.plusHours(antecedenciaMinimaHoras))) {
+            return "Horário passado";
+        }
+        // Verificar se o horário já passou (caso antecedência seja 0)
         if (inicioSlot.isBefore(agora)) {
             return "Horário passado";
         }
 
-        // 2. Verificar intervalo de almoço/descanso
+        // 2. Verificar intervalo de descanso do profissional (se configurado)
         LocalTime horaInicioSlot = inicioSlot.toLocalTime();
-        LocalTime horaFimSlot = fimSlot.toLocalTime();
+        LocalTime horaFimSlot    = fimSlot.toLocalTime();
 
         if (horarioTrabalho.getIntervaloInicio() != null && horarioTrabalho.getIntervaloFim() != null) {
             if (horaInicioSlot.isBefore(horarioTrabalho.getIntervaloFim()) &&
@@ -269,14 +304,15 @@ public class DisponibilidadeService {
             }
         }
 
-        // 4. Verificar agendamentos existentes
+        // 4. Verificar agendamentos existentes (com buffer entre atendimentos)
         for (Agendamento agendamento : agendamentos) {
-            if (inicioSlot.isBefore(agendamento.getFimPrevisto()) && fimSlot.isAfter(agendamento.getDataHora())) {
+            LocalDateTime inicioAgendamento = agendamento.getDataHora().minusMinutes(bufferMinutos);
+            LocalDateTime fimAgendamento    = agendamento.getFimPrevisto().plusMinutes(bufferMinutos);
+            if (inicioSlot.isBefore(fimAgendamento) && fimSlot.isAfter(inicioAgendamento)) {
                 return "Horário já agendado";
             }
         }
 
-        // Disponível
         return null;
     }
 

@@ -441,10 +441,10 @@ export const appointmentService = {
 
   // Check availability - calls real backend endpoint
   checkAvailability: async (data: AvailabilityRequest): Promise<AvailabilityResponse> => {
-    // Format date as YYYY-MM-DD
-    const dateStr = data.date instanceof Date
-      ? data.date.toISOString().split('T')[0]
-      : new Date(data.date).toISOString().split('T')[0];
+    // Format date as YYYY-MM-DD using LOCAL date components (not UTC) to avoid timezone shift.
+    // toISOString() converts to UTC which can give the wrong calendar day for UTC-3 users.
+    const d = data.date instanceof Date ? data.date : new Date(data.date);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
     // Build query params
     const params = new URLSearchParams();
@@ -495,11 +495,8 @@ export const appointmentService = {
       };
     } catch (error) {
       console.error('Error fetching availability:', error);
-      // Fallback to empty response on error
-      return {
-        date: data.date,
-        professionals: [],
-      };
+      // Re-throw so the caller can display the real error message from the backend
+      throw error;
     }
   },
 

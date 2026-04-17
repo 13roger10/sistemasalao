@@ -180,6 +180,28 @@ function BookingPageContent() {
   // Calendar state
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { locale: ptBR }));
 
+  // Open days loaded from admin config (0=Sun..6=Sat). Default Mon-Sat while loading.
+  const [openDays, setOpenDays] = useState<Set<number>>(new Set([1, 2, 3, 4, 5, 6]));
+
+  // Load salon open days from admin config
+  useEffect(() => {
+    const loadOpenDays = async () => {
+      try {
+        const salonId = unitId === 'default' ? '1' : unitId;
+        const response = await fetch(`/api/salon/schedule/dias-abertos?salonId=${salonId}`);
+        if (response.ok) {
+          const data = await response.json() as { diasAbertos: number[] };
+          if (data.diasAbertos && data.diasAbertos.length > 0) {
+            setOpenDays(new Set(data.diasAbertos));
+          }
+        }
+      } catch {
+        // Fallback to Mon-Sat if request fails
+      }
+    };
+    loadOpenDays();
+  }, [unitId]);
+
   // Set logged user as client
   useEffect(() => {
     if (user) {
@@ -254,7 +276,8 @@ function BookingPageContent() {
         );
         setAvailableSlots(professionalSlots?.slots || []);
       } catch (err) {
-        setError("Erro ao carregar horarios");
+        const msg = err instanceof Error ? err.message : "Erro ao carregar horários";
+        setError(msg);
         console.error(err);
       } finally {
         setIsLoading(false);
@@ -780,20 +803,22 @@ function BookingPageContent() {
                     const isSelected = bookingData.date && isSameDay(day, bookingData.date);
                     const isToday = isSameDay(day, new Date());
                     const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
-                    const isSunday = day.getDay() === 0; // Domingo = 0
+                    const isClosed = !openDays.has(day.getDay());
+                    const isDisabled = isPast || isClosed;
 
                     return (
                       <button
                         key={day.toISOString()}
-                        onClick={() => !isPast && setBookingData((prev) => ({ ...prev, date: day, time: null }))}
-                        disabled={isPast}
-                        title={isSunday ? "Salao fechado aos domingos" : undefined}
+                        onClick={() => !isDisabled && setBookingData((prev) => ({ ...prev, date: day, time: null }))}
+                        disabled={isDisabled}
+                        title={isClosed && !isPast ? "Salão fechado neste dia" : undefined}
                         className={cn(
                           "flex flex-col items-center rounded-lg p-3 transition-all",
                           isSelected && "bg-violet-500 text-white",
-                          !isSelected && !isPast && !isSunday && "bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600",
-                          !isSelected && !isPast && isSunday && "bg-orange-50 text-orange-400 dark:bg-orange-900/20 dark:text-orange-500",
-                          isPast && "cursor-not-allowed bg-gray-50 text-gray-300 dark:bg-gray-800 dark:text-gray-600",
+                          !isSelected && !isDisabled && "bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600",
+                          !isSelected && !isPast && isClosed && "bg-orange-50 text-orange-400 dark:bg-orange-900/20 dark:text-orange-500",
+                          isDisabled && !isClosed && "cursor-not-allowed bg-gray-50 text-gray-300 dark:bg-gray-800 dark:text-gray-600",
+                          isClosed && "cursor-not-allowed",
                           isToday && !isSelected && "ring-2 ring-violet-500"
                         )}
                       >
@@ -810,9 +835,30 @@ function BookingPageContent() {
               {/* Time Selection */}
               {bookingData.date && (
                 <div>
-                  <h3 className="mb-4 font-medium text-gray-900 dark:text-white">
+                  <h3 className="mb-2 font-medium text-gray-900 dark:text-white">
                     Horarios Disponiveis - {format(bookingData.date, "d 'de' MMMM", { locale: ptBR })}
                   </h3>
+
+                  {/* Info sobre duração do serviço e horário limite */}
+                  {totalDuration > 0 && availableSlots.length > 0 && (() => {
+                    const lastSlot = availableSlots[availableSlots.length - 1];
+                    const [lh, lm] = lastSlot.time.split(':').map(Number);
+                    const endMin = lh * 60 + lm + totalDuration;
+                    const endH = String(Math.floor(endMin / 60)).padStart(2, '0');
+                    const endM = String(endMin % 60).padStart(2, '0');
+                    const endTime = `${endH}:${endM}`;
+                    const firstSlot = availableSlots[0];
+                    const durH = Math.floor(totalDuration / 60);
+                    const durM = totalDuration % 60;
+                    const durStr = durH > 0
+                      ? durM > 0 ? `${durH}h ${durM}min` : `${durH}h`
+                      : `${durM}min`;
+                    return (
+                      <p className="mb-4 text-xs text-blue-600 dark:text-blue-400">
+                        Funcionamento: {firstSlot.time} às {endTime} &bull; Serviço: {durStr} &bull; Último início disponível: {lastSlot.time}
+                      </p>
+                    );
+                  })()}
 
                   {isLoading ? (
                     <div className="flex items-center justify-center py-8">
