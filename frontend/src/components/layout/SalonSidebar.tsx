@@ -102,6 +102,7 @@ const MENU_SECTIONS: MenuSection[] = [
         href: "/salon/services",
         icon: Scissors,
         permission: "services.view",
+        roles: ["ADMIN", "RECEPCIONIST"],
       },
     ],
   },
