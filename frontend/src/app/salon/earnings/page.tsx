@@ -250,8 +250,8 @@ export default function EarningsPage() {
                 : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
             }`}
           >
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            <div className="mb-3">
+              <div className="flex items-center gap-2 mb-2">
                 <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${
                   activePeriod === "day"
                     ? "bg-primary-100 text-primary-700 dark:bg-primary-800 dark:text-primary-300"
@@ -263,7 +263,7 @@ export default function EarningsPage() {
                   activePeriod === "day" ? "text-primary-700 dark:text-primary-300" : "text-gray-500 dark:text-gray-400"
                 }`}>{isToday ? "Hoje" : dayTitle}</span>
               </div>
-              {/* Date picker — para selecionar qualquer dia */}
+              {/* Date picker — linha separada para não ficar colado ao label */}
               <input
                 type="date"
                 value={selectedDate}
@@ -275,7 +275,7 @@ export default function EarningsPage() {
                     setActivePeriod("day");
                   }
                 }}
-                className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300"
               />
             </div>
             <p className={`text-2xl font-bold ${
