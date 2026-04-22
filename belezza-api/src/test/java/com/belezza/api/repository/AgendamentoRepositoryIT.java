@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * These tests use a real PostgreSQL database via Testcontainers.
  */
 @DisplayName("AgendamentoRepository Integration Tests")
+@SuppressWarnings("null")
 class AgendamentoRepositoryIT extends BaseIntegrationTest {
 
     @Autowired
@@ -112,30 +113,52 @@ class AgendamentoRepositoryIT extends BaseIntegrationTest {
                 .build());
     }
 
+    /** Helper: build and save an Agendamento with one service via the new multi-service API. */
+    private Agendamento buildAndSave(LocalDateTime dataHora, LocalDateTime fimPrevisto,
+                                     StatusAgendamento status) {
+        Agendamento ag = Agendamento.builder()
+                .cliente(cliente)
+                .profissional(profissional)
+                .salon(salon)
+                .dataHora(dataHora)
+                .fimPrevisto(fimPrevisto)
+                .status(status)
+                .valorCobrado(servico.getPreco())
+                .build();
+        ag.addServico(servico, null, null);
+        return agendamentoRepository.save(ag);
+    }
+
+    /** Helper: same but allows setting lembreteEnviado24h. */
+    private Agendamento buildAndSaveWithLembrete(LocalDateTime dataHora, LocalDateTime fimPrevisto,
+                                                  StatusAgendamento status, boolean lembrete24h) {
+        Agendamento ag = Agendamento.builder()
+                .cliente(cliente)
+                .profissional(profissional)
+                .salon(salon)
+                .dataHora(dataHora)
+                .fimPrevisto(fimPrevisto)
+                .status(status)
+                .lembreteEnviado24h(lembrete24h)
+                .valorCobrado(servico.getPreco())
+                .build();
+        ag.addServico(servico, null, null);
+        return agendamentoRepository.save(ag);
+    }
+
     @Test
     @DisplayName("Should save and retrieve agendamento")
     void shouldSaveAndRetrieveAgendamento() {
         // Given
         LocalDateTime dataHora = LocalDateTime.of(2024, 1, 15, 10, 0);
-        Agendamento agendamento = Agendamento.builder()
-                .cliente(cliente)
-                .profissional(profissional)
-                .servico(servico)
-                .salon(salon)
-                .dataHora(dataHora)
-                .fimPrevisto(dataHora.plusHours(1))
-                .status(StatusAgendamento.CONFIRMADO)
-                .valorCobrado(servico.getPreco())
-                .build();
-
-        // When
-        Agendamento saved = agendamentoRepository.save(agendamento);
+        Agendamento saved = buildAndSave(dataHora, dataHora.plusHours(1), StatusAgendamento.CONFIRMADO);
 
         // Then
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getCliente()).isEqualTo(cliente);
         assertThat(saved.getProfissional()).isEqualTo(profissional);
-        assertThat(saved.getServico()).isEqualTo(servico);
+        assertThat(saved.getServicos()).hasSize(1);
+        assertThat(saved.getServicos().get(0).getServico()).isEqualTo(servico);
         assertThat(saved.getStatus()).isEqualTo(StatusAgendamento.CONFIRMADO);
     }
 
@@ -146,27 +169,8 @@ class AgendamentoRepositoryIT extends BaseIntegrationTest {
         LocalDateTime dataHora1 = LocalDateTime.of(2024, 1, 15, 10, 0);
         LocalDateTime dataHora2 = LocalDateTime.of(2024, 1, 16, 14, 0);
 
-        agendamentoRepository.save(Agendamento.builder()
-                .cliente(cliente)
-                .profissional(profissional)
-                .servico(servico)
-                .salon(salon)
-                .dataHora(dataHora1)
-                .fimPrevisto(dataHora1.plusHours(1))
-                .status(StatusAgendamento.CONFIRMADO)
-                .valorCobrado(servico.getPreco())
-                .build());
-
-        agendamentoRepository.save(Agendamento.builder()
-                .cliente(cliente)
-                .profissional(profissional)
-                .servico(servico)
-                .salon(salon)
-                .dataHora(dataHora2)
-                .fimPrevisto(dataHora2.plusHours(1))
-                .status(StatusAgendamento.PENDENTE)
-                .valorCobrado(servico.getPreco())
-                .build());
+        buildAndSave(dataHora1, dataHora1.plusHours(1), StatusAgendamento.CONFIRMADO);
+        buildAndSave(dataHora2, dataHora2.plusHours(1), StatusAgendamento.PENDENTE);
 
         // When
         List<Agendamento> found = agendamentoRepository.findBySalonIdAndStatus(
@@ -180,20 +184,9 @@ class AgendamentoRepositoryIT extends BaseIntegrationTest {
     @Test
     @DisplayName("Should find scheduling conflicts")
     void shouldFindSchedulingConflicts() {
-        // Given
+        // Given — existing appointment from 10:00 to 11:00
         LocalDateTime dataHora = LocalDateTime.of(2024, 1, 15, 10, 0);
-
-        // Existing appointment from 10:00 to 11:00
-        agendamentoRepository.save(Agendamento.builder()
-                .cliente(cliente)
-                .profissional(profissional)
-                .servico(servico)
-                .salon(salon)
-                .dataHora(dataHora)
-                .fimPrevisto(dataHora.plusHours(1))
-                .status(StatusAgendamento.CONFIRMADO)
-                .valorCobrado(servico.getPreco())
-                .build());
+        buildAndSave(dataHora, dataHora.plusHours(1), StatusAgendamento.CONFIRMADO);
 
         // When - Try to schedule from 10:30 to 11:30 (conflict!)
         LocalDateTime newDataHora = LocalDateTime.of(2024, 1, 15, 10, 30);
@@ -210,20 +203,9 @@ class AgendamentoRepositoryIT extends BaseIntegrationTest {
     @Test
     @DisplayName("Should not find conflicts for different professional")
     void shouldNotFindConflictsForDifferentProfessional() {
-        // Given
+        // Given — appointment for profissional1
         LocalDateTime dataHora = LocalDateTime.of(2024, 1, 15, 10, 0);
-
-        // Appointment for profissional1
-        agendamentoRepository.save(Agendamento.builder()
-                .cliente(cliente)
-                .profissional(profissional)
-                .servico(servico)
-                .salon(salon)
-                .dataHora(dataHora)
-                .fimPrevisto(dataHora.plusHours(1))
-                .status(StatusAgendamento.CONFIRMADO)
-                .valorCobrado(servico.getPreco())
-                .build());
+        buildAndSave(dataHora, dataHora.plusHours(1), StatusAgendamento.CONFIRMADO);
 
         // Create another professional
         Usuario prof2Usuario = usuarioRepository.save(Usuario.builder()
@@ -258,18 +240,7 @@ class AgendamentoRepositoryIT extends BaseIntegrationTest {
     void shouldFindAppointmentsNeeding24hReminder() {
         // Given
         LocalDateTime tomorrow = LocalDateTime.now().plusDays(1);
-
-        agendamentoRepository.save(Agendamento.builder()
-                .cliente(cliente)
-                .profissional(profissional)
-                .servico(servico)
-                .salon(salon)
-                .dataHora(tomorrow)
-                .fimPrevisto(tomorrow.plusHours(1))
-                .status(StatusAgendamento.CONFIRMADO)
-                .lembreteEnviado24h(false)
-                .valorCobrado(servico.getPreco())
-                .build());
+        buildAndSaveWithLembrete(tomorrow, tomorrow.plusHours(1), StatusAgendamento.CONFIRMADO, false);
 
         // When - Find appointments between 23 and 25 hours from now
         LocalDateTime inicio = LocalDateTime.now().plusHours(23);
@@ -290,38 +261,15 @@ class AgendamentoRepositoryIT extends BaseIntegrationTest {
         LocalDateTime inicio = LocalDateTime.of(2024, 1, 1, 0, 0);
         LocalDateTime fim = LocalDateTime.of(2024, 1, 31, 23, 59);
 
-        agendamentoRepository.save(Agendamento.builder()
-                .cliente(cliente)
-                .profissional(profissional)
-                .servico(servico)
-                .salon(salon)
-                .dataHora(LocalDateTime.of(2024, 1, 15, 10, 0))
-                .fimPrevisto(LocalDateTime.of(2024, 1, 15, 11, 0))
-                .status(StatusAgendamento.CONFIRMADO)
-                .valorCobrado(servico.getPreco())
-                .build());
-
-        agendamentoRepository.save(Agendamento.builder()
-                .cliente(cliente)
-                .profissional(profissional)
-                .servico(servico)
-                .salon(salon)
-                .dataHora(LocalDateTime.of(2024, 1, 16, 14, 0))
-                .fimPrevisto(LocalDateTime.of(2024, 1, 16, 15, 0))
-                .status(StatusAgendamento.CONFIRMADO)
-                .valorCobrado(servico.getPreco())
-                .build());
-
-        agendamentoRepository.save(Agendamento.builder()
-                .cliente(cliente)
-                .profissional(profissional)
-                .servico(servico)
-                .salon(salon)
-                .dataHora(LocalDateTime.of(2024, 1, 17, 10, 0))
-                .fimPrevisto(LocalDateTime.of(2024, 1, 17, 11, 0))
-                .status(StatusAgendamento.CANCELADO)
-                .valorCobrado(servico.getPreco())
-                .build());
+        buildAndSave(LocalDateTime.of(2024, 1, 15, 10, 0),
+                     LocalDateTime.of(2024, 1, 15, 11, 0),
+                     StatusAgendamento.CONFIRMADO);
+        buildAndSave(LocalDateTime.of(2024, 1, 16, 14, 0),
+                     LocalDateTime.of(2024, 1, 16, 15, 0),
+                     StatusAgendamento.CONFIRMADO);
+        buildAndSave(LocalDateTime.of(2024, 1, 17, 10, 0),
+                     LocalDateTime.of(2024, 1, 17, 11, 0),
+                     StatusAgendamento.CANCELADO);
 
         // When
         List<Object[]> counts = agendamentoRepository.countByStatusAndPeriod(

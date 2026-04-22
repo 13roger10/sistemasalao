@@ -64,6 +64,10 @@ public class PagamentoProfissional {
     @Builder.Default
     private StatusPagamentoProfissional status = StatusPagamentoProfissional.PENDENTE;
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 30)
+    private FormaPagamento formaPagamento;
+
     @Column(length = 500)
     private String observacoes;
 
@@ -71,6 +75,12 @@ public class PagamentoProfissional {
     private String referenciaTransacao;
 
     private LocalDateTime pagoEm;
+
+    private LocalDateTime recebimentoConfirmadoEm;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean autenticacaoValidada = false;
 
     @OneToMany(mappedBy = "pagamentoProfissional", fetch = FetchType.LAZY)
     @Builder.Default

@@ -4,6 +4,7 @@ import com.belezza.api.dto.fidelidade.*;
 import com.belezza.api.entity.NivelFidelidade;
 import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.security.annotation.ProfissionalOrAdmin;
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.belezza.api.service.FidelidadeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -165,6 +166,32 @@ public class FidelidadeController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fim) {
         ExtratoFidelidadeResponse extrato = fidelidadeService.getExtrato(fidelidadeClienteId, inicio, fim);
         return ResponseEntity.ok(extrato);
+    }
+
+    // ==================== CLIENTE AUTENTICADO ====================
+
+    @GetMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Minha fidelidade", description = "Retorna inscricoes de fidelidade do cliente autenticado")
+    public ResponseEntity<List<FidelidadeClienteResponse>> getMinhaFidelidade(Authentication auth) {
+        List<FidelidadeClienteResponse> fidelidades = fidelidadeService.getMinhaFidelidade(auth.getName());
+        return ResponseEntity.ok(fidelidades);
+    }
+
+    @GetMapping("/me/extrato")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Meu extrato de fidelidade", description = "Retorna extrato de transacoes do cliente autenticado")
+    public ResponseEntity<ExtratoFidelidadeResponse> getMeusExtratos(Authentication auth) {
+        ExtratoFidelidadeResponse extrato = fidelidadeService.getMeusExtratos(auth.getName());
+        return ResponseEntity.ok(extrato);
+    }
+
+    @PostMapping("/me/resgatar")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Resgatar credito proprio", description = "Cliente resgata um credito de servico gratis")
+    public ResponseEntity<FidelidadeTransacaoResponse> clienteResgatarCredito(Authentication auth) {
+        FidelidadeTransacaoResponse response = fidelidadeService.clienteResgatarCredito(auth.getName());
+        return ResponseEntity.ok(response);
     }
 
     // ==================== RESUMO/DASHBOARD ====================

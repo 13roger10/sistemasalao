@@ -32,6 +32,7 @@ public class FidelidadeProgramaResponse {
     private LocalDateTime criadoEm;
     private LocalDateTime atualizadoEm;
 
+    @SuppressWarnings("deprecation")
     private static final NumberFormat CURRENCY_FORMAT = NumberFormat.getCurrencyInstance(new Locale("pt", "BR"));
 
     public static FidelidadeProgramaResponse fromEntity(FidelidadePrograma programa) {

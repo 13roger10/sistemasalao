@@ -22,10 +22,9 @@
     "db:stop": "docker-compose -f ../docker-compose.yml stop postgres redis"
   },
   "dependencies": {
-    "@stomp/stompjs": "^7.0.0",
+    "@stomp/stompjs": "^7.3.0",
     "@tanstack/react-query": "^5.90.20",
     "axios": "^1.13.4",
-    "sockjs-client": "^1.6.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.563.0",
@@ -34,6 +33,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^3.7.0",
+    "sockjs-client": "^1.6.1",
     "tailwind-merge": "^3.4.0",
     "zustand": "^5.0.10"
   },

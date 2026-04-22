@@ -1,6 +1,5 @@
 package com.belezza.api.repository;
 
-import com.belezza.api.entity.FormaPagamento;
 import com.belezza.api.entity.Pagamento;
 import com.belezza.api.entity.StatusPagamento;
 import org.springframework.data.domain.Page;

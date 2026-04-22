@@ -4,8 +4,10 @@ import { useEffect, useRef, useCallback } from "react";
 import { Client, type IMessage, type StompSubscription } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
 
+// WebSocket must connect directly to the backend — cannot go through the
+// Next.js HTTP catch-all proxy because SockJS needs a real WebSocket upgrade.
 const WS_URL =
-  (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080") + "/ws";
+  (process.env.NEXT_PUBLIC_WS_URL ?? "http://localhost:8081") + "/ws";
 
 export type WsMessageHandler<T = unknown> = (payload: T) => void;
 

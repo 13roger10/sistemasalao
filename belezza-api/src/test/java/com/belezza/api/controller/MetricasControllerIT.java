@@ -38,6 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Transactional
 @DisplayName("MetricasController Integration Tests")
+@SuppressWarnings("null")
 class MetricasControllerIT {
 
     @Autowired
@@ -167,27 +168,29 @@ class MetricasControllerIT {
         LocalDateTime dataHora1 = LocalDateTime.of(2024, 1, 15, 10, 0);
         LocalDateTime dataHora2 = LocalDateTime.of(2024, 1, 16, 14, 0);
 
-        agendamentoRepository.save(Agendamento.builder()
+        Agendamento agendamento1 = Agendamento.builder()
                 .cliente(cliente)
                 .profissional(profissional)
-                .servico(servico)
                 .salon(salon)
                 .dataHora(dataHora1)
                 .fimPrevisto(dataHora1.plusHours(1))
                 .status(StatusAgendamento.CONCLUIDO)
                 .valorCobrado(servico.getPreco())
-                .build());
+                .build();
+        agendamento1.addServico(servico, null, null);
+        agendamentoRepository.save(agendamento1);
 
-        agendamentoRepository.save(Agendamento.builder()
+        Agendamento agendamento2 = Agendamento.builder()
                 .cliente(cliente)
                 .profissional(profissional)
-                .servico(servico)
                 .salon(salon)
                 .dataHora(dataHora2)
                 .fimPrevisto(dataHora2.plusHours(1))
                 .status(StatusAgendamento.CONCLUIDO)
                 .valorCobrado(servico.getPreco())
-                .build());
+                .build();
+        agendamento2.addServico(servico, null, null);
+        agendamentoRepository.save(agendamento2);
 
         // When & Then
         String responseContent = mockMvc.perform(get("/api/metricas/agendamentos")
@@ -235,16 +238,17 @@ class MetricasControllerIT {
         // Given - Create test agendamento and pagamento
         LocalDateTime dataHora = LocalDateTime.of(2024, 1, 15, 10, 0);
 
-        Agendamento agendamento = agendamentoRepository.save(Agendamento.builder()
+        Agendamento agendamentoFin = Agendamento.builder()
                 .cliente(cliente)
                 .profissional(profissional)
-                .servico(servico)
                 .salon(salon)
                 .dataHora(dataHora)
                 .fimPrevisto(dataHora.plusHours(1))
                 .status(StatusAgendamento.CONCLUIDO)
                 .valorCobrado(servico.getPreco())
-                .build());
+                .build();
+        agendamentoFin.addServico(servico, null, null);
+        Agendamento agendamento = agendamentoRepository.save(agendamentoFin);
 
         pagamentoRepository.save(Pagamento.builder()
                 .agendamento(agendamento)

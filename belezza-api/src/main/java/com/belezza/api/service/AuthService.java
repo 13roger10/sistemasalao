@@ -11,11 +11,12 @@ import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.DuplicateResourceException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.ClienteRepository;
+import com.belezza.api.repository.ProfissionalRepository;
+import com.belezza.api.repository.SalonRepository;
 import com.belezza.api.repository.UsuarioRepository;
 import com.belezza.api.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
@@ -37,6 +38,8 @@ public class AuthService {
 
     private final UsuarioRepository usuarioRepository;
     private final ClienteRepository clienteRepository;
+    private final ProfissionalRepository profissionalRepository;
+    private final SalonRepository salonRepository;
     private final SalonService salonService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
@@ -49,6 +52,7 @@ public class AuthService {
      * Registers a new user.
      */
     @Transactional
+    @SuppressWarnings("null")
     public AuthResponse register(RegisterRequest request) {
         log.info("Registering new user with email: {}", request.getEmail());
 
@@ -109,11 +113,12 @@ public class AuthService {
         );
 
         // Generate tokens
-        String accessToken = jwtService.generateAccessToken(usuario);
+        Long salonId = resolveSalonId(usuario);
+        String accessToken = jwtService.generateAccessToken(usuario, salonId);
         String refreshToken = jwtService.generateRefreshToken(usuario);
 
         return AuthResponse.of(
-                UserResponse.fromEntity(usuario),
+                buildUserResponse(usuario),
                 accessToken,
                 refreshToken,
                 jwtService.getAccessTokenExpiration()
@@ -163,12 +168,13 @@ public class AuthService {
 
         log.info("User logged in successfully: {}", usuario.getId());
 
-        // Generate tokens
-        String accessToken = jwtService.generateAccessToken(usuario);
+        // Generate tokens with tenant claim
+        Long salonId = resolveSalonId(usuario);
+        String accessToken = jwtService.generateAccessToken(usuario, salonId);
         String refreshToken = jwtService.generateRefreshToken(usuario);
 
         return AuthResponse.of(
-                UserResponse.fromEntity(usuario),
+                buildUserResponse(usuario),
                 accessToken,
                 refreshToken,
                 jwtService.getAccessTokenExpiration()
@@ -193,8 +199,9 @@ public class AuthService {
         Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(email)
                 .orElseThrow(AuthenticationException::invalidToken);
 
-        // Generate new tokens
-        String newAccessToken = jwtService.generateAccessToken(usuario);
+        // Generate new tokens with tenant claim
+        Long salonId = resolveSalonId(usuario);
+        String newAccessToken = jwtService.generateAccessToken(usuario, salonId);
         String newRefreshToken = jwtService.generateRefreshToken(usuario);
 
         log.debug("Token refreshed for user: {}", usuario.getId());
@@ -207,6 +214,16 @@ public class AuthService {
         );
     }
 
+    private UserResponse buildUserResponse(Usuario usuario) {
+        if (usuario.getRole() == Role.PROFISSIONAL) {
+            Long profissionalId = profissionalRepository.findByUsuarioId(usuario.getId())
+                    .map(p -> p.getId())
+                    .orElse(null);
+            return UserResponse.fromEntity(usuario, profissionalId);
+        }
+        return UserResponse.fromEntity(usuario);
+    }
+
     /**
      * Gets current user profile.
      */
@@ -215,7 +232,7 @@ public class AuthService {
         Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", email));
 
-        return UserResponse.fromEntity(usuario);
+        return buildUserResponse(usuario);
     }
 
     /**
@@ -306,5 +323,37 @@ public class AuthService {
         tokenBlacklistService.blacklistToken(token, expirationSeconds);
 
         log.info("Token blacklisted successfully");
+    }
+
+    /**
+     * Validates the current JWT-authenticated user's password.
+     * Used as a re-authentication step before sensitive actions.
+     *
+     * @param email email extracted from the JWT principal
+     * @param senha raw password provided by the user
+     * @return true if password matches, false otherwise
+     */
+    public boolean validarSenha(String email, String senha) {
+        return usuarioRepository.findByEmailAndAtivoTrue(email)
+                .map(usuario -> passwordEncoder.matches(senha, usuario.getPassword()))
+                .orElse(false);
+    }
+
+    /**
+     * Resolves the salonId for the given user based on their role.
+     * ADMIN → salon where they are the admin owner.
+     * PROFISSIONAL → salon they are registered in.
+     * CLIENTE → null (clients can belong to multiple salons).
+     */
+    private Long resolveSalonId(Usuario usuario) {
+        return switch (usuario.getRole()) {
+            case ADMIN -> salonRepository.findByAdminId(usuario.getId())
+                    .map(s -> s.getId())
+                    .orElse(null);
+            case PROFISSIONAL -> profissionalRepository.findByUsuarioId(usuario.getId())
+                    .map(p -> p.getSalon().getId())
+                    .orElse(null);
+            default -> null;
+        };
     }
 }

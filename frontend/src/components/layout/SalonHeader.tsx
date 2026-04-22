@@ -1,12 +1,14 @@
 "use client";
 
-import { Menu, Bell, Sun, Moon, Building2, ChevronDown, Check } from "lucide-react";
+import { Menu, Bell, Sun, Moon, Building2, ChevronDown, Check, CheckCheck, ExternalLink } from "lucide-react";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import { useUnit } from "@/contexts/UnitContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useSalonNotificacoes } from "@/contexts/SalonNotificacaoContext";
 import { AUTH_ROLE_LABELS, AUTH_ROLE_COLORS } from "@/types/salon/auth";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import Link from "next/link";
 
 interface SalonHeaderProps {
   onMenuClick: () => void;
@@ -16,7 +18,8 @@ interface SalonHeaderProps {
 export function SalonHeader({ onMenuClick, pageTitle }: SalonHeaderProps) {
   const { user } = useSalonAuth();
   const { theme, setTheme } = useTheme();
-  const { selectedUnit, selectedUnitId, availableUnits, selectUnit, canChangeUnit, canViewAllUnits } = useUnit();
+  const { selectedUnit, selectedUnitId, availableUnits, selectUnit, canViewAllUnits } = useUnit();
+  const { naoLidas, recentes, marcarLida, marcarTodasLidas } = useSalonNotificacoes();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUnitSelector, setShowUnitSelector] = useState(false);
 
@@ -166,65 +169,90 @@ export function SalonHeader({ onMenuClick, pageTitle }: SalonHeaderProps) {
             className="relative rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
           >
             <Bell className="h-5 w-5" />
-            {/* Badge de notificações */}
-            <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-              3
-            </span>
+            {naoLidas > 0 && (
+              <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                {naoLidas > 99 ? "99+" : naoLidas}
+              </span>
+            )}
           </button>
 
-          {/* Dropdown de notificações */}
           {showNotifications && (
             <>
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setShowNotifications(false)}
-              />
+              <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
               <div className="absolute right-0 top-full mt-2 z-50 w-80 rounded-lg border bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800">
-                <div className="border-b p-3 dark:border-gray-700">
+                {/* Header */}
+                <div className="flex items-center justify-between border-b p-3 dark:border-gray-700">
                   <h3 className="font-semibold text-gray-900 dark:text-white">
                     Notificações
+                    {naoLidas > 0 && (
+                      <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-violet-100 px-1.5 text-xs font-bold text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                        {naoLidas}
+                      </span>
+                    )}
                   </h3>
+                  {naoLidas > 0 && (
+                    <button
+                      onClick={() => marcarTodasLidas()}
+                      className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-700 dark:text-violet-400"
+                      title="Marcar todas como lidas"
+                    >
+                      <CheckCheck className="h-3.5 w-3.5" />
+                      Marcar todas
+                    </button>
+                  )}
                 </div>
-                <div className="max-h-96 overflow-y-auto">
-                  {/* Exemplo de notificações */}
-                  <div className="border-b p-3 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">
-                      Novo agendamento
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      João Silva agendou corte para 14:00
-                    </p>
-                    <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                      Há 5 minutos
-                    </p>
-                  </div>
-                  <div className="border-b p-3 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">
-                      Estoque baixo
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Pomada modeladora abaixo do mínimo
-                    </p>
-                    <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                      Há 1 hora
-                    </p>
-                  </div>
-                  <div className="p-3 hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">
-                      Cliente aniversariante
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Carlos Oliveira faz aniversário hoje!
-                    </p>
-                    <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                      Há 2 horas
-                    </p>
-                  </div>
+
+                {/* List */}
+                <div className="max-h-80 overflow-y-auto">
+                  {recentes.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-center">
+                      <Bell className="h-8 w-8 text-gray-300 dark:text-gray-600" />
+                      <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Nenhuma notificação</p>
+                    </div>
+                  ) : (
+                    recentes.map((notif, index) => (
+                      <button
+                        key={notif.id}
+                        onClick={() => { if (!notif.lida) marcarLida(notif.id); }}
+                        className={cn(
+                          "w-full px-3 py-3 text-left transition-colors",
+                          "hover:bg-gray-50 dark:hover:bg-gray-700",
+                          !notif.lida && "bg-violet-50/60 dark:bg-violet-900/10",
+                          index !== recentes.length - 1 && "border-b border-gray-100 dark:border-gray-700"
+                        )}
+                      >
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className={cn(
+                              "text-sm leading-snug",
+                              notif.lida ? "font-medium text-gray-700 dark:text-gray-300" : "font-semibold text-gray-900 dark:text-white"
+                            )}>
+                              {notif.titulo}
+                            </p>
+                            <p className="mt-0.5 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">
+                              {notif.mensagem}
+                            </p>
+                            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{notif.tempoRelativo}</p>
+                          </div>
+                          {!notif.lida && (
+                            <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-violet-500" />
+                          )}
+                        </div>
+                      </button>
+                    ))
+                  )}
                 </div>
+
+                {/* Footer */}
                 <div className="border-t p-2 dark:border-gray-700">
-                  <button className="w-full rounded-lg p-2 text-center text-sm font-medium text-violet-600 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-900/20">
-                    Ver todas
-                  </button>
+                  <Link
+                    href="/salon/client/profile/notifications"
+                    onClick={() => setShowNotifications(false)}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg p-2 text-sm font-medium text-violet-600 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-900/20"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Ver todas as notificações
+                  </Link>
                 </div>
               </div>
             </>

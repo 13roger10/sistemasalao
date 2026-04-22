@@ -33,6 +33,7 @@ public class EstoqueService {
     // ====== PRODUTOS ======
 
     @Transactional
+    @SuppressWarnings("null")
     public ProdutoResponse criarProduto(ProdutoRequest request, String emailUsuario) {
         Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
 
@@ -190,6 +191,7 @@ public class EstoqueService {
     // ====== MOVIMENTAÇÕES ======
 
     @Transactional
+    @SuppressWarnings("null")
     public MovimentacaoResponse registrarMovimentacao(MovimentacaoRequest request, String emailUsuario) {
         Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
         Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
@@ -251,6 +253,7 @@ public class EstoqueService {
     // ====== CATEGORIAS ======
 
     @Transactional
+    @SuppressWarnings("null")
     public CategoriaProdutoResponse criarCategoria(CategoriaProdutoRequest request, String emailUsuario) {
         Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
 
@@ -284,6 +287,7 @@ public class EstoqueService {
     // ====== ALERTAS ======
 
     @Transactional
+    @SuppressWarnings("null")
     public void reconhecerAlerta(Long alertaId, String emailUsuario) {
         Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", emailUsuario));
@@ -333,6 +337,7 @@ public class EstoqueService {
 
     // ====== HELPERS ======
 
+    @SuppressWarnings("null")
     private void verificarAlertaEstoque(Produto produto) {
         String statusEstoque = produto.getStatusEstoque();
 

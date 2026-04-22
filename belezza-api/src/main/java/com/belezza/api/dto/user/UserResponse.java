@@ -29,6 +29,7 @@ public class UserResponse {
     private boolean emailVerificado;
     private LocalDateTime criadoEm;
     private LocalDateTime ultimoLogin;
+    private Long profissionalId;
 
     public static UserResponse fromEntity(Usuario usuario) {
         return UserResponse.builder()
@@ -43,5 +44,11 @@ public class UserResponse {
                 .criadoEm(usuario.getCriadoEm())
                 .ultimoLogin(usuario.getUltimoLogin())
                 .build();
+    }
+
+    public static UserResponse fromEntity(Usuario usuario, Long profissionalId) {
+        UserResponse response = fromEntity(usuario);
+        response.setProfissionalId(profissionalId);
+        return response;
     }
 }

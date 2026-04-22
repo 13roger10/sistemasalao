@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Star,
   Users,
@@ -29,6 +29,8 @@ import {
   X,
 } from "lucide-react";
 import { SalonLayout } from "@/components/layout/SalonLayout";
+import { useSalonAuth } from "@/contexts/SalonAuthContext";
+import { reviewService } from "@/services/salon/reviewService";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
@@ -661,6 +663,8 @@ const mockReviews: Review[] = [
 // ===== PÁGINA PRINCIPAL =====
 
 export default function ReviewsPage() {
+  const { user } = useSalonAuth();
+  const isProfessional = user?.role === 'PROFESSIONAL';
   const [activeTab, setActiveTab] = useState<"overview" | "reviews" | "ranking">("overview");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<ReviewStatus | "all">("all");
@@ -672,10 +676,36 @@ export default function ReviewsPage() {
   const [showProfessionalModal, setShowProfessionalModal] = useState(false);
   const [responseText, setResponseText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Filtrar reviews
+  const loadReviews = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      if (isProfessional && user?.professionalId) {
+        // PROFESSIONAL: endpoint dedicado garante isolamento no backend
+        const response = await reviewService.listByProfessional(String(user.professionalId));
+        setReviews(response.data);
+      } else {
+        // ADMIN / RECEPCIONIST: listagem geral do salão
+        const response = await reviewService.listBySalon('1');
+        setReviews(response.data);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar avaliações:', error);
+      setReviews([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isProfessional, user?.professionalId]);
+
+  useEffect(() => {
+    loadReviews();
+  }, [loadReviews]);
+
+  // Filtrar reviews por busca, status e rating (isolamento já garantido pela API)
   const filteredReviews = useMemo(() => {
-    return mockReviews.filter((review) => {
+    return reviews.filter((review) => {
       const matchesSearch =
         review.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         review.professionalName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -684,7 +714,7 @@ export default function ReviewsPage() {
       const matchesRating = ratingFilter === "all" || review.rating === ratingFilter;
       return matchesSearch && matchesStatus && matchesRating;
     });
-  }, [searchTerm, statusFilter, ratingFilter]);
+  }, [reviews, searchTerm, statusFilter, ratingFilter]);
 
   // Handlers
   const handleRespond = (review: Review) => {
@@ -721,11 +751,11 @@ export default function ReviewsPage() {
   const tabs = [
     { id: "overview" as const, label: "Visão Geral", icon: BarChart3 },
     { id: "reviews" as const, label: "Avaliações", icon: MessageSquare },
-    { id: "ranking" as const, label: "Ranking", icon: Trophy },
+    ...(!isProfessional ? [{ id: "ranking" as const, label: "Ranking", icon: Trophy }] : []),
   ];
 
   return (
-    <SalonLayout>
+    <SalonLayout requiredPermissions="reviews.view">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -921,7 +951,7 @@ export default function ReviewsPage() {
                 </Button>
               </div>
               <div className="grid gap-4 lg:grid-cols-2">
-                {mockReviews.slice(0, 4).map((review) => (
+                {reviews.slice(0, 4).map((review) => (
                   <ReviewCard
                     key={review.id}
                     review={review}

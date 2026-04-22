@@ -33,6 +33,7 @@ public class DashboardService {
     private final ComissaoRepository comissaoRepository;
     private final AvaliacaoRepository avaliacaoRepository;
 
+    @SuppressWarnings("deprecation")
     private static final NumberFormat CURRENCY_FORMAT = NumberFormat.getCurrencyInstance(new Locale("pt", "BR"));
 
     /**
@@ -158,6 +159,7 @@ public class DashboardService {
                 case CANCELADO -> cancelados = count.intValue();
                 case NO_SHOW -> noShow = count.intValue();
                 case PENDENTE -> pendentes = count.intValue();
+                default -> {} // EM_ANDAMENTO and other statuses not counted separately
             }
             total += count.intValue();
         }
@@ -399,6 +401,7 @@ public class DashboardService {
                     totalPago = valor;
                     quantidadePagas = count.intValue();
                 }
+                default -> {} // CANCELADA and other statuses not counted separately
             }
         }
 

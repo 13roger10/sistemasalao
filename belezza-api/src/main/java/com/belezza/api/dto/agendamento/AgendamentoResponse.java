@@ -70,7 +70,32 @@ public class AgendamentoResponse {
     private LocalDateTime criadoEm;
     private LocalDateTime atualizadoEm;
 
+    @SuppressWarnings("deprecation")
     public static AgendamentoResponse fromEntity(Agendamento a) {
+        return fromEntity(a, false);
+    }
+
+    /**
+     * Creates an AgendamentoResponse with restricted data for professionals.
+     * Excludes: clienteTelefone, observacoes (sensitive client data).
+     *
+     * @param a The appointment entity
+     * @return AgendamentoResponse without sensitive client data
+     */
+    @SuppressWarnings("deprecation")
+    public static AgendamentoResponse fromEntityForProfessional(Agendamento a) {
+        return fromEntity(a, true);
+    }
+
+    /**
+     * Internal method that creates AgendamentoResponse with optional data restriction.
+     *
+     * @param a The appointment entity
+     * @param restrictSensitiveData If true, excludes telefone and observacoes
+     * @return AgendamentoResponse
+     */
+    @SuppressWarnings("deprecation")
+    private static AgendamentoResponse fromEntity(Agendamento a, boolean restrictSensitiveData) {
         // Map services list
         List<ServicoAgendadoDTO> servicosList = new ArrayList<>();
         if (a.getServicos() != null && !a.getServicos().isEmpty()) {
@@ -79,7 +104,7 @@ public class AgendamentoResponse {
                 .map(ServicoAgendadoDTO::fromEntity)
                 .collect(Collectors.toList());
         } else if (a.getServico() != null) {
-            // Single service (legacy approach)
+            // Single service (legacy fallback)
             servicosList.add(ServicoAgendadoDTO.builder()
                 .servicoId(a.getServico().getId())
                 .servicoNome(a.getServico().getNome())
@@ -91,19 +116,23 @@ public class AgendamentoResponse {
                 .build());
         }
 
+        // Derive legacy single-service fields from the resolved list
+        ServicoAgendadoDTO primeiroServico = servicosList.isEmpty() ? null : servicosList.get(0);
+
         return AgendamentoResponse.builder()
                 .id(a.getId())
                 .salonId(a.getSalon().getId())
                 .salonNome(a.getSalon().getNome())
                 .clienteId(a.getCliente().getId())
                 .clienteNome(a.getCliente().getUsuario().getNome())
-                .clienteTelefone(a.getCliente().getUsuario().getTelefone())
+                // Restrict sensitive data for professionals
+                .clienteTelefone(restrictSensitiveData ? null : a.getCliente().getUsuario().getTelefone())
                 .profissionalId(a.getProfissional().getId())
                 .profissionalNome(a.getProfissional().getUsuario().getNome())
-                // Legacy fields (deprecated)
-                .servicoId(a.getServico() != null ? a.getServico().getId() : null)
-                .servicoNome(a.getServico() != null ? a.getServico().getNome() : null)
-                .servicoDuracaoMinutos(a.getServico() != null ? a.getServico().getDuracaoMinutos() : 0)
+                // Legacy fields (deprecated) — derived from servicosList to avoid repeated getServico() calls
+                .servicoId(primeiroServico != null ? primeiroServico.getServicoId() : null)
+                .servicoNome(primeiroServico != null ? primeiroServico.getServicoNome() : null)
+                .servicoDuracaoMinutos(primeiroServico != null ? primeiroServico.getDuracaoPrevistaMinutos() : 0)
                 // New fields
                 .servicos(servicosList)
                 .duracaoTotalMinutos(a.getDuracaoTotalMinutos())
@@ -111,7 +140,8 @@ public class AgendamentoResponse {
                 .fimPrevisto(a.getFimPrevisto())
                 .status(a.getStatus())
                 .statusDescricao(a.getStatus().getDescription())
-                .observacoes(a.getObservacoes())
+                // Restrict sensitive data for professionals
+                .observacoes(restrictSensitiveData ? null : a.getObservacoes())
                 .motivoCancelamento(a.getMotivoCancelamento())
                 .valorCobrado(a.getValorCobrado())
                 .criadoEm(a.getCriadoEm())

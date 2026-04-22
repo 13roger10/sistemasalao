@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, ReactNode } from "react";
+import { useState, useEffect, useCallback, ReactNode } from "react";
 import {
   Star,
   Gift,
@@ -18,22 +18,108 @@ import {
   Sparkles,
   Loader2,
   RefreshCw,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { SalonLayout } from "@/components/layout/SalonLayout";
-import type {
-  LoyaltyLevel,
-  LoyaltyMemberSummary,
-  PointsTransaction,
-  PointsTransactionType,
-  Reward,
-  RewardType,
-} from "@/types/salon";
+import { api } from "@/services/salon/api";
+import type { LoyaltyLevel } from "@/types/salon";
+
+// ===== TIPOS DO BACKEND =====
+
+interface FidelidadeClienteResponse {
+  id: number;
+  clienteId: number;
+  clienteNome: string;
+  clienteEmail: string;
+  programaId: number;
+  programaNome: string;
+  visitasAtuais: number;
+  visitasNecessarias: number;
+  totalVisitas: number;
+  totalResgates: number;
+  creditosDisponiveis: number;
+  nivel: "BRONZE" | "PRATA" | "OURO";
+  nivelDescricao: string;
+  pontosNivel: number;
+  pontosParaProximoNivel: number;
+  proximoNivel: "BRONZE" | "PRATA" | "OURO" | null;
+  progressoVisitas: number;
+  progressoNivel: number;
+  ativo: boolean;
+  criadoEm: string;
+  atualizadoEm: string;
+  recompensaTipo: "SERVICO_GRATIS" | "DESCONTO_PERCENTUAL" | "DESCONTO_VALOR" | null;
+  recompensaValorFormatado: string | null;
+  servicoRecompensaNome: string | null;
+}
+
+interface FidelidadeTransacaoResponse {
+  id: number;
+  fidelidadeClienteId: number;
+  tipo: "VISITA" | "RESGATE" | "BONUS" | "AJUSTE" | "EXPIRACAO";
+  tipoDescricao: string;
+  visitas: number;
+  creditos: number;
+  agendamentoId: number | null;
+  descricao: string | null;
+  criadoEm: string;
+  criadoEmFormatado: string;
+  icone: string;
+  cor: string;
+}
+
+interface ExtratoResponse {
+  fidelidadeCliente: FidelidadeClienteResponse | null;
+  transacoes: FidelidadeTransacaoResponse[];
+  resumo: {
+    totalVisitasPeriodo: number;
+    totalCreditosGanhos: number;
+    totalCreditosResgatados: number;
+    saldoCreditos: number;
+    pontosGanhos: number;
+  };
+}
+
+// ===== HELPERS DE MAPEAMENTO =====
+
+function mapNivel(nivel: string): LoyaltyLevel {
+  if (nivel === "PRATA") return "silver";
+  if (nivel === "OURO") return "gold";
+  return "bronze";
+}
+
+function mapTipoTransacao(tipo: string): "earn" | "redeem" | "expire" | "adjust" | "bonus" {
+  switch (tipo) {
+    case "VISITA": return "earn";
+    case "RESGATE": return "redeem";
+    case "EXPIRACAO": return "expire";
+    case "AJUSTE": return "adjust";
+    case "BONUS": return "bonus";
+    default: return "earn";
+  }
+}
+
+function mapPoints(tx: FidelidadeTransacaoResponse): number {
+  if (tx.tipo === "VISITA") return tx.visitas || 1;
+  return tx.creditos || 0;
+}
+
+function getRewardName(fidelidade: FidelidadeClienteResponse): string {
+  if (fidelidade.recompensaTipo === "SERVICO_GRATIS") {
+    return fidelidade.servicoRecompensaNome
+      ? `${fidelidade.servicoRecompensaNome} Grátis`
+      : "Serviço Grátis";
+  }
+  if (fidelidade.recompensaValorFormatado) {
+    return fidelidade.recompensaValorFormatado;
+  }
+  return "Recompensa";
+}
 
 // ===== COMPONENTES AUXILIARES =====
 
-// Badge de Nivel com mais destaque
 const LevelDisplay = ({ level }: { level: LoyaltyLevel }) => {
   const config: Record<string, { icon: ReactNode; bg: string; ring: string; label: string; description: string }> = {
     bronze: {
@@ -41,21 +127,21 @@ const LevelDisplay = ({ level }: { level: LoyaltyLevel }) => {
       bg: "bg-gradient-to-br from-amber-400 to-amber-600",
       ring: "ring-amber-400",
       label: "Bronze",
-      description: "Continue acumulando para subir de nivel!",
+      description: "Continue acumulando para subir de nível!",
     },
     silver: {
       icon: <Award className="h-8 w-8" />,
       bg: "bg-gradient-to-br from-gray-300 to-gray-500",
       ring: "ring-gray-400",
       label: "Prata",
-      description: "Voce esta no caminho certo!",
+      description: "Você está no caminho certo!",
     },
     gold: {
       icon: <Crown className="h-8 w-8" />,
       bg: "bg-gradient-to-br from-yellow-400 to-yellow-600",
       ring: "ring-yellow-400",
       label: "Ouro",
-      description: "Voce e um cliente VIP!",
+      description: "Você é um cliente VIP!",
     },
   };
 
@@ -70,18 +156,13 @@ const LevelDisplay = ({ level }: { level: LoyaltyLevel }) => {
       </div>
       <div>
         <p className="text-sm text-gray-500 dark:text-gray-400">Seu Nível</p>
-        <p className="text-2xl font-bold text-gray-900 dark:text-white">
-          {c.label}
-        </p>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          {c.description}
-        </p>
+        <p className="text-2xl font-bold text-gray-900 dark:text-white">{c.label}</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">{c.description}</p>
       </div>
     </div>
   );
 };
 
-// Card de Progresso (10 cortes = 1 grátis)
 const ProgressCard = ({
   current,
   required,
@@ -106,9 +187,7 @@ const ProgressCard = ({
             <Scissors className="h-6 w-6" />
           </div>
           <div>
-            <h3 className="font-semibold text-gray-900 dark:text-white">
-              {programName}
-            </h3>
+            <h3 className="font-semibold text-gray-900 dark:text-white">{programName}</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {current} de {required} serviços
             </p>
@@ -116,12 +195,11 @@ const ProgressCard = ({
         </div>
         {freeServicesAvailable > 0 && (
           <div className="rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
-            {freeServicesAvailable} grátis!
+            {freeServicesAvailable} grátis disponível{freeServicesAvailable > 1 ? "is" : ""}!
           </div>
         )}
       </div>
 
-      {/* Círculos de progresso */}
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         {circles.map((filled, index) => (
           <div
@@ -137,7 +215,6 @@ const ProgressCard = ({
         ))}
       </div>
 
-      {/* Barra de progresso */}
       <div className="mt-6">
         <div className="h-3 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
           <div
@@ -152,13 +229,8 @@ const ProgressCard = ({
         </p>
       </div>
 
-      {/* Botão de resgate */}
       {freeServicesAvailable > 0 && (
-        <Button
-          variant="primary"
-          className="mt-4 w-full"
-          onClick={onRedeemFree}
-        >
+        <Button variant="primary" className="mt-4 w-full" onClick={onRedeemFree}>
           <Gift className="mr-2 h-4 w-4" />
           Resgatar Serviço Grátis
         </Button>
@@ -167,59 +239,56 @@ const ProgressCard = ({
   );
 };
 
-// Card de Saldo de Pontos
 const PointsBalanceCard = ({
   currentPoints,
   lifetimePoints,
-  pointsExpiringSoon,
-  onConvertPoints,
+  onInfoClick,
 }: {
   currentPoints: number;
   lifetimePoints: number;
-  pointsExpiringSoon: number;
-  expirationDate?: Date;
-  onConvertPoints: () => void;
-}) => {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-violet-500 to-purple-600 p-6 text-white shadow-lg dark:border-gray-700">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-violet-100">Seus Pontos</p>
-          <p className="mt-1 text-4xl font-bold">{currentPoints}</p>
-          <p className="mt-1 text-sm text-violet-200">
-            Total acumulado: {lifetimePoints} pontos
-          </p>
-        </div>
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/20">
-          <Star className="h-8 w-8" />
-        </div>
+  onInfoClick: () => void;
+}) => (
+  <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-violet-500 to-purple-600 p-6 text-white shadow-lg dark:border-gray-700">
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-sm text-violet-100">Seus Pontos de Nível</p>
+        <p className="mt-1 text-4xl font-bold">{currentPoints}</p>
+        <p className="mt-1 text-sm text-violet-200">
+          Total de visitas: {lifetimePoints}
+        </p>
       </div>
-
-      {pointsExpiringSoon > 0 && (
-        <div className="mt-4 rounded-lg bg-white/10 p-3">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-yellow-300" />
-            <span className="text-sm">
-              <strong>{pointsExpiringSoon} pontos</strong> expiram em 30 dias
-            </span>
-          </div>
-        </div>
-      )}
-
-      <Button
-        variant="outline"
-        className="mt-4 w-full border-white/30 bg-white/10 text-white hover:bg-white/20"
-        onClick={onConvertPoints}
-      >
-        <TrendingUp className="mr-2 h-4 w-4" />
-        Converter em Desconto
-      </Button>
+      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/20">
+        <Star className="h-8 w-8" />
+      </div>
     </div>
-  );
-};
 
-// Item de Transacao
-const TransactionItem = ({ transaction }: { transaction: PointsTransaction }) => {
+    <Button
+      variant="outline"
+      className="mt-4 w-full border-white/30 bg-white/10 text-white hover:bg-white/20"
+      onClick={onInfoClick}
+    >
+      <Info className="mr-2 h-4 w-4" />
+      Entender meus pontos
+    </Button>
+  </div>
+);
+
+const TransactionItem = ({
+  tipo,
+  descricao,
+  tipoDescricao,
+  points,
+  balanceAfter,
+  criadoEm,
+}: {
+  tipo: string;
+  descricao: string | null;
+  tipoDescricao: string;
+  points: number;
+  balanceAfter: number;
+  criadoEm: string;
+}) => {
+  const transType = mapTipoTransacao(tipo);
   const config: Record<string, { icon: ReactNode; bg: string; iconColor: string; pointsColor: string; prefix: string }> = {
     earn: {
       icon: <ArrowUp className="h-4 w-4" />,
@@ -229,7 +298,7 @@ const TransactionItem = ({ transaction }: { transaction: PointsTransaction }) =>
       prefix: "+",
     },
     redeem: {
-      icon: <ArrowDown className="h-4 w-4" />,
+      icon: <Gift className="h-4 w-4" />,
       bg: "bg-blue-100 dark:bg-blue-900/30",
       iconColor: "text-blue-600 dark:text-blue-400",
       pointsColor: "text-blue-600 dark:text-blue-400",
@@ -246,14 +315,11 @@ const TransactionItem = ({ transaction }: { transaction: PointsTransaction }) =>
       icon: <TrendingUp className="h-4 w-4" />,
       bg: "bg-yellow-100 dark:bg-yellow-900/30",
       iconColor: "text-yellow-600 dark:text-yellow-400",
-      pointsColor:
-        transaction.points > 0
-          ? "text-green-600 dark:text-green-400"
-          : "text-red-600 dark:text-red-400",
-      prefix: transaction.points > 0 ? "+" : "",
+      pointsColor: points > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
+      prefix: points > 0 ? "+" : "",
     },
     bonus: {
-      icon: <Gift className="h-4 w-4" />,
+      icon: <Sparkles className="h-4 w-4" />,
       bg: "bg-purple-100 dark:bg-purple-900/30",
       iconColor: "text-purple-600 dark:text-purple-400",
       pointsColor: "text-purple-600 dark:text-purple-400",
@@ -261,22 +327,21 @@ const TransactionItem = ({ transaction }: { transaction: PointsTransaction }) =>
     },
   };
 
-  const c = config[transaction.type] || config.earn;
+  const c = config[transType] || config.earn;
+  const label = tipo === "VISITA" ? `${points} visita${points !== 1 ? "s" : ""}` : `${c.prefix}${points} crédito${Math.abs(points) !== 1 ? "s" : ""}`;
 
   return (
     <div className="flex items-center justify-between rounded-lg border border-gray-100 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
       <div className="flex items-center gap-3">
-        <div
-          className={`flex h-10 w-10 items-center justify-center rounded-full ${c.bg} ${c.iconColor}`}
-        >
+        <div className={`flex h-10 w-10 items-center justify-center rounded-full ${c.bg} ${c.iconColor}`}>
           {c.icon}
         </div>
         <div>
           <p className="font-medium text-gray-900 dark:text-white">
-            {transaction.description}
+            {descricao || tipoDescricao}
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            {new Date(transaction.createdAt).toLocaleDateString("pt-BR", {
+            {new Date(criadoEm).toLocaleDateString("pt-BR", {
               day: "2-digit",
               month: "short",
               year: "numeric",
@@ -285,80 +350,10 @@ const TransactionItem = ({ transaction }: { transaction: PointsTransaction }) =>
         </div>
       </div>
       <div className="text-right">
-        <p className={`text-lg font-bold ${c.pointsColor}`}>
-          {c.prefix}
-          {transaction.points} pts
-        </p>
+        <p className={`text-lg font-bold ${c.pointsColor}`}>{label}</p>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Saldo: {transaction.balanceAfter} pts
+          Saldo: {balanceAfter} pts
         </p>
-      </div>
-    </div>
-  );
-};
-
-// Card de Recompensa Disponível
-const RewardCard = ({
-  reward,
-  currentPoints,
-  onRedeem,
-}: {
-  reward: Reward;
-  currentPoints: number;
-  onRedeem: () => void;
-}) => {
-  const canRedeem = currentPoints >= reward.pointsCost;
-
-  return (
-    <div
-      className={`rounded-lg border p-4 transition-all ${
-        canRedeem
-          ? "border-violet-200 bg-violet-50 dark:border-violet-900/50 dark:bg-violet-900/20"
-          : "border-gray-200 bg-gray-50 opacity-60 dark:border-gray-700 dark:bg-gray-800"
-      }`}
-    >
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div
-            className={`flex h-12 w-12 items-center justify-center rounded-lg ${
-              canRedeem
-                ? "bg-violet-200 text-violet-700 dark:bg-violet-800 dark:text-violet-300"
-                : "bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400"
-            }`}
-          >
-            <Gift className="h-6 w-6" />
-          </div>
-          <div>
-            <h4 className="font-medium text-gray-900 dark:text-white">
-              {reward.name}
-            </h4>
-            {reward.description && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {reward.description}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 flex items-center justify-between">
-        <div
-          className={`rounded-full px-3 py-1 text-sm font-semibold ${
-            canRedeem
-              ? "bg-violet-200 text-violet-800 dark:bg-violet-800 dark:text-violet-200"
-              : "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
-          }`}
-        >
-          {reward.pointsCost} pontos
-        </div>
-        <Button
-          variant={canRedeem ? "primary" : "outline"}
-          size="sm"
-          disabled={!canRedeem}
-          onClick={onRedeem}
-        >
-          {canRedeem ? "Resgatar" : `Faltam ${reward.pointsCost - currentPoints} pts`}
-        </Button>
       </div>
     </div>
   );
@@ -366,169 +361,82 @@ const RewardCard = ({
 
 // ===== COMPONENTE PRINCIPAL =====
 export default function ClientLoyaltyPage() {
-  // ===== ESTADOS =====
-  const [memberSummary, setMemberSummary] = useState<LoyaltyMemberSummary | null>(null);
-  const [transactions, setTransactions] = useState<PointsTransaction[]>([]);
-  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [fidelidade, setFidelidade] = useState<FidelidadeClienteResponse | null>(null);
+  const [transacoes, setTransacoes] = useState<FidelidadeTransacaoResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isRedeeming, setIsRedeeming] = useState(false);
+  const [redeemSuccess, setRedeemSuccess] = useState<string | null>(null);
 
   // Modais
-  const [showConvertModal, setShowConvertModal] = useState(false);
+  const [showInfoModal, setShowInfoModal] = useState(false);
   const [showRedeemFreeModal, setShowRedeemFreeModal] = useState(false);
-  const [showRewardModal, setShowRewardModal] = useState(false);
-  const [selectedReward, setSelectedReward] = useState<Reward | null>(null);
 
-  // Conversão de pontos
-  const [convertPoints, setConvertPoints] = useState(100);
-  const conversionRate = 100; // 100 pontos = R$ 1,00
-  const discountValue = convertPoints / conversionRate;
-
-  // ===== CARREGAR DADOS =====
-  // Nota: API de fidelidade ainda nao implementada no backend
-  // Usando dados de demonstracao
-  const loadData = () => {
+  // ===== CARREGAR DADOS DA API =====
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    try {
+      const [fidelidadeList, extratoData] = await Promise.all([
+        api.get<FidelidadeClienteResponse[]>("/fidelidade/me"),
+        api.get<ExtratoResponse>("/fidelidade/me/extrato"),
+      ]);
 
-    // Simula carregamento
-    setTimeout(() => {
-      // Dados de demonstracao
-      const mockSummary: LoyaltyMemberSummary = {
-        clientId: '1',
-        clientName: 'Cliente',
-        currentLevel: 'bronze' as LoyaltyLevel,
-        currentPoints: 150,
-        lifetimePoints: 450,
-        pointsExpiringSoon: 0,
-        nextLevel: 'silver' as LoyaltyLevel,
-        pointsToNextLevel: 350,
-        availableRewards: [],
-        redeemedRewards: [],
-        memberSince: new Date(),
-      };
-      setMemberSummary(mockSummary);
+      if (fidelidadeList && fidelidadeList.length > 0) {
+        setFidelidade(fidelidadeList[0]);
+      } else {
+        setFidelidade(null);
+      }
 
-      // Transacoes de demonstracao
-      const mockTransactions: PointsTransaction[] = [
-        {
-          id: '1',
-          clientId: '1',
-          type: 'earn' as PointsTransactionType,
-          points: 50,
-          balanceAfter: 150,
-          description: 'Corte de cabelo',
-          createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-          updatedAt: new Date(),
-          unitId: '1',
-        },
-        {
-          id: '2',
-          clientId: '1',
-          type: 'earn' as PointsTransactionType,
-          points: 30,
-          balanceAfter: 100,
-          description: 'Barba',
-          createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-          updatedAt: new Date(),
-          unitId: '1',
-        },
-        {
-          id: '3',
-          clientId: '1',
-          type: 'bonus' as PointsTransactionType,
-          points: 70,
-          balanceAfter: 70,
-          description: 'Bonus de boas-vindas',
-          createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
-          updatedAt: new Date(),
-          unitId: '1',
-        },
-      ];
-      setTransactions(mockTransactions);
-
-      // Recompensas de demonstracao
-      const mockRewards: Reward[] = [
-        {
-          id: '1',
-          name: 'Desconto de 10%',
-          description: 'Desconto de 10% em qualquer servico',
-          type: 'discount_percentage' as RewardType,
-          pointsCost: 100,
-          discountValue: 10,
-          validityDays: 30,
-          isActive: true,
-          currentRedemptions: 0,
-          totalRedemptions: 50,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        {
-          id: '2',
-          name: 'Corte Gratis',
-          description: 'Um corte de cabelo gratuito',
-          type: 'free_service' as RewardType,
-          pointsCost: 500,
-          validityDays: 60,
-          isActive: true,
-          currentRedemptions: 0,
-          totalRedemptions: 20,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        {
-          id: '3',
-          name: 'Desconto de R$20',
-          description: 'R$20 de desconto em servicos acima de R$50',
-          type: 'discount_fixed' as RewardType,
-          pointsCost: 200,
-          discountValue: 20,
-          minPurchaseAmount: 50,
-          validityDays: 30,
-          isActive: true,
-          currentRedemptions: 0,
-          totalRedemptions: 30,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ];
-      setRewards(mockRewards);
-
+      if (extratoData?.transacoes) {
+        setTransacoes(extratoData.transacoes);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro ao carregar dados de fidelidade.";
+      setError(msg);
+    } finally {
       setIsLoading(false);
-    }, 500);
-  };
+    }
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   // ===== HANDLERS =====
-  const handleConvertPoints = () => {
-    alert("Funcionalidade em desenvolvimento. Em breve voce podera converter seus pontos!");
-    setShowConvertModal(false);
-  };
-
   const handleRedeemFree = () => {
     setShowRedeemFreeModal(true);
   };
 
-  const handleConfirmRedeemFree = () => {
-    alert("Funcionalidade em desenvolvimento. Em breve voce podera resgatar servicos gratis!");
-    setShowRedeemFreeModal(false);
+  const handleConfirmRedeemFree = async () => {
+    setIsRedeeming(true);
+    try {
+      await api.post<unknown>("/fidelidade/me/resgatar");
+      setShowRedeemFreeModal(false);
+      setRedeemSuccess("Serviço grátis resgatado com sucesso! Apresente na sua próxima visita.");
+      await loadData();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro ao resgatar serviço grátis.";
+      setError(msg);
+      setShowRedeemFreeModal(false);
+    } finally {
+      setIsRedeeming(false);
+    }
   };
 
-  const handleRedeemReward = (reward: Reward) => {
-    setSelectedReward(reward);
-    setShowRewardModal(true);
-  };
+  // ===== CALCULAR SALDO POR TRANSAÇÃO =====
+  const transacoesComSaldo = (() => {
+    const currentPoints = fidelidade?.pontosNivel ?? 0;
+    let runningBalance = currentPoints;
+    return transacoes.map((tx) => {
+      const pts = mapPoints(tx);
+      const balAfter = tx.tipo === "VISITA" ? runningBalance : runningBalance;
+      if (tx.tipo === "VISITA") runningBalance = runningBalance - pts;
+      return { tx, balanceAfter: balAfter };
+    });
+  })();
 
-  const handleConfirmRedeemReward = () => {
-    alert("Funcionalidade em desenvolvimento. Em breve voce podera resgatar recompensas!");
-    setShowRewardModal(false);
-    setSelectedReward(null);
-  };
-
-  // ===== RENDER =====
+  // ===== RENDER: LOADING =====
   if (isLoading) {
     return (
       <SalonLayout>
@@ -542,7 +450,7 @@ export default function ClientLoyaltyPage() {
     );
   }
 
-  if (error || !memberSummary) {
+  if (error && !fidelidade) {
     return (
       <SalonLayout>
         <div className="flex min-h-[60vh] items-center justify-center p-4">
@@ -551,9 +459,7 @@ export default function ClientLoyaltyPage() {
             <h2 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">
               Erro ao carregar
             </h2>
-            <p className="mt-2 text-gray-500 dark:text-gray-400">
-              {error || "Nao foi possivel carregar seus dados de fidelidade."}
-            </p>
+            <p className="mt-2 text-gray-500 dark:text-gray-400">{error}</p>
             <Button variant="primary" className="mt-4" onClick={loadData}>
               <RefreshCw className="mr-2 h-4 w-4" />
               Tentar novamente
@@ -563,6 +469,52 @@ export default function ClientLoyaltyPage() {
       </SalonLayout>
     );
   }
+
+  // ===== RENDER: SEM PROGRAMA =====
+  if (!fidelidade) {
+    return (
+      <SalonLayout>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Meus Pontos</h1>
+            <p className="text-gray-500 dark:text-gray-400">Acompanhe seus pontos e recompensas</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white p-12 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900/30">
+              <Star className="h-10 w-10 text-violet-500" />
+            </div>
+            <h2 className="mt-6 text-xl font-semibold text-gray-900 dark:text-white">
+              Você ainda não está inscrito em nenhum programa de fidelidade
+            </h2>
+            <p className="mt-3 text-gray-500 dark:text-gray-400">
+              A cada visita ao salão, você acumula pontos e pode ganhar serviços grátis!
+              Converse com a equipe do salão para se inscrever.
+            </p>
+            <div className="mt-8 grid grid-cols-3 gap-4 text-sm">
+              <div className="rounded-lg bg-violet-50 p-4 dark:bg-violet-900/20">
+                <Scissors className="mx-auto mb-2 h-6 w-6 text-violet-500" />
+                <p className="font-medium text-gray-900 dark:text-white">Complete visitas</p>
+                <p className="mt-1 text-gray-500 dark:text-gray-400">Acumule pontos a cada serviço</p>
+              </div>
+              <div className="rounded-lg bg-violet-50 p-4 dark:bg-violet-900/20">
+                <Award className="mx-auto mb-2 h-6 w-6 text-violet-500" />
+                <p className="font-medium text-gray-900 dark:text-white">Suba de nível</p>
+                <p className="mt-1 text-gray-500 dark:text-gray-400">Bronze → Prata → Ouro</p>
+              </div>
+              <div className="rounded-lg bg-violet-50 p-4 dark:bg-violet-900/20">
+                <Gift className="mx-auto mb-2 h-6 w-6 text-violet-500" />
+                <p className="font-medium text-gray-900 dark:text-white">Ganhe recompensas</p>
+                <p className="mt-1 text-gray-500 dark:text-gray-400">Resgate serviços grátis</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </SalonLayout>
+    );
+  }
+
+  const currentLevel = mapNivel(fidelidade.nivel);
+  const nextLevelLabel = fidelidade.proximoNivel === "PRATA" ? "Prata" : fidelidade.proximoNivel === "OURO" ? "Ouro" : null;
 
   return (
     <SalonLayout>
@@ -575,35 +527,60 @@ export default function ClientLoyaltyPage() {
           </p>
         </div>
 
-        {/* Nivel e Saldo */}
+        {/* Mensagem de sucesso */}
+        {redeemSuccess && (
+          <div className="flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-900/50 dark:bg-green-900/20">
+            <CheckCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-600 dark:text-green-400" />
+            <p className="text-sm text-green-800 dark:text-green-300">{redeemSuccess}</p>
+            <button
+              onClick={() => setRedeemSuccess(null)}
+              className="ml-auto text-green-600 hover:text-green-800 dark:text-green-400"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {/* Mensagem de erro (não fatal) */}
+        {error && fidelidade && (
+          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-900/20">
+            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600 dark:text-red-400" />
+            <p className="text-sm text-red-800 dark:text-red-300">{error}</p>
+          </div>
+        )}
+
+        {/* Nível e Saldo */}
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Nível */}
           <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-            <LevelDisplay level={memberSummary.currentLevel} />
+            <LevelDisplay level={currentLevel} />
 
-            {memberSummary.nextLevel && memberSummary.pointsToNextLevel && (
+            {nextLevelLabel && fidelidade.pontosParaProximoNivel > 0 && (
               <div className="mt-6">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500 dark:text-gray-400">
-                    Próximo nível: {memberSummary.nextLevel === "silver" ? "Prata" : "Ouro"}
+                    Próximo nível: {nextLevelLabel}
                   </span>
                   <span className="font-medium text-gray-900 dark:text-white">
-                    {memberSummary.pointsToNextLevel} pontos restantes
+                    {fidelidade.pontosParaProximoNivel} pontos restantes
                   </span>
                 </div>
                 <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
                   <div
                     className="h-full bg-gradient-to-r from-violet-500 to-purple-500"
-                    style={{
-                      width: `${
-                        100 -
-                        (memberSummary.pointsToNextLevel /
-                          (memberSummary.pointsToNextLevel +
-                            memberSummary.currentPoints)) *
-                          100
-                      }%`,
-                    }}
+                    style={{ width: `${Math.min(fidelidade.progressoNivel, 100)}%` }}
                   />
+                </div>
+              </div>
+            )}
+
+            {!nextLevelLabel && (
+              <div className="mt-6 rounded-lg bg-yellow-50 p-3 dark:bg-yellow-900/20">
+                <div className="flex items-center gap-2">
+                  <Crown className="h-4 w-4 text-yellow-500" />
+                  <span className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
+                    Nível máximo atingido! Você é VIP.
+                  </span>
                 </div>
               </div>
             )}
@@ -612,7 +589,7 @@ export default function ClientLoyaltyPage() {
               <Calendar className="h-4 w-4" />
               <span>
                 Membro desde{" "}
-                {new Date(memberSummary.memberSince).toLocaleDateString("pt-BR", {
+                {new Date(fidelidade.criadoEm).toLocaleDateString("pt-BR", {
                   month: "long",
                   year: "numeric",
                 })}
@@ -622,54 +599,97 @@ export default function ClientLoyaltyPage() {
 
           {/* Saldo de Pontos */}
           <PointsBalanceCard
-            currentPoints={memberSummary.currentPoints}
-            lifetimePoints={memberSummary.lifetimePoints}
-            pointsExpiringSoon={memberSummary.pointsExpiringSoon}
-            expirationDate={memberSummary.expirationDate}
-            onConvertPoints={() => setShowConvertModal(true)}
+            currentPoints={fidelidade.pontosNivel}
+            lifetimePoints={fidelidade.totalVisitas}
+            onInfoClick={() => setShowInfoModal(true)}
           />
         </div>
 
         {/* Progresso do Programa */}
-        {memberSummary.programProgress && (
-          <ProgressCard
-            current={memberSummary.programProgress.current}
-            required={memberSummary.programProgress.required}
-            programName={memberSummary.programProgress.programName}
-            freeServicesAvailable={memberSummary.programProgress.freeServicesAvailable}
-            onRedeemFree={handleRedeemFree}
-          />
-        )}
+        <ProgressCard
+          current={fidelidade.visitasAtuais}
+          required={fidelidade.visitasNecessarias}
+          programName={fidelidade.programaNome}
+          freeServicesAvailable={fidelidade.creditosDisponiveis}
+          onRedeemFree={handleRedeemFree}
+        />
 
-        {/* Recompensas Disponíveis */}
+        {/* Recompensa do programa */}
         <div>
           <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
-            Recompensas Disponíveis
+            Recompensa do Programa
           </h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {rewards.map((reward) => (
-              <RewardCard
-                key={reward.id}
-                reward={reward}
-                currentPoints={memberSummary.currentPoints}
-                onRedeem={() => handleRedeemReward(reward)}
-              />
-            ))}
-          </div>
+
+          {fidelidade.creditosDisponiveis > 0 ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: fidelidade.creditosDisponiveis }, (_, i) => (
+                <div
+                  key={i}
+                  className="rounded-lg border border-violet-200 bg-violet-50 p-4 dark:border-violet-900/50 dark:bg-violet-900/20"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-violet-200 text-violet-700 dark:bg-violet-800 dark:text-violet-300">
+                        <Gift className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-gray-900 dark:text-white">
+                          {getRewardName(fidelidade)}
+                        </h4>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          Crédito #{i + 1} disponível
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between">
+                    <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                      Disponível para uso
+                    </span>
+                    <Button variant="primary" size="sm" onClick={handleRedeemFree}>
+                      Resgatar
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center dark:border-gray-700 dark:bg-gray-800">
+              <Scissors className="mx-auto h-12 w-12 text-gray-400" />
+              <p className="mt-4 font-medium text-gray-700 dark:text-gray-300">
+                Nenhum crédito disponível no momento
+              </p>
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                Faltam{" "}
+                <strong>
+                  {fidelidade.visitasNecessarias - fidelidade.visitasAtuais} visita(s)
+                </strong>{" "}
+                para ganhar 1 {getRewardName(fidelidade).toLowerCase()}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Extrato de Pontos */}
         <div>
           <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
-            Extrato de Pontos
+            Extrato de Visitas
           </h2>
           <div className="space-y-3">
-            {transactions.map((transaction) => (
-              <TransactionItem key={transaction.id} transaction={transaction} />
+            {transacoesComSaldo.map(({ tx, balanceAfter }) => (
+              <TransactionItem
+                key={tx.id}
+                tipo={tx.tipo}
+                descricao={tx.descricao}
+                tipoDescricao={tx.tipoDescricao}
+                points={mapPoints(tx)}
+                balanceAfter={balanceAfter}
+                criadoEm={tx.criadoEm}
+              />
             ))}
           </div>
 
-          {transactions.length === 0 && (
+          {transacoes.length === 0 && (
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center dark:border-gray-700 dark:bg-gray-800">
               <Star className="mx-auto h-12 w-12 text-gray-400" />
               <p className="mt-4 text-gray-500 dark:text-gray-400">
@@ -680,73 +700,61 @@ export default function ClientLoyaltyPage() {
         </div>
       </div>
 
-      {/* Modal: Converter Pontos */}
+      {/* Modal: Informações sobre pontos */}
       <Modal
-        isOpen={showConvertModal}
-        onClose={() => setShowConvertModal(false)}
-        title="Converter Pontos em Desconto"
+        isOpen={showInfoModal}
+        onClose={() => setShowInfoModal(false)}
+        title="Como funcionam seus pontos?"
       >
         <div className="space-y-4">
-          <div className="rounded-lg bg-violet-50 p-4 text-center dark:bg-violet-900/20">
-            <p className="text-sm text-violet-600 dark:text-violet-400">
-              Seu saldo atual
-            </p>
-            <p className="text-3xl font-bold text-violet-800 dark:text-violet-300">
-              {memberSummary.currentPoints} pontos
-            </p>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Pontos para converter
-            </label>
-            <input
-              type="range"
-              min={100}
-              max={memberSummary.currentPoints}
-              step={100}
-              value={convertPoints}
-              onChange={(e) => setConvertPoints(parseInt(e.target.value))}
-              className="w-full"
-            />
-            <div className="mt-2 flex justify-between text-sm text-gray-500">
-              <span>100 pts</span>
-              <span>{memberSummary.currentPoints} pts</span>
+          <div className="space-y-3">
+            <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                <Medal className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">Bronze</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">0 a 49 pontos</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-600">
+                <Award className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">Prata</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">50 a 99 pontos</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-yellow-100 text-yellow-600">
+                <Crown className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">Ouro</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">100+ pontos — nível VIP</p>
+              </div>
             </div>
           </div>
 
-          <div className="rounded-lg bg-green-50 p-4 text-center dark:bg-green-900/20">
-            <p className="text-sm text-green-600 dark:text-green-400">
-              Você receberá
-            </p>
-            <p className="text-3xl font-bold text-green-800 dark:text-green-300">
-              R$ {discountValue.toFixed(2)}
-            </p>
-            <p className="mt-1 text-sm text-green-600 dark:text-green-400">
-              ({convertPoints} pontos)
-            </p>
+          <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 dark:border-violet-900/50 dark:bg-violet-900/20">
+            <div className="flex items-start gap-3">
+              <Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-violet-600 dark:text-violet-400" />
+              <div>
+                <p className="font-medium text-violet-900 dark:text-violet-200">
+                  Como ganhar pontos?
+                </p>
+                <p className="mt-1 text-sm text-violet-700 dark:text-violet-300">
+                  Cada visita ao salão soma 1 ponto ao seu nível. Você também ganha créditos
+                  de serviços grátis ao completar {fidelidade?.visitasNecessarias ?? 10} visitas.
+                </p>
+              </div>
+            </div>
           </div>
 
-          <p className="text-center text-sm text-gray-500 dark:text-gray-400">
-            Taxa de conversão: {conversionRate} pontos = R$ 1,00
-          </p>
-
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowConvertModal(false)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleConvertPoints}
-              disabled={convertPoints > memberSummary.currentPoints}
-            >
-              <Sparkles className="mr-2 h-4 w-4" />
-              Converter Pontos
-            </Button>
-          </div>
+          <Button variant="primary" className="w-full" onClick={() => setShowInfoModal(false)}>
+            Entendi!
+          </Button>
         </div>
       </Modal>
 
@@ -765,15 +773,16 @@ export default function ClientLoyaltyPage() {
               Parabéns!
             </h3>
             <p className="mt-2 text-green-700 dark:text-green-400">
-              Você completou {memberSummary.programProgress?.required} serviços e
-              ganhou um serviço grátis!
+              Você tem{" "}
+              <strong>{fidelidade?.creditosDisponiveis ?? 0} crédito(s)</strong> de{" "}
+              <strong>{getRewardName(fidelidade!)}</strong> disponível.
             </p>
           </div>
 
           <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Ao confirmar, um cupom será gerado para você apresentar no
-              próximo agendamento.
+              Ao confirmar, um crédito será descontado do seu saldo e você poderá apresentar
+              na sua próxima visita ao salão.
             </p>
           </div>
 
@@ -781,91 +790,25 @@ export default function ClientLoyaltyPage() {
             <Button
               variant="outline"
               onClick={() => setShowRedeemFreeModal(false)}
+              disabled={isRedeeming}
             >
               Cancelar
             </Button>
-            <Button variant="primary" onClick={handleConfirmRedeemFree}>
-              <CheckCircle className="mr-2 h-4 w-4" />
-              Confirmar Resgate
+            <Button variant="primary" onClick={handleConfirmRedeemFree} disabled={isRedeeming}>
+              {isRedeeming ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Resgatando...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Confirmar Resgate
+                </>
+              )}
             </Button>
           </div>
         </div>
-      </Modal>
-
-      {/* Modal: Resgatar Recompensa */}
-      <Modal
-        isOpen={showRewardModal}
-        onClose={() => setShowRewardModal(false)}
-        title="Confirmar Resgate"
-      >
-        {selectedReward && (
-          <div className="space-y-4">
-            <div className="rounded-lg bg-violet-50 p-6 text-center dark:bg-violet-900/20">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900/50">
-                <Gift className="h-8 w-8 text-violet-600 dark:text-violet-400" />
-              </div>
-              <h3 className="mt-4 text-xl font-bold text-violet-800 dark:text-violet-300">
-                {selectedReward.name}
-              </h3>
-              {selectedReward.description && (
-                <p className="mt-2 text-violet-600 dark:text-violet-400">
-                  {selectedReward.description}
-                </p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Custo
-                </p>
-                <p className="text-lg font-bold text-gray-900 dark:text-white">
-                  {selectedReward.pointsCost} pontos
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Validade
-                </p>
-                <p className="text-lg font-bold text-gray-900 dark:text-white">
-                  {selectedReward.validityDays} dias
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-500 dark:text-gray-400">
-                  Seu saldo atual:
-                </span>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  {memberSummary.currentPoints} pts
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-500 dark:text-gray-400">
-                  Após resgate:
-                </span>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  {memberSummary.currentPoints - selectedReward.pointsCost} pts
-                </span>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setShowRewardModal(false)}
-              >
-                Cancelar
-              </Button>
-              <Button variant="primary" onClick={handleConfirmRedeemReward}>
-                <Gift className="mr-2 h-4 w-4" />
-                Confirmar Resgate
-              </Button>
-            </div>
-          </div>
-        )}
       </Modal>
     </SalonLayout>
   );

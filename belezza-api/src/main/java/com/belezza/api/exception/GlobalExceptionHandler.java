@@ -32,6 +32,7 @@ public class GlobalExceptionHandler {
      * Handles resource not found exceptions (specific handler for better logging).
      */
     @ExceptionHandler(ResourceNotFoundException.class)
+    @SuppressWarnings("null")
     public ResponseEntity<ErrorResponse> handleResourceNotFoundException(ResourceNotFoundException ex, WebRequest request) {
         log.warn("Resource not found: {}", ex.getMessage());
 
@@ -51,6 +52,7 @@ public class GlobalExceptionHandler {
      * Handles business logic exceptions.
      */
     @ExceptionHandler(BusinessException.class)
+    @SuppressWarnings("null")
     public ResponseEntity<ErrorResponse> handleBusinessException(BusinessException ex, WebRequest request) {
         log.warn("Business exception: {} (errorCode: {})", ex.getMessage(), ex.getErrorCode());
 

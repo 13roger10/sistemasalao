@@ -2,15 +2,11 @@ package com.belezza.api.integration;
 
 import com.belezza.api.entity.PlataformaSocial;
 import com.belezza.api.exception.BusinessException;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -25,10 +21,10 @@ import java.util.Map;
 @Service
 @Slf4j
 @RequiredArgsConstructor
+@SuppressWarnings({"unchecked", "null", "rawtypes"})
 public class MetaGraphAPIService {
 
     private final RestTemplate restTemplate;
-    private final ObjectMapper objectMapper;
 
     @Value("${meta.api.base-url:https://graph.facebook.com}")
     private String baseUrl;

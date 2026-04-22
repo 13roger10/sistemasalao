@@ -69,6 +69,7 @@ public class WhatsAppWebhookController {
         description = "Receives status notifications from WhatsApp (sent, delivered, read, failed). " +
                      "Updates message status in the database."
     )
+    @SuppressWarnings({"unchecked", "null"})
     public ResponseEntity<String> handleWebhook(@RequestBody Map<String, Object> payload) {
         log.info("WhatsApp webhook event received: {}", payload);
 
@@ -101,6 +102,7 @@ public class WhatsAppWebhookController {
     /**
      * Process a single webhook entry.
      */
+    @SuppressWarnings("unchecked")
     private void processEntry(Map<String, Object> entry) {
         try {
             String id = (String) entry.get("id");
@@ -125,6 +127,7 @@ public class WhatsAppWebhookController {
     /**
      * Process a single change event.
      */
+    @SuppressWarnings("unchecked")
     private void processChange(Map<String, Object> change) {
         try {
             String field = (String) change.get("field");
@@ -174,6 +177,7 @@ public class WhatsAppWebhookController {
     /**
      * Update message status in database.
      */
+    @SuppressWarnings("null")
     private void updateMessageStatus(WhatsAppMessage message, String statusValue, Long timestamp) {
         try {
             LocalDateTime statusTime = timestamp != null

@@ -38,6 +38,7 @@ public class ProfissionalService {
     private final SalonService salonService;
 
     @Transactional
+    @SuppressWarnings("null")
     public ProfissionalResponse criar(ProfissionalRequest request, String emailAdmin) {
         Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
 
@@ -82,6 +83,7 @@ public class ProfissionalService {
     /**
      * Cria horários de trabalho padrão para um novo profissional baseados no horário do salão.
      */
+    @SuppressWarnings("null")
     private void criarHorariosTrabalhoDefault(Profissional profissional, Salon salon) {
         LocalTime abertura = salon.getHorarioAbertura();
         LocalTime fechamento = salon.getHorarioFechamento();
@@ -120,6 +122,7 @@ public class ProfissionalService {
     }
 
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public ProfissionalResponse buscarPorId(Long id) {
         Profissional profissional = profissionalRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Profissional", id));
@@ -143,6 +146,7 @@ public class ProfissionalService {
     }
 
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public List<ProfissionalResponse> listarPorServico(Long servicoId) {
         return profissionalRepository.findActiveByServicoId(servicoId).stream()
                 .map(ProfissionalResponse::fromEntity)
@@ -150,6 +154,7 @@ public class ProfissionalService {
     }
 
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public List<ProfissionalResponse> listarDisponiveisOnline(Long salonId) {
         return profissionalRepository.findOnlineAvailableBySalonId(salonId).stream()
                 .map(ProfissionalResponse::fromEntity)
@@ -157,6 +162,7 @@ public class ProfissionalService {
     }
 
     @Transactional
+    @SuppressWarnings("null")
     public ProfissionalResponse atualizar(Long id, ProfissionalRequest request, String emailAdmin) {
         Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
 
@@ -191,6 +197,7 @@ public class ProfissionalService {
     }
 
     @Transactional
+    @SuppressWarnings("null")
     public void desativar(Long id, String emailAdmin) {
         Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
 
@@ -207,6 +214,7 @@ public class ProfissionalService {
     }
 
     @Transactional
+    @SuppressWarnings("null")
     public void reativar(Long id, String emailAdmin) {
         Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
 
@@ -226,6 +234,7 @@ public class ProfissionalService {
         log.info("Profissional reativado: {}", id);
     }
 
+    @SuppressWarnings("null")
     public Profissional getProfissionalEntity(Long id) {
         return profissionalRepository.findById(id)
                 .filter(Profissional::isAtivo)

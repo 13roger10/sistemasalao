@@ -86,6 +86,18 @@ public class Salon {
 
     @Column(nullable = false)
     @Builder.Default
+    private int bufferEntreAgendamentosMinutos = 0;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private int maxAntecediaDias = 30;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean permiteAgendamentoMesmoDia = true;
+
+    @Column(nullable = false)
+    @Builder.Default
     private boolean aceitaAgendamentoOnline = true;
 
     @Column(nullable = false)

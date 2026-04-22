@@ -1,7 +1,6 @@
 package com.belezza.api.scheduler;
 
 import com.belezza.api.entity.Meta;
-import com.belezza.api.entity.TipoMeta;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.ClienteRepository;
 import com.belezza.api.repository.MetaRepository;

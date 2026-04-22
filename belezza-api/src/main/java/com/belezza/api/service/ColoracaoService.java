@@ -7,8 +7,6 @@ import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +28,7 @@ public class ColoracaoService {
     // ====== FICHA DE COLORAÇÃO ======
 
     @Transactional
+    @SuppressWarnings("null")
     public FichaColoracaoResponse criarFicha(FichaColoracaoRequest request, String emailUsuario) {
         Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
         Cliente cliente = clienteRepository.findById(request.getClienteId())
@@ -80,6 +79,7 @@ public class ColoracaoService {
     }
 
     @Transactional
+    @SuppressWarnings("null")
     public FichaColoracaoResponse atualizarFicha(Long id, FichaColoracaoRequest request, String emailUsuario) {
         Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
         FichaColoracao ficha = fichaRepository.findById(id)
@@ -117,6 +117,7 @@ public class ColoracaoService {
     // ====== HISTÓRICO DE COLORAÇÃO ======
 
     @Transactional
+    @SuppressWarnings("null")
     public HistoricoColoracaoResponse registrarColoracao(HistoricoColoracaoRequest request, String emailUsuario) {
         Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
         FichaColoracao ficha = fichaRepository.findById(request.getFichaId())
@@ -171,6 +172,7 @@ public class ColoracaoService {
     }
 
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public HistoricoColoracaoResponse buscarHistoricoPorId(Long id) {
         HistoricoColoracao historico = historicoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Histórico", id));

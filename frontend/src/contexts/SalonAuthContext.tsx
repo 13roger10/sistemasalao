@@ -178,18 +178,20 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
         "RECEPCIONISTA": "RECEPCIONIST",
       };
 
+      const mappedRole = roleMap[backendData.user.role] || "CLIENT";
       const user: SalonAuthUser = {
         id: backendData.user.id.toString(),
         email: backendData.user.email,
         name: backendData.user.nome,
-        role: roleMap[backendData.user.role] || "CLIENT",
+        role: mappedRole,
         phone: backendData.user.telefone,
         avatar: backendData.user.avatarUrl,
         isActive: true,
         createdAt: new Date(backendData.user.criadoEm),
         updatedAt: backendData.user.ultimoLogin ? new Date(backendData.user.ultimoLogin) : new Date(backendData.user.criadoEm),
         lastLogin: backendData.user.ultimoLogin ? new Date(backendData.user.ultimoLogin) : undefined,
-        permissions: AUTH_ROLE_PERMISSIONS[roleMap[backendData.user.role] || "CLIENT"] || [],
+        permissions: AUTH_ROLE_PERMISSIONS[mappedRole] || [],
+        professionalId: backendData.user.profissionalId != null ? String(backendData.user.profissionalId) : undefined,
       };
 
       setAuth(user, backendData.accessToken, backendData.refreshToken, backendData.expiresIn);
@@ -235,18 +237,20 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
         "RECEPCIONISTA": "RECEPCIONIST",
       };
 
+      const mappedRole = roleMap[backendData.user.role] || "CLIENT";
       const user: SalonAuthUser = {
         id: backendData.user.id.toString(),
         email: backendData.user.email,
         name: backendData.user.nome,
-        role: roleMap[backendData.user.role] || "CLIENT",
+        role: mappedRole,
         phone: backendData.user.telefone,
         avatar: backendData.user.avatarUrl,
         isActive: true,
         createdAt: new Date(backendData.user.criadoEm),
         updatedAt: backendData.user.ultimoLogin ? new Date(backendData.user.ultimoLogin) : new Date(backendData.user.criadoEm),
         lastLogin: backendData.user.ultimoLogin ? new Date(backendData.user.ultimoLogin) : undefined,
-        permissions: AUTH_ROLE_PERMISSIONS[backendData.user.role] || [],
+        permissions: AUTH_ROLE_PERMISSIONS[mappedRole] || [],
+        professionalId: backendData.user.profissionalId != null ? String(backendData.user.profissionalId) : undefined,
       };
 
       setAuth(user, backendData.accessToken, backendData.refreshToken, backendData.expiresIn);

@@ -29,6 +29,7 @@ public class MetaService {
     private final SalonService salonService;
 
     @Transactional
+    @SuppressWarnings("null")
     public MetaResponse criar(MetaRequest request, String emailUsuario) {
         Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
         Usuario criador = usuarioRepository.findByEmail(emailUsuario)
@@ -69,6 +70,7 @@ public class MetaService {
     }
 
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public MetaResponse buscarPorId(Long id, String emailUsuario) {
         Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
         Meta meta = metaRepository.findByIdAndSalonId(id, salon.getId())
@@ -77,6 +79,7 @@ public class MetaService {
     }
 
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public List<HistoricoMetaResponse> buscarHistorico(Long metaId, String emailUsuario) {
         Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
         Meta meta = metaRepository.findByIdAndSalonId(metaId, salon.getId())
@@ -88,6 +91,7 @@ public class MetaService {
     }
 
     @Transactional
+    @SuppressWarnings("null")
     public MetaResponse atualizar(Long id, MetaRequest request, String emailUsuario) {
         Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
         Meta meta = metaRepository.findByIdAndSalonId(id, salon.getId())
@@ -181,6 +185,7 @@ public class MetaService {
     }
 
     @Transactional
+    @SuppressWarnings("null")
     public void atualizarValorMeta(Long metaId, BigDecimal novoValor) {
         Meta meta = metaRepository.findById(metaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Meta", metaId));

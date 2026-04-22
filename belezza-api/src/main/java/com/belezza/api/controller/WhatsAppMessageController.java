@@ -77,6 +77,7 @@ public class WhatsAppMessageController {
     @GetMapping("/{id}")
     @ProfissionalOrAdmin
     @Operation(summary = "Buscar mensagem por ID", description = "Busca uma mensagem específica por ID")
+    @SuppressWarnings("null")
     public ResponseEntity<WhatsAppMessageResponse> buscarPorId(@PathVariable Long id) {
         return messageRepository.findById(id)
                 .map(WhatsAppMessageResponse::fromEntity)

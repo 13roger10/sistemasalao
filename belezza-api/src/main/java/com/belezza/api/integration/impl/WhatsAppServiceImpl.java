@@ -1,12 +1,9 @@
 package com.belezza.api.integration.impl;
 
-import com.belezza.api.entity.Agendamento;
-import com.belezza.api.entity.Salon;
 import com.belezza.api.entity.WhatsAppMessage;
 import com.belezza.api.entity.WhatsAppMessageStatus;
 import com.belezza.api.integration.WhatsAppService;
 import com.belezza.api.repository.WhatsAppMessageRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,7 +25,6 @@ import java.util.Map;
 public class WhatsAppServiceImpl implements WhatsAppService {
 
     private final RestTemplate restTemplate;
-    private final ObjectMapper objectMapper;
     private final WhatsAppMessageRepository messageRepository;
 
     @Value("${belezza.whatsapp.phone-number-id:}")
@@ -77,10 +73,12 @@ public class WhatsAppServiceImpl implements WhatsAppService {
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
 
             log.info("Enviando mensagem WhatsApp para {} usando template {}", telefone, templateName);
-            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, request, Map.class);
+            @SuppressWarnings({"unchecked", "null"})
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(url, HttpMethod.POST, request, (Class<Map<String, Object>>) (Class<?>) Map.class);
 
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                Map<String, Object> body = response.getBody();
+            Map<String, Object> body = response.getBody();
+            if (response.getStatusCode().is2xxSuccessful() && body != null) {
+                @SuppressWarnings("unchecked")
                 List<Map<String, String>> messages = (List<Map<String, String>>) body.get("messages");
                 if (messages != null && !messages.isEmpty()) {
                     String messageId = messages.get(0).get("id");
@@ -117,10 +115,12 @@ public class WhatsAppServiceImpl implements WhatsAppService {
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
 
             log.info("Enviando mensagem direta WhatsApp para {}", telefone);
-            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, request, Map.class);
+            @SuppressWarnings({"unchecked", "null"})
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(url, HttpMethod.POST, request, (Class<Map<String, Object>>) (Class<?>) Map.class);
 
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                Map<String, Object> body = response.getBody();
+            Map<String, Object> body = response.getBody();
+            if (response.getStatusCode().is2xxSuccessful() && body != null) {
+                @SuppressWarnings("unchecked")
                 List<Map<String, String>> messages = (List<Map<String, String>>) body.get("messages");
                 if (messages != null && !messages.isEmpty()) {
                     messageId = messages.get(0).get("id");
@@ -169,10 +169,12 @@ public class WhatsAppServiceImpl implements WhatsAppService {
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
 
             log.info("Enviando imagem WhatsApp para {}", telefone);
-            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, request, Map.class);
+            @SuppressWarnings({"unchecked", "null"})
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(url, HttpMethod.POST, request, (Class<Map<String, Object>>) (Class<?>) Map.class);
 
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                Map<String, Object> body = response.getBody();
+            Map<String, Object> body = response.getBody();
+            if (response.getStatusCode().is2xxSuccessful() && body != null) {
+                @SuppressWarnings("unchecked")
                 List<Map<String, String>> messages = (List<Map<String, String>>) body.get("messages");
                 if (messages != null && !messages.isEmpty()) {
                     String messageId = messages.get(0).get("id");
@@ -361,6 +363,7 @@ public class WhatsAppServiceImpl implements WhatsAppService {
     /**
      * Create HTTP headers with authorization.
      */
+    @SuppressWarnings("null")
     private HttpHeaders createHeaders() {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -371,38 +374,7 @@ public class WhatsAppServiceImpl implements WhatsAppService {
     /**
      * Save message log to database.
      */
-    private void saveMessageLog(
-        String messageId,
-        String telefone,
-        String tipo,
-        String templateName,
-        String conteudo,
-        Agendamento agendamento,
-        Salon salon
-    ) {
-        try {
-            WhatsAppMessage message = WhatsAppMessage.builder()
-                .messageId(messageId)
-                .telefone(normalizarTelefone(telefone))
-                .tipo(tipo)
-                .templateName(templateName)
-                .conteudo(conteudo)
-                .status(messageId != null ? WhatsAppMessageStatus.SENT : WhatsAppMessageStatus.FAILED)
-                .agendamento(agendamento)
-                .salon(salon)
-                .tentativas(1)
-                .build();
-
-            messageRepository.save(message);
-            log.debug("Mensagem WhatsApp registrada no banco: {}", messageId);
-        } catch (Exception e) {
-            log.error("Erro ao salvar log de mensagem WhatsApp: {}", e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Save message log to database (simplified version without Agendamento/Salon).
-     */
+    @SuppressWarnings("null")
     private void saveMessageLogSimple(
         String messageId,
         String telefone,

@@ -24,7 +24,7 @@ export default function SalonLoginPage() {
       const roleRedirects: Record<AuthUserRole, string> = {
         ADMIN: "/salon/dashboard",
         RECEPCIONIST: "/salon/dashboard",
-        PROFESSIONAL: "/salon/appointments",
+        PROFESSIONAL: "/salon/professional",
         CLIENT: "/salon/book",
       };
       router.push(roleRedirects[user.role]);

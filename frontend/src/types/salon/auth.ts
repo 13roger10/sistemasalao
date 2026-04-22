@@ -124,7 +124,6 @@ export const AUTH_ROLE_PERMISSIONS: Record<AuthUserRole, AuthPermission[]> = {
     'appointments.view', 'appointments.confirm', 'appointments.complete',
     'commissions.view',
     'reviews.view',
-    'dashboard.view',
   ],
   CLIENT: [
     'appointments.view', 'appointments.create', 'appointments.cancel',

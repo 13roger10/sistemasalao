@@ -13,6 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import java.math.BigDecimal;
 import java.time.LocalTime;
 
+
 /**
  * Data initializer for local profile (H2 in-memory database).
  * Creates initial test data for development without Docker.
@@ -26,6 +27,7 @@ public class LocalDataInitializer {
     private final PasswordEncoder passwordEncoder;
 
     @Bean
+    @SuppressWarnings("null")
     CommandLineRunner initLocalData(
             UsuarioRepository usuarioRepository,
             SalonRepository salonRepository,

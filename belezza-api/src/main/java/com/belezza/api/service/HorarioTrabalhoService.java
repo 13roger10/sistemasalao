@@ -26,6 +26,7 @@ public class HorarioTrabalhoService {
     private final ProfissionalService profissionalService;
 
     @Transactional
+    @SuppressWarnings("null")
     public HorarioTrabalhoResponse criar(Long profissionalId, HorarioTrabalhoRequest request) {
         Profissional profissional = profissionalService.getProfissionalEntity(profissionalId);
 

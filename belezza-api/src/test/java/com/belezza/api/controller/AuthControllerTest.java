@@ -26,6 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @DisplayName("AuthController Tests")
+@SuppressWarnings("null")
 class AuthControllerTest {
 
     @Autowired
@@ -74,6 +75,7 @@ class AuthControllerTest {
 
     @Test
     @DisplayName("Should register user and return 201")
+    @SuppressWarnings("null")
     void shouldRegisterUserSuccessfully() throws Exception {
         when(authService.register(any(RegisterRequest.class))).thenReturn(authResponse);
 
@@ -87,6 +89,7 @@ class AuthControllerTest {
 
     @Test
     @DisplayName("Should return 400 when email is invalid")
+    @SuppressWarnings("null")
     void shouldReturn400WhenEmailInvalid() throws Exception {
         registerRequest.setEmail("invalid-email");
 
@@ -98,6 +101,7 @@ class AuthControllerTest {
 
     @Test
     @DisplayName("Should return 400 when password is weak")
+    @SuppressWarnings("null")
     void shouldReturn400WhenPasswordWeak() throws Exception {
         registerRequest.setPassword("weak");
 
@@ -109,6 +113,7 @@ class AuthControllerTest {
 
     @Test
     @DisplayName("Should login user and return 200")
+    @SuppressWarnings("null")
     void shouldLoginUserSuccessfully() throws Exception {
         when(authService.login(any(LoginRequest.class))).thenReturn(authResponse);
 
@@ -122,6 +127,7 @@ class AuthControllerTest {
 
     @Test
     @DisplayName("Should refresh token and return 200")
+    @SuppressWarnings("null")
     void shouldRefreshTokenSuccessfully() throws Exception {
         RefreshTokenRequest request = new RefreshTokenRequest("validRefreshToken");
         when(authService.refreshToken(any(RefreshTokenRequest.class))).thenReturn(authResponse);
@@ -135,6 +141,7 @@ class AuthControllerTest {
 
     @Test
     @DisplayName("Should logout and return 200")
+    @SuppressWarnings("null")
     void shouldLogoutSuccessfully() throws Exception {
         mockMvc.perform(post("/api/auth/logout")
                         .contentType(MediaType.APPLICATION_JSON))

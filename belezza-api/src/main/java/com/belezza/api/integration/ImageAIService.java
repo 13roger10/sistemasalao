@@ -10,7 +10,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.HashMap;
@@ -157,6 +156,7 @@ public class ImageAIService {
      * @param input the input parameters
      * @return the output URL
      */
+    @SuppressWarnings("null")
     private String runPrediction(String model, Map<String, Object> input) {
         try {
             WebClient webClient = WebClient.builder()

@@ -16,6 +16,26 @@ import type { PaginatedResponse, PaginationParams, DateRange } from '@/types/sal
 
 const BASE_PATH = '/salon/reviews';
 
+// Mapeia AvaliacaoResponse do backend Java para o tipo Review do frontend
+const mapAvaliacaoToFrontend = (a: Record<string, unknown>): Review => ({
+  id: String(a.id),
+  clientId: '',
+  clientName: 'Cliente',
+  professionalId: String(a.profissionalId),
+  professionalName: (a.profissionalNome as string) || '',
+  appointmentId: String(a.agendamentoId),
+  serviceIds: [],
+  serviceNames: [],
+  rating: Number(a.nota) || 0,
+  comment: (a.comentario as string) || '',
+  status: 'published',
+  isVerified: true,
+  source: 'online' as const,
+  unitId: String(a.salonId),
+  createdAt: a.criadoEm ? new Date(a.criadoEm as string) : new Date(),
+  updatedAt: a.criadoEm ? new Date(a.criadoEm as string) : new Date(),
+});
+
 export const reviewService = {
   // ===== REVIEWS =====
   list: (
@@ -218,5 +238,41 @@ export const reviewService = {
         unitId,
       });
     },
+  },
+
+  // === ENDPOINTS DIRETOS DO BACKEND JAVA (/api/avaliacoes) ===
+
+  // GET /api/avaliacoes/profissional/{id} — isolamento garantido no backend
+  listByProfessional: async (
+    professionalId: string,
+    params: { page?: number; size?: number } = {}
+  ): Promise<PaginatedResponse<Review>> => {
+    const response = await api.get<{ content: Record<string, unknown>[], totalElements: number, totalPages: number, number: number }>(
+      `/avaliacoes/profissional/${professionalId}`,
+      { page: (params.page || 1) - 1, size: params.size || 100 }
+    );
+    const reviews = (response.content || []).map(mapAvaliacaoToFrontend);
+    return {
+      data: reviews,
+      items: reviews,
+      meta: { total: response.totalElements || reviews.length, page: (response.number || 0) + 1, limit: params.size || 100, totalPages: response.totalPages || 1, hasNextPage: false, hasPrevPage: false },
+    };
+  },
+
+  // GET /api/avaliacoes/salon/{id} — listagem geral para ADMIN/RECEPCIONIST
+  listBySalon: async (
+    salonId: string,
+    params: { page?: number; size?: number } = {}
+  ): Promise<PaginatedResponse<Review>> => {
+    const response = await api.get<{ content: Record<string, unknown>[], totalElements: number, totalPages: number, number: number }>(
+      `/avaliacoes/salon/${salonId}`,
+      { page: (params.page || 1) - 1, size: params.size || 100 }
+    );
+    const reviews = (response.content || []).map(mapAvaliacaoToFrontend);
+    return {
+      data: reviews,
+      items: reviews,
+      meta: { total: response.totalElements || reviews.length, page: (response.number || 0) + 1, limit: params.size || 100, totalPages: response.totalPages || 1, hasNextPage: false, hasPrevPage: false },
+    };
   },
 };

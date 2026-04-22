@@ -9,7 +9,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { authService } from "@/services/auth";
+import { authService, getTokenExpiry } from "@/services/auth";
 import type { User, AuthState } from "@/types";
 
 interface AuthContextType extends AuthState {
@@ -32,6 +32,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: true,
   });
   const hasInitialized = useRef(false);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearRefreshTimer = useCallback(() => {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+  }, []);
 
   const setAuth = useCallback((user: User | null, token: string | null) => {
     setState({
@@ -50,6 +58,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Schedules a silent token refresh 60 seconds before the JWT expires.
+  // Uses a ref to allow the callback to reference itself without circular deps.
+  const scheduleRefreshRef = useRef<(token: string) => void>(() => {});
+
+  const scheduleRefresh = useCallback((token: string) => {
+    clearRefreshTimer();
+    const exp = getTokenExpiry(token);
+    if (!exp) return;
+
+    const msUntilExpiry = exp * 1000 - Date.now();
+    const delay = Math.max(msUntilExpiry - 60_000, 0); // refresh 60s before expiry
+
+    refreshTimerRef.current = setTimeout(async () => {
+      try {
+        const response = await authService.refreshToken(token);
+        setAuth(response.user, response.token);
+        scheduleRefreshRef.current(response.token);
+      } catch {
+        // Refresh failed — force logout
+        authService.logout();
+        setAuth(null, null);
+      }
+    }, delay);
+  }, [clearRefreshTimer, setAuth]);
+
+  scheduleRefreshRef.current = scheduleRefresh;
+
   const login = useCallback(
     async (email: string, password: string, totpCode?: string): Promise<boolean> => {
       setState((prev) => ({ ...prev, isLoading: true }));
@@ -64,19 +99,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         setAuth(response.user, response.token);
+        scheduleRefresh(response.token);
         return false;
       } catch (error) {
         setState((prev) => ({ ...prev, isLoading: false }));
         throw error;
       }
     },
-    [setAuth]
+    [setAuth, scheduleRefresh]
   );
 
   const logout = useCallback(() => {
+    clearRefreshTimer();
     authService.logout(); // Remove cookie e localStorage
     setAuth(null, null);
-  }, [setAuth]);
+  }, [clearRefreshTimer, setAuth]);
 
   const checkAuth = useCallback(async () => {
     const token = localStorage.getItem(STORAGE_KEY);
@@ -98,11 +135,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         document.cookie = `auth_token=${token}; path=/; expires=${expires}; SameSite=Lax`;
       }
       setAuth(user, token);
+      scheduleRefresh(token);
     } catch {
       authService.logout();
       setAuth(null, null);
     }
-  }, [setAuth]);
+  }, [setAuth, scheduleRefresh]);
 
   useEffect(() => {
     if (hasInitialized.current) return;

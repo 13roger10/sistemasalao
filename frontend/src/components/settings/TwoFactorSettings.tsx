@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Shield, ShieldCheck, ShieldOff, Copy, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui";
 import { useToast } from "@/components/ui/Toast";
-import { apiClient } from "@/lib/api";
+import { api as apiClient } from "@/lib/api";
 
 type Step = "idle" | "setup" | "confirm" | "backup-codes";
 

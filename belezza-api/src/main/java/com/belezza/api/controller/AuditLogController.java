@@ -65,6 +65,7 @@ public class AuditLogController {
         summary = "Obter log de auditoria por ID",
         description = "Retorna detalhes de um log de auditoria específico."
     )
+    @SuppressWarnings("null")
     public ResponseEntity<AuditLog> getAuditLog(
         @Parameter(description = "ID do log de auditoria") @PathVariable Long id
     ) {

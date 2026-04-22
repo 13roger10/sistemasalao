@@ -9,6 +9,7 @@ public enum FormaPagamento {
     CARTAO_CREDITO("Cartão de Crédito"),
     CARTAO_DEBITO("Cartão de Débito"),
     PIX("PIX"),
+    TRANSFERENCIA("Transferência Bancária"),
     VALE("Vale");
 
     private final String description;

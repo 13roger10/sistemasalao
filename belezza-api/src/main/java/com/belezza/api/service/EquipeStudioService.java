@@ -60,6 +60,7 @@ public class EquipeStudioService {
 
     // ─── Mutate ───────────────────────────────────────────────────────────────
 
+    @SuppressWarnings("null")
     public MembroStudioResponse adicionarMembro(Long salonId, String email, FuncaoStudio funcao,
                                                 String requesterEmail) {
         Salon salon = getSalon(salonId);
@@ -88,6 +89,7 @@ public class EquipeStudioService {
         return MembroStudioResponse.fromEntity(membro);
     }
 
+    @SuppressWarnings("null")
     public MembroStudioResponse alterarFuncao(Long salonId, Long membroId, FuncaoStudio novaFuncao,
                                               String requesterEmail) {
         requireProprietario(salonId, requesterEmail);
@@ -109,6 +111,7 @@ public class EquipeStudioService {
         return MembroStudioResponse.fromEntity(membro);
     }
 
+    @SuppressWarnings("null")
     public void removerMembro(Long salonId, Long membroId, String requesterEmail) {
         requireProprietario(salonId, requesterEmail);
 
@@ -164,6 +167,7 @@ public class EquipeStudioService {
         }
     }
 
+    @SuppressWarnings("null")
     private Salon getSalon(Long salonId) {
         return salonRepository.findById(salonId)
                 .orElseThrow(() -> new ResourceNotFoundException("Salão", salonId));

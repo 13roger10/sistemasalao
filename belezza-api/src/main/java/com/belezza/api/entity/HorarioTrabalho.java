@@ -39,10 +39,10 @@ public class HorarioTrabalho {
     @Column(nullable = false)
     private LocalTime horaFim;
 
-    @Column(nullable = false)
+    @Column
     private LocalTime intervaloInicio;
 
-    @Column(nullable = false)
+    @Column
     private LocalTime intervaloFim;
 
     @Column(nullable = false)

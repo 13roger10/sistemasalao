@@ -2,6 +2,7 @@ package com.belezza.api.dto.fidelidade;
 
 import com.belezza.api.entity.FidelidadeCliente;
 import com.belezza.api.entity.NivelFidelidade;
+import com.belezza.api.entity.TipoRecompensa;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -36,6 +37,10 @@ public class FidelidadeClienteResponse {
     private boolean ativo;
     private LocalDateTime criadoEm;
     private LocalDateTime atualizadoEm;
+    // Dados da recompensa do programa
+    private TipoRecompensa recompensaTipo;
+    private String recompensaValorFormatado;
+    private String servicoRecompensaNome;
 
     public static FidelidadeClienteResponse fromEntity(FidelidadeCliente fc) {
         int visitasNecessarias = fc.getPrograma().getVisitasNecessarias();
@@ -85,6 +90,15 @@ public class FidelidadeClienteResponse {
                 .ativo(fc.isAtivo())
                 .criadoEm(fc.getCriadoEm())
                 .atualizadoEm(fc.getAtualizadoEm())
+                .recompensaTipo(fc.getPrograma().getRecompensaTipo())
+                .recompensaValorFormatado(fc.getPrograma().getRecompensaValor() != null
+                        ? (fc.getPrograma().getRecompensaTipo() == com.belezza.api.entity.TipoRecompensa.DESCONTO_PERCENTUAL
+                                ? fc.getPrograma().getRecompensaValor().intValue() + "% de desconto"
+                                : "R$" + fc.getPrograma().getRecompensaValor().toPlainString() + " de desconto")
+                        : null)
+                .servicoRecompensaNome(fc.getPrograma().getServicoRecompensa() != null
+                        ? fc.getPrograma().getServicoRecompensa().getNome()
+                        : null)
                 .build();
     }
 }

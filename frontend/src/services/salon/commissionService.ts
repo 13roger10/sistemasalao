@@ -15,6 +15,27 @@ import type { PaginatedResponse, PaginationParams, DateRange } from '@/types/sal
 
 const BASE_PATH = '/salon/commissions';
 
+// Mapeia response do backend Java (/api/comissoes) para o tipo Commission do frontend
+const mapComissaoToFrontend = (c: Record<string, unknown>): Commission => ({
+  id: String(c.id),
+  professionalId: String(c.profissionalId),
+  professionalName: (c.profissionalNome as string) || '',
+  appointmentId: String(c.agendamentoId),
+  serviceId: c.servicoId ? String(c.servicoId) : '',
+  serviceName: (c.servicoNome as string) || '',
+  clientId: c.clienteId ? String(c.clienteId) : '',
+  clientName: (c.clienteNome as string) || '',
+  servicePrice: Number(c.valorServico) || 0,
+  commissionType: (c.tipoComissao as string) === 'PORCENTAGEM' ? 'percentage' : 'fixed',
+  commissionRate: Number(c.taxaComissao) || 0,
+  commissionValue: Number(c.valorComissao) || 0,
+  status: (c.status as string) === 'PAGA' ? 'paid' : (c.status as string) === 'CANCELADA' ? 'canceled' : 'pending',
+  appointmentDate: c.dataAgendamento ? new Date(c.dataAgendamento as string) : new Date(),
+  unitId: String(c.salonId),
+  createdAt: c.criadoEm ? new Date(c.criadoEm as string) : new Date(),
+  updatedAt: c.criadoEm ? new Date(c.criadoEm as string) : new Date(),
+});
+
 export const commissionService = {
   // Commissions
   list: (
@@ -226,6 +247,42 @@ export const commissionService = {
         unitId,
       });
     },
+  },
+
+  // === ENDPOINTS DIRETOS DO BACKEND JAVA (/api/comissoes) ===
+
+  // GET /api/comissoes/profissional/{id} — isolamento garantido no backend
+  listByProfessional: async (
+    professionalId: string,
+    params: { page?: number; size?: number } = {}
+  ): Promise<PaginatedResponse<Commission>> => {
+    const response = await api.get<{ content: Record<string, unknown>[], totalElements: number, totalPages: number, number: number }>(
+      `/comissoes/profissional/${professionalId}`,
+      { page: (params.page || 1) - 1, size: params.size || 100 }
+    );
+    const commissions = (response.content || []).map(mapComissaoToFrontend);
+    return {
+      data: commissions,
+      items: commissions,
+      meta: { total: response.totalElements || commissions.length, page: (response.number || 0) + 1, limit: params.size || 100, totalPages: response.totalPages || 1, hasNextPage: false, hasPrevPage: false },
+    };
+  },
+
+  // GET /api/comissoes/salon/{id} — listagem geral para ADMIN/RECEPCIONIST
+  listBySalon: async (
+    salonId: string,
+    params: { page?: number; size?: number } = {}
+  ): Promise<PaginatedResponse<Commission>> => {
+    const response = await api.get<{ content: Record<string, unknown>[], totalElements: number, totalPages: number, number: number }>(
+      `/comissoes/salon/${salonId}`,
+      { page: (params.page || 1) - 1, size: params.size || 100 }
+    );
+    const commissions = (response.content || []).map(mapComissaoToFrontend);
+    return {
+      data: commissions,
+      items: commissions,
+      meta: { total: response.totalElements || commissions.length, page: (response.number || 0) + 1, limit: params.size || 100, totalPages: response.totalPages || 1, hasNextPage: false, hasPrevPage: false },
+    };
   },
 
   // Calculate commission for a service

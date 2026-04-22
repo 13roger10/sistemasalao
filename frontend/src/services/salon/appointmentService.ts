@@ -247,6 +247,63 @@ export const appointmentService = {
     }
   },
 
+  // Daily agenda for a specific professional — uses dedicated day-view endpoint
+  // Maps to: GET /api/agendamentos/profissional/{profissionalId}/agenda-diaria?data=...
+  getDailyAgenda: async (
+    professionalId: string | number,
+    date: Date
+  ): Promise<Appointment[]> => {
+    try {
+      // Backend expects ISO LocalDateTime: yyyy-MM-ddTHH:mm:ss
+      const dayStart = new Date(date);
+      dayStart.setHours(0, 0, 0, 0);
+      const dataParam = dayStart.toISOString().slice(0, 19); // "2024-01-15T00:00:00"
+
+      const response = await api.get<AgendamentoBackendResponse[]>(
+        `${BASE_PATH}/profissional/${professionalId}/agenda-diaria`,
+        { data: dataParam }
+      );
+      return (response || []).map(mapAgendamentoToFrontend);
+    } catch (error) {
+      console.error('Erro ao buscar agenda diária do profissional:', error);
+      return [];
+    }
+  },
+
+  // List appointments for a specific professional — uses backend-level isolation
+  // Maps to: GET /api/agendamentos/profissional/{profissionalId}
+  getByProfessional: async (
+    professionalId: string | number,
+    params: PaginationParams & { salonId?: string | number } = {}
+  ): Promise<PaginatedResponse<Appointment>> => {
+    try {
+      const backendParams = {
+        page: (params.page || 1) - 1,
+        size: params.limit || 100,
+      };
+      const response = await api.get<{ content: AgendamentoBackendResponse[], totalElements: number, totalPages: number, number: number }>(
+        `${BASE_PATH}/profissional/${professionalId}`,
+        backendParams
+      );
+      const appointments = response.content?.map(mapAgendamentoToFrontend) || [];
+      return {
+        data: appointments,
+        items: appointments,
+        meta: {
+          total: response.totalElements || appointments.length,
+          page: (response.number || 0) + 1,
+          limit: params.limit || 20,
+          totalPages: response.totalPages || 1,
+          hasNextPage: (response.number || 0) + 1 < (response.totalPages || 1),
+          hasPrevPage: (response.number || 0) > 0,
+        },
+      };
+    } catch (error) {
+      console.error('Erro ao buscar agendamentos do profissional:', error);
+      return { data: [], items: [], meta: { total: 0, page: 1, limit: params.limit || 20, totalPages: 0, hasNextPage: false, hasPrevPage: false } };
+    }
+  },
+
   // List appointments for the authenticated client
   // IMPORTANTE: Usa /salon/appointments/my (MeusAgendamentosController)
   getMyAppointments: (

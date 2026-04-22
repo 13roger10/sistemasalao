@@ -1,6 +1,5 @@
 package com.belezza.api.controller;
 
-import com.belezza.api.dto.agendamento.AgendamentoResponse;
 import com.belezza.api.service.AgendamentoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;

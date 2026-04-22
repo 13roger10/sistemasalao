@@ -46,6 +46,7 @@ public class CaptionAIService {
      * @param request the caption generation request
      * @return the generated caption response
      */
+    @SuppressWarnings("null")
     public CaptionResponse generate(CaptionRequest request) {
         validateApiKey();
 

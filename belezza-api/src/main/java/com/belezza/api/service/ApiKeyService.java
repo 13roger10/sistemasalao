@@ -57,6 +57,7 @@ public class ApiKeyService {
     }
 
     @Transactional
+    @SuppressWarnings("null")
     public ApiKeyCreatedResponse criar(Long salonId, ApiKeyRequest req) {
         Salon salon = salonRepository.findById(salonId)
             .orElseThrow(() -> new ResourceNotFoundException("Salão não encontrado: " + salonId));
@@ -89,6 +90,7 @@ public class ApiKeyService {
     }
 
     @Transactional
+    @SuppressWarnings("null")
     public void revogar(Long salonId, Long keyId) {
         ApiKey key = apiKeyRepository.findById(keyId)
             .filter(k -> k.getSalon().getId().equals(salonId))
@@ -99,6 +101,7 @@ public class ApiKeyService {
     }
 
     @Transactional
+    @SuppressWarnings("null")
     public void excluir(Long salonId, Long keyId) {
         ApiKey key = apiKeyRepository.findById(keyId)
             .filter(k -> k.getSalon().getId().equals(salonId))

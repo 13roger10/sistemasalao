@@ -447,6 +447,8 @@ const mockCommissionRules: CommissionRule[] = [
 export default function CommissionPage() {
   const { user } = useSalonAuth();
 
+  const isProfessional = user?.role === 'PROFESSIONAL';
+
   // ===== ESTADOS =====
   const [activeTab, setActiveTab] = useState<"commissions" | "summary" | "rules" | "report">("commissions");
   const [commissions, setCommissions] = useState<Commission[]>([]);
@@ -459,11 +461,42 @@ export default function CommissionPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<CommissionStatus | "all">("all");
   const [professionalFilter, setProfessionalFilter] = useState<string>("all");
-  const [dateRange, setDateRange] = useState<DateRange>({
-    startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-    endDate: new Date(),
-  });
+
+  const todayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+  const todayEnd = () => { const d = new Date(); d.setHours(23, 59, 59, 999); return d; };
+
+  const [activePeriod, setActivePeriod] = useState<"day" | "week" | "month" | "custom">(
+    isProfessional ? "day" : "month"
+  );
+  const [dateRange, setDateRange] = useState<DateRange>(
+    isProfessional
+      ? { startDate: todayStart(), endDate: todayEnd() }
+      : { startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), endDate: new Date() }
+  );
   const [showFilters, setShowFilters] = useState(false);
+
+  const applyPeriod = (period: "day" | "week" | "month") => {
+    const now = new Date();
+    let start: Date;
+    let end: Date;
+    if (period === "day") {
+      start = todayStart();
+      end = todayEnd();
+    } else if (period === "week") {
+      const day = now.getDay();
+      start = new Date(now);
+      start.setDate(now.getDate() - day);
+      start.setHours(0, 0, 0, 0);
+      end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+    } else {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    }
+    setActivePeriod(period);
+    setDateRange({ startDate: start, endDate: end });
+  };
 
   // Modais
   const [showPayModal, setShowPayModal] = useState(false);
@@ -498,17 +531,33 @@ export default function CommissionPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      // Em produção: await commissionService.list(...)
-      const mockData = generateMockCommissions();
-      setCommissions(mockData);
-      setSummaries(generateMockSummaries(mockData));
+      let data: Commission[];
+      if (user?.role === 'PROFESSIONAL') {
+        // PROFESSIONAL sem professionalId configurado: bloqueia — não expõe dados de outros
+        if (!user.professionalId) {
+          setCommissions([]);
+          setSummaries([]);
+          return;
+        }
+        // Endpoint dedicado garante isolamento no backend
+        const response = await commissionService.listByProfessional(String(user.professionalId));
+        data = response.data;
+        // Aplica filtro client-side automático como defesa em profundidade
+        setProfessionalFilter(String(user.professionalId));
+      } else {
+        // ADMIN / RECEPCIONIST: listagem geral do salão
+        const response = await commissionService.listBySalon('1');
+        data = response.data;
+      }
+      setCommissions(data);
+      setSummaries(generateMockSummaries(data));
       setRules(mockCommissionRules);
     } catch (error) {
       console.error("Erro ao carregar comissões:", error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     loadData();
@@ -755,6 +804,99 @@ export default function CommissionPage() {
     setShowPayMultipleModal(true);
   };
 
+  const handleExportPDF = () => {
+    const formatCurrency = (v: number) =>
+      v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const formatDate = (d: Date | string) =>
+      new Date(d).toLocaleDateString('pt-BR');
+    const statusLabel = (s: string) =>
+      s === 'paid' ? 'Pago' : s === 'pending' ? 'Pendente' : 'Cancelado';
+
+    const rows = filteredCommissions.map(c => `
+      <tr>
+        <td>${isProfessional ? (c.clientName || '—') : (c.professionalName || '—')}</td>
+        <td>${c.serviceName || '—'}</td>
+        <td>${formatCurrency(c.servicePrice)}</td>
+        <td>${c.commissionType === 'percentage' ? c.commissionRate + '%' : formatCurrency(c.commissionRate)}</td>
+        <td class="value">${formatCurrency(c.commissionValue)}</td>
+        <td class="status-${c.status}">${statusLabel(c.status)}</td>
+        <td>${formatDate(c.appointmentDate)}</td>
+      </tr>`).join('');
+
+    const totalComissoes = filteredCommissions.reduce((s, c) => s + c.commissionValue, 0);
+    const totalPago = filteredCommissions.filter(c => c.status === 'paid').reduce((s, c) => s + c.commissionValue, 0);
+    const totalPendente = filteredCommissions.filter(c => c.status === 'pending').reduce((s, c) => s + c.commissionValue, 0);
+
+    const colLabel = isProfessional ? 'Cliente' : 'Profissional';
+    const geradoEm = new Date().toLocaleString('pt-BR');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Relatório de Comissões</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; font-size: 12px; color: #1f2937; padding: 24px; }
+    h1 { font-size: 20px; font-weight: bold; margin-bottom: 4px; }
+    .subtitle { color: #6b7280; font-size: 11px; margin-bottom: 20px; }
+    .summary { display: flex; gap: 24px; margin-bottom: 20px; }
+    .summary-item { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 16px; }
+    .summary-item .label { font-size: 10px; color: #6b7280; margin-bottom: 2px; }
+    .summary-item .amount { font-size: 14px; font-weight: bold; }
+    .amount-green { color: #059669; }
+    .amount-amber { color: #d97706; }
+    table { width: 100%; border-collapse: collapse; }
+    thead { background: #7c3aed; color: white; }
+    thead th { padding: 8px 10px; text-align: left; font-size: 11px; font-weight: 600; }
+    tbody tr:nth-child(even) { background: #f9fafb; }
+    tbody td { padding: 7px 10px; border-bottom: 1px solid #f3f4f6; font-size: 11px; }
+    td.value { font-weight: 600; }
+    td.status-paid { color: #059669; font-weight: 600; }
+    td.status-pending { color: #d97706; font-weight: 600; }
+    td.status-canceled { color: #dc2626; font-weight: 600; }
+    .footer { margin-top: 16px; font-size: 10px; color: #9ca3af; text-align: right; }
+    @media print {
+      body { padding: 0; }
+      @page { margin: 15mm; size: A4 landscape; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Relatório de Comissões</h1>
+  <p class="subtitle">Gerado em ${geradoEm} · ${filteredCommissions.length} registro(s)</p>
+  <div class="summary">
+    <div class="summary-item">
+      <div class="label">Total comissões</div>
+      <div class="amount">${formatCurrency(totalComissoes)}</div>
+    </div>
+    <div class="summary-item">
+      <div class="label">Pago</div>
+      <div class="amount amount-green">${formatCurrency(totalPago)}</div>
+    </div>
+    <div class="summary-item">
+      <div class="label">Pendente</div>
+      <div class="amount amount-amber">${formatCurrency(totalPendente)}</div>
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>${colLabel}</th><th>Serviço</th><th>Valor Serviço</th>
+        <th>Taxa</th><th>Comissão</th><th>Status</th><th>Data</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="footer">Belezza · ${geradoEm}</div>
+  <script>window.onload = () => { window.print(); }<\/script>
+</body>
+</html>`;
+
+    const w = window.open('', '_blank');
+    if (w) { w.document.write(html); w.document.close(); }
+  };
+
   const handleExportExcel = () => {
     // Criar dados para exportação
     const exportData = filteredCommissions.map((commission) => ({
@@ -802,8 +944,8 @@ export default function CommissionPage() {
 
   // ===== COLUNAS DA TABELA =====
   const commissionColumns: Column<Commission>[] = [
-    {
-      key: "select",
+    ...(!isProfessional ? [{
+      key: "select" as const,
       header: (
         <input
           type="checkbox"
@@ -827,7 +969,7 @@ export default function CommissionPage() {
         />
       ),
       width: "40px",
-      render: (commission) =>
+      render: (commission: Commission) =>
         commission.status === "pending" ? (
           <input
             type="checkbox"
@@ -844,18 +986,20 @@ export default function CommissionPage() {
             className="h-4 w-4 rounded border-gray-300"
           />
         ) : null,
-    },
+    }] : []),
     {
       key: "professional",
-      header: "Profissional",
+      header: isProfessional ? "Cliente" : "Profissional",
       render: (commission) => (
         <div>
           <p className="font-medium text-gray-900 dark:text-white">
-            {commission.professionalName}
+            {isProfessional ? commission.clientName : commission.professionalName}
           </p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {commission.clientName}
-          </p>
+          {!isProfessional && (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {commission.clientName}
+            </p>
+          )}
         </div>
       ),
     },
@@ -915,7 +1059,7 @@ export default function CommissionPage() {
 
   const renderCommissionActions = (commission: Commission) => (
     <>
-      {commission.status === "pending" && (
+      {!isProfessional && commission.status === "pending" && (
         <ActionMenuItem
           onClick={() => handlePayCommission(commission)}
           icon={<CheckCircle className="h-4 w-4" />}
@@ -932,7 +1076,7 @@ export default function CommissionPage() {
       >
         Ver Detalhes
       </ActionMenuItem>
-      {commission.status === "pending" && (
+      {!isProfessional && commission.status === "pending" && (
         <ActionMenuItem
           onClick={() => handleCancelCommission(commission)}
           icon={<XCircle className="h-4 w-4" />}
@@ -1038,7 +1182,7 @@ export default function CommissionPage() {
 
   // ===== RENDER =====
   return (
-    <SalonLayout requiredRole="ADMIN">
+    <SalonLayout requiredRole={["ADMIN", "PROFESSIONAL"]}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1053,9 +1197,13 @@ export default function CommissionPage() {
           <div className="flex gap-2">
             <Button variant="outline" onClick={handleExportExcel}>
               <FileSpreadsheet className="mr-2 h-4 w-4" />
-              Exportar
+              Excel
             </Button>
-            {selectedCommissions.length > 0 && (
+            <Button variant="outline" onClick={handleExportPDF}>
+              <Download className="mr-2 h-4 w-4" />
+              PDF
+            </Button>
+            {!isProfessional && selectedCommissions.length > 0 && (
               <Button variant="primary" onClick={handlePayMultiple}>
                 <Wallet className="mr-2 h-4 w-4" />
                 Pagar Selecionados ({selectedCommissions.length})
@@ -1097,8 +1245,10 @@ export default function CommissionPage() {
           <nav className="-mb-px flex space-x-8">
             {[
               { id: "commissions", label: "Comissões", icon: DollarSign },
-              { id: "summary", label: "Por Profissional", icon: Users },
-              { id: "rules", label: "Regras", icon: Settings },
+              ...(!isProfessional ? [
+                { id: "summary", label: "Por Profissional", icon: Users },
+                { id: "rules", label: "Regras", icon: Settings },
+              ] : []),
               { id: "report", label: "Relatório", icon: FileSpreadsheet },
             ].map((tab) => (
               <button
@@ -1125,24 +1275,53 @@ export default function CommissionPage() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <Input
-                  placeholder="Buscar por profissional, cliente ou serviço..."
+                  placeholder={isProfessional ? "Buscar por cliente ou serviço..." : "Buscar por profissional, cliente ou serviço..."}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
                 />
               </div>
-              <Button
-                variant="outline"
-                onClick={() => setShowFilters(!showFilters)}
-              >
-                <Filter className="mr-2 h-4 w-4" />
-                Filtros
-                {showFilters ? (
-                  <ChevronUp className="ml-2 h-4 w-4" />
-                ) : (
-                  <ChevronDown className="ml-2 h-4 w-4" />
-                )}
-              </Button>
+              {isProfessional ? (
+                <div className="flex items-center gap-2">
+                  {(["day", "week", "month"] as const).map((period) => {
+                    const labels = { day: "Hoje", week: "Esta Semana", month: "Este Mês" };
+                    const active = activePeriod === period;
+                    return (
+                      <button
+                        key={period}
+                        onClick={() => applyPeriod(period)}
+                        className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          active
+                            ? "bg-primary-600 text-white"
+                            : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                        }`}
+                      >
+                        {labels[period]}
+                      </button>
+                    );
+                  })}
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowFilters(!showFilters)}
+                  >
+                    <Filter className="mr-2 h-4 w-4" />
+                    {showFilters ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowFilters(!showFilters)}
+                >
+                  <Filter className="mr-2 h-4 w-4" />
+                  Filtros
+                  {showFilters ? (
+                    <ChevronUp className="ml-2 h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="ml-2 h-4 w-4" />
+                  )}
+                </Button>
+              )}
             </div>
 
             {showFilters && (
@@ -1164,23 +1343,25 @@ export default function CommissionPage() {
                     <option value="canceled">Cancelado</option>
                   </select>
                 </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Profissional
-                  </label>
-                  <select
-                    value={professionalFilter}
-                    onChange={(e) => setProfessionalFilter(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                  >
-                    <option value="all">Todos</option>
-                    {mockProfessionals.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {!isProfessional && (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Profissional
+                    </label>
+                    <select
+                      value={professionalFilter}
+                      onChange={(e) => setProfessionalFilter(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    >
+                      <option value="all">Todos</option>
+                      {mockProfessionals.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Data Início
@@ -1188,12 +1369,13 @@ export default function CommissionPage() {
                   <Input
                     type="date"
                     value={dateRange.startDate.toISOString().split("T")[0]}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      setActivePeriod("custom");
                       setDateRange((prev) => ({
                         ...prev,
                         startDate: new Date(e.target.value),
-                      }))
-                    }
+                      }));
+                    }}
                   />
                 </div>
                 <div>
@@ -1203,12 +1385,13 @@ export default function CommissionPage() {
                   <Input
                     type="date"
                     value={dateRange.endDate.toISOString().split("T")[0]}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      setActivePeriod("custom");
                       setDateRange((prev) => ({
                         ...prev,
                         endDate: new Date(e.target.value),
-                      }))
-                    }
+                      }));
+                    }}
                   />
                 </div>
               </div>
@@ -1227,7 +1410,7 @@ export default function CommissionPage() {
         )}
 
         {/* Tab: Por Profissional */}
-        {activeTab === "summary" && (
+        {activeTab === "summary" && !isProfessional && (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {summaries.map((summary) => (
               <ProfessionalCommissionCard
@@ -1246,7 +1429,7 @@ export default function CommissionPage() {
         )}
 
         {/* Tab: Regras */}
-        {activeTab === "rules" && (
+        {activeTab === "rules" && !isProfessional && (
           <div className="space-y-4">
             <div className="flex justify-end">
               <Button
@@ -1377,8 +1560,8 @@ export default function CommissionPage() {
               </div>
             </div>
 
-            {/* Tabela de Relatório por Profissional */}
-            <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+            {/* Tabela de Relatório por Profissional — oculta para PROFESSIONAL */}
+            {!isProfessional && <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
               <div className="border-b border-gray-200 p-4 dark:border-gray-700">
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">
                   Comissões por Profissional
@@ -1475,7 +1658,7 @@ export default function CommissionPage() {
                   </tfoot>
                 </table>
               </div>
-            </div>
+            </div>}
           </div>
         )}
       </div>

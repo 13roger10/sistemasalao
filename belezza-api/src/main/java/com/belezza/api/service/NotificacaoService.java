@@ -12,7 +12,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -175,6 +174,18 @@ public class NotificacaoService {
         String link = "/meus-agendamentos/" + agendamento.getId();
 
         criarNotificacao(usuario, TipoNotificacao.AGENDAMENTO_CONFIRMADO, titulo, mensagem, link, agendamento.getId());
+    }
+
+    @Transactional
+    public void notificarAgendamentoReagendado(Agendamento agendamento) {
+        Usuario usuario = agendamento.getCliente().getUsuario();
+        String titulo = "Agendamento Reagendado";
+        String mensagem = String.format("Seu agendamento foi reagendado para %s às %s.",
+                agendamento.getDataHora().toLocalDate().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM")),
+                agendamento.getDataHora().toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")));
+        String link = "/meus-agendamentos/" + agendamento.getId();
+
+        criarNotificacao(usuario, TipoNotificacao.AGENDAMENTO_REAGENDADO, titulo, mensagem, link, agendamento.getId());
     }
 
     @Transactional

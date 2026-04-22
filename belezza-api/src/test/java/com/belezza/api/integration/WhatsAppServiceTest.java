@@ -27,6 +27,7 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("WhatsApp Service Tests")
+@SuppressWarnings({"null", "rawtypes", "unchecked"})
 class WhatsAppServiceTest {
 
     @Mock

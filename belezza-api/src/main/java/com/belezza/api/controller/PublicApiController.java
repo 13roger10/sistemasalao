@@ -183,6 +183,7 @@ public class PublicApiController {
         }
     }
 
+    @SuppressWarnings("null")
     private Salon loadSalon(Long salonId) {
         return salonRepository.findById(salonId)
             .orElseThrow(() -> new ResourceNotFoundException("Salão não encontrado: " + salonId));

@@ -33,6 +33,7 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     private final ApiKeyService apiKeyService;
 
     @Override
+    @SuppressWarnings("null")
     protected boolean shouldNotFilter(HttpServletRequest request) {
         // Only runs for /api/v1/** paths
         return !request.getServletPath().startsWith("/api/v1/");

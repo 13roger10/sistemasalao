@@ -1,7 +1,6 @@
 package com.belezza.api.dto.agendamento;
 
 import com.belezza.api.entity.Agendamento;
-import com.belezza.api.entity.AgendamentoServico;
 import com.belezza.api.entity.StatusAgendamento;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -9,9 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -95,6 +92,25 @@ public class MeuAgendamentoDTO {
     /**
      * Creates DTO from Agendamento entity.
      */
+    @SuppressWarnings("deprecation")
+    private static List<ServiceItemDTO> buildLegacyServiceItems(Agendamento a) {
+        List<ServiceItemDTO> items = new ArrayList<>();
+        if (a.getServico() != null) {
+            items.add(ServiceItemDTO.builder()
+                .serviceId(a.getServico().getId().toString())
+                .price(a.getServico().getPreco())
+                .durationMinutes(a.getServico().getDuracaoMinutos())
+                .service(ServiceDetailDTO.builder()
+                    .id(a.getServico().getId().toString())
+                    .name(a.getServico().getNome())
+                    .price(a.getServico().getPreco())
+                    .durationMinutes(a.getServico().getDuracaoMinutos())
+                    .build())
+                .build());
+        }
+        return items;
+    }
+
     public static MeuAgendamentoDTO fromEntity(Agendamento a) {
         DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
@@ -117,19 +133,8 @@ public class MeuAgendamentoDTO {
                         .build())
                     .build())
                 .collect(Collectors.toList());
-        } else if (a.getServico() != null) {
-            // Single service (legacy)
-            serviceItems.add(ServiceItemDTO.builder()
-                .serviceId(a.getServico().getId().toString())
-                .price(a.getServico().getPreco())
-                .durationMinutes(a.getServico().getDuracaoMinutos())
-                .service(ServiceDetailDTO.builder()
-                    .id(a.getServico().getId().toString())
-                    .name(a.getServico().getNome())
-                    .price(a.getServico().getPreco())
-                    .durationMinutes(a.getServico().getDuracaoMinutos())
-                    .build())
-                .build());
+        } else {
+            serviceItems = buildLegacyServiceItems(a);
         }
 
         // Build professional info

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Plus,
   Search,
@@ -399,9 +399,11 @@ const DaySchedulePanel = ({
                       <p className="font-medium text-gray-900 dark:text-white">
                         {appointment.client?.name}
                       </p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {appointment.client?.phone}
-                      </p>
+                      {appointment.client?.phone && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {appointment.client.phone}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center justify-between text-sm">
@@ -601,6 +603,18 @@ export default function AppointmentsPage() {
   // Estados principais
   const [activeTab, setActiveTab] = useState<"agenda" | "list" | "waitlist">("agenda");
   const [calendarView, setCalendarView] = useState<CalendarView>("month");
+  const viewInitialized = useRef(false);
+
+  // PROFESSIONAL: default para vista dia (mais produtivo para uso diário)
+  useEffect(() => {
+    if (!viewInitialized.current && user?.role === 'PROFESSIONAL') {
+      setCalendarView("day");
+      viewInitialized.current = true;
+    } else if (!viewInitialized.current && user?.role) {
+      viewInitialized.current = true;
+    }
+  }, [user?.role]);
+
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(new Date());
   const [selectedProfessionalId, setSelectedProfessionalId] = useState<string>("");
@@ -731,15 +745,30 @@ export default function AppointmentsPage() {
   const loadAppointments = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Usar o método list para buscar agendamentos reais do backend
-      const response = await appointmentService.list({
-        salonId: selectedUnitId || '1',
-        page: 1,
-        limit: 100, // Buscar mais agendamentos para cobrir o período
-      });
+      let allAppointments;
 
-      const allAppointments = response.data || response.items || [];
-      console.log('Total de agendamentos da API:', allAppointments.length);
+      if (user?.role === 'PROFESSIONAL' && user?.professionalId) {
+        if (calendarView === 'day') {
+          // Visualização diária: endpoint dedicado retorna apenas os agendamentos do dia
+          allAppointments = await appointmentService.getDailyAgenda(user.professionalId, currentDate);
+        } else {
+          // Visualização semanal/mensal: endpoint paginado com filtro client-side por período
+          const response = await appointmentService.getByProfessional(user.professionalId, {
+            salonId: selectedUnitId || '1',
+            page: 1,
+            limit: 100,
+          });
+          allAppointments = response.data || response.items || [];
+        }
+      } else {
+        // ADMIN / RECEPCIONIST: busca todos os agendamentos do salão
+        const response = await appointmentService.list({
+          salonId: selectedUnitId || '1',
+          page: 1,
+          limit: 100,
+        });
+        allAppointments = response.data || response.items || [];
+      }
 
       // Filtrar por período conforme a visualização
       const startDate = new Date(currentDate);
@@ -762,26 +791,16 @@ export default function AppointmentsPage() {
         endDate.setHours(23, 59, 59, 999);
       }
 
-      console.log('Filtrando período:', startDate.toISOString(), 'até', endDate.toISOString());
-
-      // Filtrar agendamentos pelo período
       const filteredAppointments = allAppointments.filter(appointment => {
         const appointmentDate = new Date(appointment.date);
-        const inRange = appointmentDate >= startDate && appointmentDate <= endDate;
-        if (!inRange) {
-          console.log('Agendamento fora do período:', appointment.id, appointmentDate.toISOString());
-        }
-        return inRange;
+        return appointmentDate >= startDate && appointmentDate <= endDate;
       });
 
-      console.log('Agendamentos no período:', filteredAppointments.length);
-
-      // Filtrar por profissional se selecionado
-      const finalAppointments = selectedProfessionalId
-        ? filteredAppointments.filter(a => a.professionalId === selectedProfessionalId)
+      // Para ADMIN/RECEPCIONIST: aplicar filtro de profissional selecionado no UI
+      const finalAppointments = (user?.role !== 'PROFESSIONAL' && selectedProfessionalId)
+        ? filteredAppointments.filter(a => a.professionalId === String(selectedProfessionalId))
         : filteredAppointments;
 
-      console.log('Agendamentos finais:', finalAppointments.length);
       setAppointments(finalAppointments);
     } catch (error) {
       console.error("Erro ao carregar agendamentos:", error);
@@ -789,7 +808,7 @@ export default function AppointmentsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentDate, calendarView, selectedProfessionalId, selectedUnitId]);
+  }, [currentDate, calendarView, selectedProfessionalId, selectedUnitId, user?.role, user?.professionalId]);
 
   const loadProfessionals = useCallback(async () => {
     try {
@@ -893,6 +912,15 @@ export default function AppointmentsPage() {
       );
     }
   }, [formData.professionalId, formData.serviceIds, formData.date, appointments, WORKING_HOURS]);
+
+  // Para PROFESSIONAL: pré-preencher o campo profissional e travar o filtro do calendário
+  useEffect(() => {
+    if (user?.role === 'PROFESSIONAL' && user?.professionalId) {
+      const profId = String(user.professionalId);
+      setFormData(prev => ({ ...prev, professionalId: profId }));
+      setSelectedProfessionalId(profId);
+    }
+  }, [user]);
 
   // Efeitos
   useEffect(() => {
@@ -1170,12 +1198,16 @@ export default function AppointmentsPage() {
     : "";
 
   // Filtrar profissionais para o calendário
+  // PROFESSIONAL sempre vê apenas sua própria coluna
   const displayProfessionals = useMemo(() => {
+    if (user?.role === 'PROFESSIONAL' && user?.professionalId) {
+      return professionals.filter((p) => p.id === String(user.professionalId));
+    }
     if (selectedProfessionalId) {
       return professionals.filter((p) => p.id === selectedProfessionalId);
     }
     return professionals;
-  }, [professionals, selectedProfessionalId]);
+  }, [professionals, selectedProfessionalId, user]);
 
   // Colunas da tabela de lista
   const appointmentColumns: Column<Appointment>[] = [
@@ -1415,27 +1447,113 @@ export default function AppointmentsPage() {
 
               {/* Seletores */}
               <div className="flex items-center gap-4">
-                {/* Filtro por Profissional */}
-                <select
-                  value={selectedProfessionalId}
-                  onChange={(e) => setSelectedProfessionalId(e.target.value)}
-                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                >
-                  <option value="">Todos os Profissionais</option>
-                  {professionals.map((prof) => (
-                    <option key={prof.id} value={prof.id}>
-                      {prof.name}
-                    </option>
-                  ))}
-                </select>
+                {/* Filtro por Profissional — oculto para PROFESSIONAL (vê apenas o próprio) */}
+                {user?.role !== 'PROFESSIONAL' && (
+                  <select
+                    value={selectedProfessionalId}
+                    onChange={(e) => setSelectedProfessionalId(e.target.value)}
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  >
+                    <option value="">Todos os Profissionais</option>
+                    {professionals.map((prof) => (
+                      <option key={prof.id} value={prof.id}>
+                        {prof.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
 
                 {/* Seletor de Visualização */}
                 <ViewSelector view={calendarView} onChange={setCalendarView} />
               </div>
             </div>
 
-            {/* Visualização Mensal - Calendário + Painel do Dia */}
-            {calendarView === "month" && (
+            {/* Visualização Mensal */}
+            {calendarView === "month" && user?.role === 'PROFESSIONAL' ? (() => {
+              // Grade mensal dedicada para profissional: calendário full-width com cards inline
+              const year = currentDate.getFullYear();
+              const month = currentDate.getMonth();
+              const firstDay = new Date(year, month, 1);
+              const lastDay = new Date(year, month + 1, 0);
+              const startDayOfWeek = firstDay.getDay();
+              const daysInMonth = lastDay.getDate();
+              const days: (number | null)[] = [];
+              for (let i = 0; i < startDayOfWeek; i++) days.push(null);
+              for (let i = 1; i <= daysInMonth; i++) days.push(i);
+              const today = new Date();
+              const statusColors: Record<string, string> = {
+                confirmed: "bg-blue-100 border-blue-300 text-blue-800 dark:bg-blue-900/40 dark:border-blue-700 dark:text-blue-300",
+                pending: "bg-yellow-100 border-yellow-300 text-yellow-800 dark:bg-yellow-900/40 dark:border-yellow-700 dark:text-yellow-300",
+                in_progress: "bg-green-100 border-green-300 text-green-800 dark:bg-green-900/40 dark:border-green-700 dark:text-green-300",
+                completed: "bg-gray-100 border-gray-300 text-gray-600 dark:bg-gray-700/60 dark:border-gray-600 dark:text-gray-400",
+                cancelled: "bg-red-100 border-red-300 text-red-700 dark:bg-red-900/40 dark:border-red-700 dark:text-red-400",
+                no_show: "bg-orange-100 border-orange-300 text-orange-700 dark:bg-orange-900/40 dark:border-orange-700 dark:text-orange-400",
+              };
+              return (
+                <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
+                  {/* Cabeçalho dos dias */}
+                  <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-700">
+                    {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((d) => (
+                      <div key={d} className="py-2 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase border-r border-gray-200 dark:border-gray-700 last:border-r-0">
+                        {d}
+                      </div>
+                    ))}
+                  </div>
+
+                  {isLoading ? (
+                    <div className="flex h-64 items-center justify-center">
+                      <RefreshCw className="h-8 w-8 animate-spin text-violet-500" />
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-7">
+                      {days.map((day, idx) => {
+                        if (day === null) {
+                          return <div key={`empty-${idx}`} className="min-h-[110px] border-r border-b border-gray-100 dark:border-gray-700/50 last:border-r-0 bg-gray-50/50 dark:bg-gray-900/20" />;
+                        }
+                        const cellDate = new Date(year, month, day);
+                        const isToday = cellDate.toDateString() === today.toDateString();
+                        const isSelected = selectedDay?.toDateString() === cellDate.toDateString();
+                        const dayAppts = appointments
+                          .filter((a) => new Date(a.date).toDateString() === cellDate.toDateString())
+                          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                        return (
+                          <div
+                            key={day}
+                            className={`min-h-[110px] border-r border-b border-gray-100 dark:border-gray-700/50 last:border-r-0 p-1.5 cursor-pointer transition-colors hover:bg-violet-50/30 dark:hover:bg-violet-900/10 ${isSelected ? "bg-violet-50 dark:bg-violet-900/20" : ""}`}
+                            onClick={() => {
+                              setSelectedDay(cellDate);
+                              setFormData(prev => ({ ...prev, date: cellDate.toISOString().split("T")[0] }));
+                            }}
+                          >
+                            <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold mb-1 ${isToday ? "bg-violet-500 text-white" : isSelected ? "bg-violet-200 text-violet-800 dark:bg-violet-700 dark:text-white" : "text-gray-700 dark:text-gray-300"}`}>
+                              {day}
+                            </span>
+                            <div className="space-y-0.5">
+                              {dayAppts.slice(0, 3).map((appt) => {
+                                const timeStr = new Date(appt.date).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                                const colorClass = statusColors[appt.status] ?? statusColors.pending;
+                                return (
+                                  <button
+                                    key={appt.id}
+                                    onClick={(e) => { e.stopPropagation(); handleAppointmentClick(appt); }}
+                                    className={`w-full text-left rounded border px-1 py-0.5 text-[11px] truncate transition-opacity hover:opacity-80 ${colorClass}`}
+                                  >
+                                    {timeStr} {appt.client?.name ?? "Cliente"}
+                                  </button>
+                                );
+                              })}
+                              {dayAppts.length > 3 && (
+                                <p className="text-[11px] text-gray-500 dark:text-gray-400 pl-1">+{dayAppts.length - 3} mais</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })() : calendarView === "month" && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Calendário do Mês */}
                 <div className="lg:col-span-1">
@@ -1502,6 +1620,110 @@ export default function AppointmentsPage() {
                 </div>
               </div>
             )}
+
+            {/* Visualização Semanal */}
+            {calendarView === "week" && (() => {
+              const weekStart = new Date(currentDate);
+              weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+              weekStart.setHours(0, 0, 0, 0);
+              const weekDays = Array.from({ length: 7 }, (_, i) => {
+                const d = new Date(weekStart);
+                d.setDate(d.getDate() + i);
+                return d;
+              });
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              return (
+                <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
+                  {/* Header com dias da semana */}
+                  <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-700">
+                    {weekDays.map((day) => {
+                      const isToday = day.getTime() === today.getTime();
+                      return (
+                        <div
+                          key={day.toISOString()}
+                          className={`p-3 text-center border-r border-gray-200 dark:border-gray-700 last:border-r-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${isToday ? "bg-violet-50 dark:bg-violet-900/20" : ""}`}
+                          onClick={() => {
+                            setSelectedDay(day);
+                            setCurrentDate(new Date(day));
+                            setCalendarView("day");
+                          }}
+                        >
+                          <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">
+                            {day.toLocaleDateString("pt-BR", { weekday: "short" })}
+                          </p>
+                          <p className={`text-lg font-semibold mt-0.5 ${isToday ? "text-violet-600 dark:text-violet-400" : "text-gray-900 dark:text-white"}`}>
+                            {day.getDate()}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Corpo: agendamentos por dia */}
+                  {isLoading ? (
+                    <div className="flex h-64 items-center justify-center">
+                      <RefreshCw className="h-8 w-8 animate-spin text-violet-500" />
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-7 min-h-[400px]">
+                      {weekDays.map((day) => {
+                        const dayStart = new Date(day);
+                        dayStart.setHours(0, 0, 0, 0);
+                        const dayEnd = new Date(day);
+                        dayEnd.setHours(23, 59, 59, 999);
+                        const dayAppointments = appointments
+                          .filter((a) => {
+                            const d = new Date(a.date);
+                            return d >= dayStart && d <= dayEnd;
+                          })
+                          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                        const isToday = day.getTime() === today.getTime();
+                        return (
+                          <div
+                            key={day.toISOString()}
+                            className={`border-r border-gray-200 dark:border-gray-700 last:border-r-0 p-2 min-h-[400px] ${isToday ? "bg-violet-50/40 dark:bg-violet-900/10" : ""}`}
+                          >
+                            {dayAppointments.length === 0 ? (
+                              <p className="text-xs text-gray-400 dark:text-gray-600 text-center mt-4">—</p>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {dayAppointments.map((appt) => {
+                                  const apptDate = new Date(appt.date);
+                                  const timeStr = apptDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                                  const statusColors: Record<string, string> = {
+                                    confirmed: "bg-blue-100 border-blue-300 text-blue-800 dark:bg-blue-900/40 dark:border-blue-700 dark:text-blue-300",
+                                    pending: "bg-yellow-100 border-yellow-300 text-yellow-800 dark:bg-yellow-900/40 dark:border-yellow-700 dark:text-yellow-300",
+                                    in_progress: "bg-green-100 border-green-300 text-green-800 dark:bg-green-900/40 dark:border-green-700 dark:text-green-300",
+                                    completed: "bg-gray-100 border-gray-300 text-gray-600 dark:bg-gray-700/60 dark:border-gray-600 dark:text-gray-400",
+                                    cancelled: "bg-red-100 border-red-300 text-red-700 dark:bg-red-900/40 dark:border-red-700 dark:text-red-400",
+                                    no_show: "bg-orange-100 border-orange-300 text-orange-700 dark:bg-orange-900/40 dark:border-orange-700 dark:text-orange-400",
+                                  };
+                                  const colorClass = statusColors[appt.status] ?? statusColors.pending;
+                                  return (
+                                    <button
+                                      key={appt.id}
+                                      onClick={() => handleAppointmentClick(appt)}
+                                      className={`w-full text-left rounded border px-1.5 py-1 text-xs transition-opacity hover:opacity-80 ${colorClass}`}
+                                    >
+                                      <p className="font-semibold truncate">{timeStr}</p>
+                                      <p className="truncate">{appt.client?.name ?? "Cliente"}</p>
+                                      {appt.services?.[0]?.service?.name && (
+                                        <p className="truncate opacity-80">{appt.services[0].service!.name}</p>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Visualização Diária - Timeline */}
             {calendarView === "day" && (
@@ -1579,18 +1801,20 @@ export default function AppointmentsPage() {
                 <option value="canceled">Cancelado</option>
                 <option value="no_show">Não Compareceu</option>
               </select>
-              <select
-                value={listFilters.professionalId}
-                onChange={(e) => setListFilters({ ...listFilters, professionalId: e.target.value })}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              >
-                <option value="">Todos os profissionais</option>
-                {professionals.map((prof) => (
-                  <option key={prof.id} value={prof.id}>
-                    {prof.name}
-                  </option>
-                ))}
-              </select>
+              {user?.role !== 'PROFESSIONAL' && (
+                <select
+                  value={listFilters.professionalId}
+                  onChange={(e) => setListFilters({ ...listFilters, professionalId: e.target.value })}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="">Todos os profissionais</option>
+                  {professionals.map((prof) => (
+                    <option key={prof.id} value={prof.id}>
+                      {prof.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Tabela */}
@@ -1623,12 +1847,14 @@ export default function AppointmentsPage() {
                     >
                       Ver Detalhes
                     </ActionMenuItem>
+                    {user?.role !== 'PROFESSIONAL' && (
                     <ActionMenuItem
                       onClick={() => handleSendWhatsAppConfirmation(item)}
                       icon={<MessageCircle className="h-4 w-4" />}
                     >
                       Enviar WhatsApp
                     </ActionMenuItem>
+                    )}
                     {item.status !== "completed" && item.status !== "canceled" && (
                       <ActionMenuItem
                         onClick={() => {
@@ -1773,11 +1999,12 @@ export default function AppointmentsPage() {
             <select
               value={formData.professionalId}
               onChange={(e) => setFormData({ ...formData, professionalId: e.target.value })}
+              disabled={user?.role === 'PROFESSIONAL'}
               className={`w-full rounded-lg border px-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 dark:text-white ${
                 formErrors.professionalId
                   ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
                   : "border-gray-300 focus:border-violet-500 focus:ring-violet-500/20 dark:border-gray-600"
-              } bg-white dark:bg-gray-700`}
+              } bg-white dark:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-70`}
             >
               <option value="">Selecione um profissional</option>
               {professionals.map((prof) => (
@@ -1921,6 +2148,7 @@ export default function AppointmentsPage() {
             />
           </div>
 
+          {user?.role !== 'PROFESSIONAL' && (
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
               Notas Internas
@@ -1933,6 +2161,7 @@ export default function AppointmentsPage() {
               className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
             />
           </div>
+          )}
         </div>
       </Modal>
 
@@ -1958,6 +2187,7 @@ export default function AppointmentsPage() {
             </Button>
             {selectedAppointment && selectedAppointment.status !== "completed" && selectedAppointment.status !== "canceled" && (
               <>
+                {user?.role !== 'PROFESSIONAL' && (
                 <Button
                   variant="secondary"
                   onClick={() => handleSendWhatsAppConfirmation(selectedAppointment)}
@@ -1965,6 +2195,7 @@ export default function AppointmentsPage() {
                 >
                   WhatsApp
                 </Button>
+                )}
                 <Button
                   onClick={() => {
                     setIsViewModalOpen(false);
@@ -2075,7 +2306,7 @@ export default function AppointmentsPage() {
             </div>
 
             {/* Notas */}
-            {(selectedAppointment.clientNotes || selectedAppointment.internalNotes) && (
+            {(selectedAppointment.clientNotes || (user?.role !== 'PROFESSIONAL' && selectedAppointment.internalNotes)) && (
               <div className="space-y-4">
                 {selectedAppointment.clientNotes && (
                   <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
@@ -2085,7 +2316,7 @@ export default function AppointmentsPage() {
                     <p className="text-gray-900 dark:text-white">{selectedAppointment.clientNotes}</p>
                   </div>
                 )}
-                {selectedAppointment.internalNotes && (
+                {user?.role !== 'PROFESSIONAL' && selectedAppointment.internalNotes && (
                   <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-900 dark:bg-yellow-900/20">
                     <h4 className="mb-2 text-sm font-medium text-yellow-700 dark:text-yellow-400">
                       Notas Internas

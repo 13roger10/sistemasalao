@@ -34,6 +34,7 @@ public class NoShowScheduler {
      */
     @Scheduled(fixedRate = 300000) // 5 minutes
     @Transactional
+    @SuppressWarnings("null")
     public void processarNoShows() {
         LocalDateTime cutoff = LocalDateTime.now().minusMinutes(15);
         List<Agendamento> candidates = agendamentoRepository.findNoShowCandidates(cutoff);

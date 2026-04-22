@@ -156,6 +156,7 @@ public class EmailServiceImpl implements EmailService {
             """.formatted(userName, postId, safeError, postsUrl);
     }
 
+    @SuppressWarnings("null")
     private void sendHtmlEmail(String to, String subject, String htmlContent) throws MessagingException {
         MimeMessage message = mailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -166,6 +167,143 @@ public class EmailServiceImpl implements EmailService {
         helper.setText(htmlContent, true);
 
         mailSender.send(message);
+    }
+
+    @Override
+    @Async
+    public void sendAppointmentConfirmationEmail(String email, String userName, String data, String hora,
+                                                 String servico, String profissional, String linkConfirmacao) {
+        if (!emailEnabled) {
+            log.info("Email disabled. Would send appointment confirmation to: {}", email);
+            return;
+        }
+        try {
+            String subject = "Agendamento Confirmado - Belezza.ai";
+            String html = """
+                <!DOCTYPE html><html><head><meta charset="UTF-8">
+                <style>
+                  body{font-family:Arial,sans-serif;line-height:1.6;color:#333}
+                  .container{max-width:600px;margin:0 auto;padding:20px}
+                  .header{background:linear-gradient(135deg,#7c3aed 0%%,#5b21b6 100%%);color:white;padding:30px;text-align:center;border-radius:10px 10px 0 0}
+                  .content{background:#f9f9f9;padding:30px;border-radius:0 0 10px 10px}
+                  .info-box{background:white;border-left:4px solid #7c3aed;border-radius:4px;padding:16px;margin:16px 0}
+                  .info-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0}
+                  .info-label{color:#666;font-size:14px}
+                  .info-value{font-weight:600;font-size:14px}
+                  .button{display:inline-block;padding:12px 30px;background:#7c3aed;color:white;text-decoration:none;border-radius:6px;margin:20px 0}
+                  .footer{text-align:center;margin-top:20px;color:#666;font-size:12px}
+                </style></head><body>
+                <div class="container">
+                  <div class="header"><h1>Agendamento Confirmado!</h1></div>
+                  <div class="content">
+                    <p>Ola <strong>%s</strong>, seu agendamento foi realizado com sucesso!</p>
+                    <div class="info-box">
+                      <div class="info-row"><span class="info-label">Servico</span><span class="info-value">%s</span></div>
+                      <div class="info-row"><span class="info-label">Profissional</span><span class="info-value">%s</span></div>
+                      <div class="info-row"><span class="info-label">Data</span><span class="info-value">%s</span></div>
+                      <div class="info-row"><span class="info-label">Horario</span><span class="info-value">%s</span></div>
+                    </div>
+                    <p style="text-align:center"><a href="%s" class="button">Confirmar Agendamento</a></p>
+                    <p style="font-size:13px;color:#666">Lembre-se de chegar com 5 minutos de antecedencia. Ate logo!</p>
+                  </div>
+                  <div class="footer"><p>&copy; 2025 Belezza.ai</p></div>
+                </div></body></html>
+                """.formatted(userName, servico, profissional, data, hora, linkConfirmacao);
+            sendHtmlEmail(email, subject, html);
+            log.info("Appointment confirmation email sent to: {}", email);
+        } catch (Exception e) {
+            log.error("Failed to send appointment confirmation email to: {}", email, e);
+        }
+    }
+
+    @Override
+    @Async
+    public void sendAppointmentCancelledEmail(String email, String userName, String data, String hora,
+                                              String servico, String motivo, String linkReagendar) {
+        if (!emailEnabled) {
+            log.info("Email disabled. Would send cancellation email to: {}", email);
+            return;
+        }
+        try {
+            String subject = "Agendamento Cancelado - Belezza.ai";
+            String motivoTexto = (motivo != null && !motivo.isBlank()) ? motivo : "Nao informado";
+            String html = """
+                <!DOCTYPE html><html><head><meta charset="UTF-8">
+                <style>
+                  body{font-family:Arial,sans-serif;line-height:1.6;color:#333}
+                  .container{max-width:600px;margin:0 auto;padding:20px}
+                  .header{background:linear-gradient(135deg,#dc2626 0%%,#991b1b 100%%);color:white;padding:30px;text-align:center;border-radius:10px 10px 0 0}
+                  .content{background:#f9f9f9;padding:30px;border-radius:0 0 10px 10px}
+                  .info-box{background:white;border-left:4px solid #dc2626;border-radius:4px;padding:16px;margin:16px 0}
+                  .info-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0}
+                  .info-label{color:#666;font-size:14px}
+                  .info-value{font-weight:600;font-size:14px}
+                  .button{display:inline-block;padding:12px 30px;background:#7c3aed;color:white;text-decoration:none;border-radius:6px;margin:20px 0}
+                  .footer{text-align:center;margin-top:20px;color:#666;font-size:12px}
+                </style></head><body>
+                <div class="container">
+                  <div class="header"><h1>Agendamento Cancelado</h1></div>
+                  <div class="content">
+                    <p>Ola <strong>%s</strong>, informamos que seu agendamento foi cancelado.</p>
+                    <div class="info-box">
+                      <div class="info-row"><span class="info-label">Servico</span><span class="info-value">%s</span></div>
+                      <div class="info-row"><span class="info-label">Data</span><span class="info-value">%s</span></div>
+                      <div class="info-row"><span class="info-label">Horario</span><span class="info-value">%s</span></div>
+                      <div class="info-row"><span class="info-label">Motivo</span><span class="info-value">%s</span></div>
+                    </div>
+                    <p style="text-align:center"><a href="%s" class="button">Agendar Novamente</a></p>
+                  </div>
+                  <div class="footer"><p>&copy; 2025 Belezza.ai</p></div>
+                </div></body></html>
+                """.formatted(userName, servico, data, hora, motivoTexto, linkReagendar);
+            sendHtmlEmail(email, subject, html);
+            log.info("Appointment cancellation email sent to: {}", email);
+        } catch (Exception e) {
+            log.error("Failed to send appointment cancellation email to: {}", email, e);
+        }
+    }
+
+    @Override
+    @Async
+    public void sendAppointmentRescheduledEmail(String email, String userName, String novaData, String novaHora, String servico) {
+        if (!emailEnabled) {
+            log.info("Email disabled. Would send rescheduled email to: {}", email);
+            return;
+        }
+        try {
+            String subject = "Agendamento Reagendado - Belezza.ai";
+            String html = """
+                <!DOCTYPE html><html><head><meta charset="UTF-8">
+                <style>
+                  body{font-family:Arial,sans-serif;line-height:1.6;color:#333}
+                  .container{max-width:600px;margin:0 auto;padding:20px}
+                  .header{background:linear-gradient(135deg,#2563eb 0%%,#1d4ed8 100%%);color:white;padding:30px;text-align:center;border-radius:10px 10px 0 0}
+                  .content{background:#f9f9f9;padding:30px;border-radius:0 0 10px 10px}
+                  .info-box{background:white;border-left:4px solid #2563eb;border-radius:4px;padding:16px;margin:16px 0}
+                  .info-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0}
+                  .info-label{color:#666;font-size:14px}
+                  .info-value{font-weight:600;font-size:14px}
+                  .footer{text-align:center;margin-top:20px;color:#666;font-size:12px}
+                </style></head><body>
+                <div class="container">
+                  <div class="header"><h1>Agendamento Reagendado</h1></div>
+                  <div class="content">
+                    <p>Ola <strong>%s</strong>, seu agendamento foi reagendado para uma nova data!</p>
+                    <div class="info-box">
+                      <div class="info-row"><span class="info-label">Servico</span><span class="info-value">%s</span></div>
+                      <div class="info-row"><span class="info-label">Nova Data</span><span class="info-value">%s</span></div>
+                      <div class="info-row"><span class="info-label">Novo Horario</span><span class="info-value">%s</span></div>
+                    </div>
+                    <p style="font-size:13px;color:#666">Lembre-se de chegar com 5 minutos de antecedencia. Ate logo!</p>
+                  </div>
+                  <div class="footer"><p>&copy; 2025 Belezza.ai</p></div>
+                </div></body></html>
+                """.formatted(userName, servico, novaData, novaHora);
+            sendHtmlEmail(email, subject, html);
+            log.info("Appointment rescheduled email sent to: {}", email);
+        } catch (Exception e) {
+            log.error("Failed to send appointment rescheduled email to: {}", email, e);
+        }
     }
 
     private String buildPasswordResetEmail(String userName, String resetUrl) {

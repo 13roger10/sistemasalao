@@ -1,8 +1,14 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { useSalonAuth, Can } from "@/contexts/SalonAuthContext";
+import { appointmentService } from "@/services/salon/appointmentService";
+import { commissionService } from "@/services/salon/commissionService";
+import { reviewService } from "@/services/salon/reviewService";
+import { api } from "@/services/salon/api";
+import type { Appointment } from "@/types/salon";
 import {
   Calendar,
   Users,
@@ -18,6 +24,10 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ChevronDown,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
+  Wallet,
 } from "lucide-react";
 import {
   AreaChart,
@@ -267,8 +277,421 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
   return null;
 };
 
-// ===== COMPONENTE PRINCIPAL =====
-export default function SalonDashboardPage() {
+// ===== DASHBOARD SIMPLIFICADO PARA PROFISSIONAL =====
+function ProfessionalDashboard() {
+  const { user } = useSalonAuth();
+  const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([]);
+  const [weekAppointments, setWeekAppointments] = useState<Appointment[]>([]);
+  const [monthAppointmentsCount, setMonthAppointmentsCount] = useState(0);
+  const [upcomingAppointments, setUpcomingAppointments] = useState<Appointment[]>([]);
+  const [commissionToday, setCommissionToday] = useState(0);
+  const [commissionTotal, setCommissionTotal] = useState(0);
+  const [saldoAReceber, setSaldoAReceber] = useState(0);
+  const [avgRating, setAvgRating] = useState<number | null>(null);
+  const [totalReviews, setTotalReviews] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    if (!user?.professionalId) return;
+    setIsLoading(true);
+    try {
+      const [todayAppts, weekResp, commResp, reviewResp, paymResp] = await Promise.allSettled([
+        appointmentService.getDailyAgenda(user.professionalId, new Date()),
+        appointmentService.getByProfessional(user.professionalId, { page: 1, limit: 200 }),
+        commissionService.listByProfessional(String(user.professionalId)),
+        reviewService.listByProfessional(String(user.professionalId)),
+        api.get<{ content?: { valorTotalComissoes: number; status: string }[] }>(
+          `/api/pagamentos-profissional/profissional/${user.professionalId}`,
+          { page: 0, size: 500 }
+        ),
+      ]);
+
+      if (todayAppts.status === 'fulfilled') setTodayAppointments(todayAppts.value);
+
+      if (weekResp.status === 'fulfilled') {
+        const allAppts = weekResp.value.data || weekResp.value.items || [];
+        const now = new Date();
+
+        // Mês atual
+        const monthAppts = allAppts.filter(a => {
+          const d = new Date(a.date);
+          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        });
+        setMonthAppointmentsCount(monthAppts.length);
+
+        // Próximos agendamentos: futuros confirmados/pendentes, ordenados por data
+        const upcoming = allAppts
+          .filter(a => new Date(a.date) > now && ['confirmed', 'pending'].includes(a.status))
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+          .slice(0, 8);
+        setUpcomingAppointments(upcoming);
+
+        // Semana atual
+        const weekStart = new Date(now);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+        weekStart.setHours(0, 0, 0, 0);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        weekEnd.setHours(23, 59, 59, 999);
+        setWeekAppointments(allAppts.filter(a => {
+          const d = new Date(a.date);
+          return d >= weekStart && d <= weekEnd;
+        }));
+      }
+
+      if (commResp.status === 'fulfilled') {
+        const comms = commResp.value.data || commResp.value.items || [];
+        const now = new Date();
+        const todayStr = now.toDateString();
+
+        const todayComms = comms.filter(c => new Date(c.appointmentDate).toDateString() === todayStr);
+        setCommissionToday(todayComms.reduce((sum, c) => sum + (c.commissionValue || 0), 0));
+
+        const monthComms = comms.filter(c => {
+          const d = new Date(c.appointmentDate);
+          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        });
+        setCommissionTotal(monthComms.reduce((sum, c) => sum + (c.commissionValue || 0), 0));
+
+        // Saldo a receber: pending commissions not yet paid out
+        const pendingComms = comms.filter(c => c.status === 'pending');
+        const totalPendente = pendingComms.reduce((sum, c) => sum + (c.commissionValue || 0), 0);
+
+        // Subtract payments already received (PAGO)
+        let totalPago = 0;
+        if (paymResp.status === 'fulfilled') {
+          const raw = paymResp.value as unknown as { content?: { valorTotalComissoes: number; status: string }[] } | { valorTotalComissoes: number; status: string }[];
+          const list = Array.isArray(raw) ? raw : ((raw as { content?: { valorTotalComissoes: number; status: string }[] }).content ?? []);
+          totalPago = list
+            .filter(p => p.status === 'PAGO')
+            .reduce((sum, p) => sum + (p.valorTotalComissoes || 0), 0);
+        }
+
+        setSaldoAReceber(Math.max(0, totalPendente - totalPago));
+      }
+
+      if (reviewResp.status === 'fulfilled') {
+        const reviews = reviewResp.value.data || reviewResp.value.items || [];
+        if (reviews.length > 0) {
+          const avg = reviews.reduce((sum, r) => sum + ((r as { rating?: number }).rating || 0), 0) / reviews.length;
+          setAvgRating(Math.round(avg * 10) / 10);
+          setTotalReviews(reviews.length);
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao carregar dashboard do profissional:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.professionalId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const today = new Date();
+  const todayLabel = today.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const statusLabel: Record<string, string> = {
+    confirmed: 'Confirmado', pending: 'Pendente', in_progress: 'Em andamento',
+    completed: 'Concluído', cancelled: 'Cancelado', no_show: 'Não compareceu',
+  };
+  const statusColors: Record<string, string> = {
+    confirmed: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+    pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
+    in_progress: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+    completed: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+    cancelled: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400',
+    no_show: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+  };
+
+  const completedToday = todayAppointments.filter(a => a.status === 'completed').length;
+  const pendingToday = todayAppointments.filter(a => ['confirmed', 'pending', 'in_progress'].includes(a.status)).length;
+
+  const upcomingToday = todayAppointments
+    .filter(a => ['confirmed', 'pending', 'in_progress'].includes(a.status))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  return (
+    <SalonLayout pageTitle="Meu Dashboard" requiredRole={["PROFESSIONAL"]}>
+      <div className="space-y-6">
+        {/* Boas-vindas */}
+        <div className="rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 p-6 text-white shadow-lg">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold">
+                Olá, {user?.name?.split(' ')[0] || 'Profissional'}!
+              </h2>
+              <p className="mt-1 text-violet-100 capitalize">{todayLabel}</p>
+            </div>
+            {isLoading ? (
+              <RefreshCw className="h-6 w-6 animate-spin text-white/70" />
+            ) : (
+              <div className="flex items-center gap-4 rounded-lg bg-white/10 px-4 py-3 backdrop-blur-sm">
+                <div className="text-center">
+                  <p className="text-2xl font-bold">{todayAppointments.length}</p>
+                  <p className="text-xs text-violet-200">Hoje</p>
+                </div>
+                <div className="h-10 w-px bg-white/20" />
+                <div className="text-center">
+                  <p className="text-2xl font-bold">{weekAppointments.length}</p>
+                  <p className="text-xs text-violet-200">Esta semana</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Stat Cards */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-xl border bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Agendamentos Hoje</p>
+                <p className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">
+                  {isLoading ? '—' : todayAppointments.length}
+                </p>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                  {completedToday} concluídos · {pendingToday} pendentes
+                </p>
+              </div>
+              <div className="rounded-xl bg-violet-100 p-3 dark:bg-violet-900/30">
+                <Calendar className="h-6 w-6 text-violet-600 dark:text-violet-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Total de Atendimentos no Mês */}
+          <div className="rounded-xl border bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total de Atendimentos</p>
+                <p className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">
+                  {isLoading ? '—' : monthAppointmentsCount}
+                </p>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                  {new Date().toLocaleDateString('pt-BR', { month: 'long' })} · {weekAppointments.length} esta semana
+                </p>
+              </div>
+              <div className="rounded-xl bg-blue-100 p-3 dark:bg-blue-900/30">
+                <Scissors className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Total Ganho Hoje */}
+          <div className="rounded-xl border bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Ganho Hoje</p>
+                <p className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">
+                  {isLoading ? '—' : `R$ ${commissionToday.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                </p>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">via comissões</p>
+              </div>
+              <div className="rounded-xl bg-emerald-100 p-3 dark:bg-emerald-900/30">
+                <DollarSign className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Total Ganho no Mês */}
+          <div className="rounded-xl border bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Ganho no Mês</p>
+                <p className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">
+                  {isLoading ? '—' : `R$ ${commissionTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                </p>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                  {new Date().toLocaleDateString('pt-BR', { month: 'long' })}
+                </p>
+              </div>
+              <div className="rounded-xl bg-green-100 p-3 dark:bg-green-900/30">
+                <TrendingUp className="h-6 w-6 text-green-600 dark:text-green-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Saldo a Receber */}
+          <div className="rounded-xl border bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Saldo a Receber</p>
+                <p className="mt-2 text-3xl font-bold text-violet-600 dark:text-violet-400">
+                  {isLoading ? '—' : `R$ ${saldoAReceber.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                </p>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                  comissões pendentes de pagamento
+                </p>
+              </div>
+              <div className="rounded-xl bg-violet-100 p-3 dark:bg-violet-900/30">
+                <Wallet className="h-6 w-6 text-violet-600 dark:text-violet-400" />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Avaliação Média</p>
+                <p className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">
+                  {isLoading ? '—' : avgRating !== null ? avgRating.toFixed(1) : 'N/A'}
+                </p>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                  {totalReviews > 0 ? `${totalReviews} avaliações` : 'sem avaliações'}
+                </p>
+              </div>
+              <div className="rounded-xl bg-yellow-100 p-3 dark:bg-yellow-900/30">
+                <Star className="h-6 w-6 text-yellow-500" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Ações Rápidas */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Link href="/salon/appointments"
+            className="flex flex-col items-center gap-2 rounded-xl border border-violet-100 bg-violet-50 p-4 text-center transition-colors hover:bg-violet-100 dark:border-violet-900/40 dark:bg-violet-900/20 dark:hover:bg-violet-900/30">
+            <Calendar className="h-6 w-6 text-violet-600 dark:text-violet-400" />
+            <span className="text-sm font-medium text-violet-700 dark:text-violet-300">Minha Agenda</span>
+          </Link>
+          <Link href="/salon/commission"
+            className="flex flex-col items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 p-4 text-center transition-colors hover:bg-blue-100 dark:border-blue-900/40 dark:bg-blue-900/20 dark:hover:bg-blue-900/30">
+            <DollarSign className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Comissões</span>
+          </Link>
+          <Link href="/salon/statement"
+            className="flex flex-col items-center gap-2 rounded-xl border border-green-100 bg-green-50 p-4 text-center transition-colors hover:bg-green-100 dark:border-green-900/40 dark:bg-green-900/20 dark:hover:bg-green-900/30">
+            <TrendingUp className="h-6 w-6 text-green-600 dark:text-green-400" />
+            <span className="text-sm font-medium text-green-700 dark:text-green-300">Extrato</span>
+          </Link>
+          <Link href="/salon/receipts"
+            className="flex flex-col items-center gap-2 rounded-xl border border-amber-100 bg-amber-50 p-4 text-center transition-colors hover:bg-amber-100 dark:border-amber-900/40 dark:bg-amber-900/20 dark:hover:bg-amber-900/30">
+            <Wallet className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+            <span className="text-sm font-medium text-amber-700 dark:text-amber-300">Recebimentos</span>
+          </Link>
+        </div>
+
+        {/* Agenda do Dia */}
+        <div className="rounded-xl border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-800">
+          <div className="flex items-center justify-between border-b p-4 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-violet-500" />
+              <h3 className="font-semibold text-gray-900 dark:text-white">Agenda de Hoje</h3>
+            </div>
+            <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+              {todayAppointments.length} agendamentos
+            </span>
+          </div>
+
+          {isLoading ? (
+            <div className="flex h-40 items-center justify-center">
+              <RefreshCw className="h-6 w-6 animate-spin text-violet-500" />
+            </div>
+          ) : todayAppointments.length === 0 ? (
+            <div className="flex h-40 items-center justify-center text-gray-400 dark:text-gray-600">
+              <div className="text-center">
+                <Calendar className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Nenhum agendamento hoje</p>
+              </div>
+            </div>
+          ) : (
+            <div className="divide-y dark:divide-gray-700">
+              {todayAppointments
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                .map((appt) => {
+                  const time = new Date(appt.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                  const service = appt.services?.[0]?.service?.name ?? appt.services?.[0]?.serviceId ?? '—';
+                  const colorClass = statusColors[appt.status] ?? statusColors.pending;
+                  return (
+                    <div key={appt.id} className="flex items-center gap-4 p-4">
+                      <div className="w-14 shrink-0 text-center">
+                        <span className="text-sm font-bold text-gray-900 dark:text-white">{time}</span>
+                      </div>
+                      <div className="h-8 w-px shrink-0 bg-gray-200 dark:bg-gray-700" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium text-gray-900 dark:text-white">
+                          {appt.client?.name ?? 'Cliente'}
+                        </p>
+                        <p className="truncate text-sm text-gray-500 dark:text-gray-400">{service}</p>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${colorClass}`}>
+                        {statusLabel[appt.status] ?? appt.status}
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </div>
+
+        {/* Próximos Agendamentos — sempre visível */}
+        <div className="rounded-xl border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-800">
+          <div className="flex items-center justify-between border-b p-4 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-blue-500" />
+              <h3 className="font-semibold text-gray-900 dark:text-white">Próximos Agendamentos</h3>
+            </div>
+            <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+              {upcomingAppointments.length} confirmados
+            </span>
+          </div>
+
+          {isLoading ? (
+            <div className="flex h-40 items-center justify-center">
+              <RefreshCw className="h-6 w-6 animate-spin text-violet-500" />
+            </div>
+          ) : upcomingAppointments.length === 0 ? (
+            <div className="flex h-40 items-center justify-center text-gray-400 dark:text-gray-600">
+              <div className="text-center">
+                <Clock className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Nenhum agendamento futuro confirmado</p>
+              </div>
+            </div>
+          ) : (
+            <div className="divide-y dark:divide-gray-700">
+              {upcomingAppointments.map((appt) => {
+                const apptDate = new Date(appt.date);
+                const isToday = apptDate.toDateString() === new Date().toDateString();
+                const isTomorrow = apptDate.toDateString() === (() => { const t = new Date(); t.setDate(t.getDate() + 1); return t.toDateString(); })();
+                const dateLabel = isToday
+                  ? 'Hoje'
+                  : isTomorrow
+                  ? 'Amanhã'
+                  : apptDate.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' });
+                const time = apptDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                const service = appt.services?.[0]?.service?.name ?? '—';
+                const colorClass = statusColors[appt.status] ?? statusColors.pending;
+                return (
+                  <div key={appt.id} className="flex items-center gap-4 p-4">
+                    <div className="w-24 shrink-0">
+                      <p className={`text-xs font-semibold capitalize ${isToday ? 'text-violet-600 dark:text-violet-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                        {dateLabel}
+                      </p>
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">{time}</p>
+                    </div>
+                    <div className="h-8 w-px shrink-0 bg-gray-200 dark:bg-gray-700" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-gray-900 dark:text-white">
+                        {appt.client?.name ?? 'Cliente'}
+                      </p>
+                      <p className="truncate text-sm text-gray-500 dark:text-gray-400">{service}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${colorClass}`}>
+                      {statusLabel[appt.status] ?? appt.status}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </SalonLayout>
+  );
+}
+
+// ===== DASHBOARD ADMIN/RECEPCIONIST =====
+function AdminDashboard() {
   const { user } = useSalonAuth();
   const [revenueFilter, setRevenueFilter] = useState<"week" | "month">("week");
 
@@ -311,7 +734,7 @@ export default function SalonDashboardPage() {
   ];
 
   return (
-    <SalonLayout pageTitle="Dashboard" requiredPermissions="dashboard.view">
+    <SalonLayout pageTitle="Dashboard" requiredRole={["ADMIN", "RECEPCIONIST"]}>
       <div className="space-y-6">
         {/* Welcome message */}
         <div className="rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 p-6 text-white shadow-lg">
@@ -741,4 +1164,22 @@ export default function SalonDashboardPage() {
       </div>
     </SalonLayout>
   );
+}
+
+// ===== ROTEADOR DE DASHBOARD =====
+// Garante que PROFESSIONAL nunca vê o dashboard geral do admin.
+// Hooks chamados incondicionalmente — sem violação das Rules of Hooks.
+export default function SalonDashboardPage() {
+  const { user, isLoading } = useSalonAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <RefreshCw className="h-8 w-8 animate-spin text-violet-500" />
+      </div>
+    );
+  }
+
+  if (user?.role === 'PROFESSIONAL') return <ProfessionalDashboard />;
+  return <AdminDashboard />;
 }

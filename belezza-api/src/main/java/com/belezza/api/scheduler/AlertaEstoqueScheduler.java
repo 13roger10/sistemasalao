@@ -31,6 +31,7 @@ public class AlertaEstoqueScheduler {
      */
     @Scheduled(cron = "0 0 6 * * *")
     @Transactional
+    @SuppressWarnings("null")
     public void verificarEstoqueBaixo() {
         log.info("Iniciando verificação de estoque baixo...");
 

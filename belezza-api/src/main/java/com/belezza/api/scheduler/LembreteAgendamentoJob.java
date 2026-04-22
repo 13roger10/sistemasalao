@@ -2,7 +2,6 @@ package com.belezza.api.scheduler;
 
 import com.belezza.api.entity.Agendamento;
 import com.belezza.api.entity.Cliente;
-import com.belezza.api.entity.StatusAgendamento;
 import com.belezza.api.integration.WhatsAppService;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.service.NotificacaoService;
@@ -136,6 +135,7 @@ public class LembreteAgendamentoJob {
     /**
      * Send 24-hour reminder.
      */
+    @SuppressWarnings("deprecation")
     private void enviarLembrete24h(Agendamento agendamento) {
         Cliente cliente = agendamento.getCliente();
         if (cliente == null || cliente.getUsuario() == null || cliente.getUsuario().getTelefone() == null) {
@@ -167,6 +167,7 @@ public class LembreteAgendamentoJob {
     /**
      * Send 2-hour reminder.
      */
+    @SuppressWarnings("deprecation")
     private void enviarLembrete2h(Agendamento agendamento) {
         Cliente cliente = agendamento.getCliente();
         if (cliente == null || cliente.getUsuario() == null || cliente.getUsuario().getTelefone() == null) {

@@ -11,6 +11,7 @@ import com.belezza.api.integration.WhatsAppService;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.ClienteRepository;
 import com.belezza.api.repository.HorarioTrabalhoRepository;
+import com.belezza.api.service.TenantIsolationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,13 +42,15 @@ public class AgendamentoService {
     private final AgendamentoRepository agendamentoRepository;
     private final ClienteRepository clienteRepository;
     private final HorarioTrabalhoRepository horarioTrabalhoRepository;
-    private final SalonService salonService;
+    private final TenantIsolationService tenantIsolationService;
     private final ProfissionalService profissionalService;
     private final ServicoService servicoService;
     private final ClienteService clienteService;
     private final BloqueioHorarioService bloqueioHorarioService;
     private final WhatsAppService whatsAppService;
     private final ComissaoService comissaoService;
+    private final NotificacaoService notificacaoService;
+    private final EmailService emailService;
     @Lazy
     private final FidelidadeService fidelidadeService;
 
@@ -98,6 +101,7 @@ public class AgendamentoService {
     /**
      * Create appointment with single service (legacy approach).
      */
+    @SuppressWarnings("deprecation")
     private AgendamentoResponse criarComServicoUnico(AgendamentoRequest request,
                                                       Profissional profissional, Salon salon, Cliente cliente) {
         Servico servico = servicoService.getServicoEntity(request.getServicoId());
@@ -136,12 +140,16 @@ public class AgendamentoService {
         // Enviar confirmação via WhatsApp
         enviarNotificacaoConfirmacao(agendamento);
 
+        // Criar notificação no sistema + enviar email
+        enviarNotificacoesSistemaConfirmacao(agendamento);
+
         return AgendamentoResponse.fromEntity(agendamento);
     }
 
     /**
      * Create appointment with multiple services (new approach).
      */
+    @SuppressWarnings("deprecation")
     private AgendamentoResponse criarComMultiplosServicos(AgendamentoRequest request,
                                                            Profissional profissional, Salon salon, Cliente cliente) {
         log.info("Criando agendamento com {} serviços", request.getServicoIds().size());
@@ -218,18 +226,30 @@ public class AgendamentoService {
         // Enviar confirmação via WhatsApp
         enviarNotificacaoConfirmacao(agendamento);
 
+        // Criar notificação no sistema + enviar email
+        enviarNotificacoesSistemaConfirmacao(agendamento);
+
         return AgendamentoResponse.fromEntity(agendamento);
     }
 
     @Transactional(readOnly = true)
     public AgendamentoResponse buscarPorId(Long id) {
+        return buscarPorId(id, false);
+    }
+
+    @Transactional(readOnly = true)
+    public AgendamentoResponse buscarPorId(Long id, boolean restrictSensitiveData) {
         Agendamento agendamento = agendamentoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento", id));
-        return AgendamentoResponse.fromEntity(agendamento);
+        tenantIsolationService.assertCurrentTenant(agendamento.getSalon().getId());
+        return restrictSensitiveData
+                ? AgendamentoResponse.fromEntityForProfessional(agendamento)
+                : AgendamentoResponse.fromEntity(agendamento);
     }
 
     @Transactional(readOnly = true)
     public Page<AgendamentoResponse> listarPorSalon(Long salonId, Pageable pageable) {
+        tenantIsolationService.assertRequestedSalon(salonId);
         return agendamentoRepository.findBySalonId(salonId, pageable)
                 .map(AgendamentoResponse::fromEntity);
     }
@@ -242,17 +262,43 @@ public class AgendamentoService {
 
     @Transactional(readOnly = true)
     public Page<AgendamentoResponse> listarPorProfissional(Long profissionalId, Pageable pageable) {
+        return listarPorProfissional(profissionalId, pageable, false);
+    }
+
+    /**
+     * Lists appointments for a professional with optional data restriction.
+     *
+     * @param profissionalId The professional's ID
+     * @param pageable Pagination info
+     * @param restrictSensitiveData If true, excludes client phone and appointment notes
+     * @return Page of appointments
+     */
+    @Transactional(readOnly = true)
+    public Page<AgendamentoResponse> listarPorProfissional(Long profissionalId, Pageable pageable, boolean restrictSensitiveData) {
         return agendamentoRepository.findByProfissionalId(profissionalId, pageable)
-                .map(AgendamentoResponse::fromEntity);
+                .map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
     }
 
     @Transactional(readOnly = true)
     public List<AgendamentoResponse> listarAgendaDiaria(Long profissionalId, LocalDateTime data) {
+        return listarAgendaDiaria(profissionalId, data, false);
+    }
+
+    /**
+     * Lists daily schedule for a professional with optional data restriction.
+     *
+     * @param profissionalId The professional's ID
+     * @param data The date to query
+     * @param restrictSensitiveData If true, excludes client phone and appointment notes
+     * @return List of appointments
+     */
+    @Transactional(readOnly = true)
+    public List<AgendamentoResponse> listarAgendaDiaria(Long profissionalId, LocalDateTime data, boolean restrictSensitiveData) {
         LocalDateTime dayStart = data.toLocalDate().atStartOfDay();
         LocalDateTime dayEnd = dayStart.plusDays(1);
 
         return agendamentoRepository.findDailyByProfissional(profissionalId, dayStart, dayEnd).stream()
-                .map(AgendamentoResponse::fromEntity)
+                .map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a))
                 .toList();
     }
 
@@ -349,6 +395,18 @@ public class AgendamentoService {
 
     @Transactional
     public AgendamentoResponse confirmar(Long id) {
+        return confirmar(id, false);
+    }
+
+    /**
+     * Confirms an appointment with optional data restriction.
+     *
+     * @param id The appointment ID
+     * @param restrictSensitiveData If true, excludes client phone and appointment notes
+     * @return AgendamentoResponse
+     */
+    @Transactional
+    public AgendamentoResponse confirmar(Long id, boolean restrictSensitiveData) {
         Agendamento agendamento = getAgendamento(id);
 
         if (agendamento.getStatus() != StatusAgendamento.PENDENTE) {
@@ -359,7 +417,7 @@ public class AgendamentoService {
         agendamento = agendamentoRepository.save(agendamento);
         log.info("Agendamento confirmado: {}", id);
 
-        return AgendamentoResponse.fromEntity(agendamento);
+        return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
     }
 
     @Transactional
@@ -389,14 +447,6 @@ public class AgendamentoService {
             throw new BusinessException("Este agendamento não pode ser cancelado");
         }
 
-        // Check minimum cancellation time
-        Salon salon = agendamento.getSalon();
-        LocalDateTime limiteCancel = agendamento.getDataHora().minusHours(salon.getCancelamentoMinimoHoras());
-        if (LocalDateTime.now().isAfter(limiteCancel)) {
-            throw new BusinessException("Cancelamento deve ser feito com pelo menos " +
-                    salon.getCancelamentoMinimoHoras() + " horas de antecedência");
-        }
-
         agendamento.setStatus(StatusAgendamento.CANCELADO);
         agendamento.setMotivoCancelamento(motivo != null ? motivo : "Cancelado pelo cliente via link");
         agendamento = agendamentoRepository.save(agendamento);
@@ -407,6 +457,18 @@ public class AgendamentoService {
 
     @Transactional
     public AgendamentoResponse iniciar(Long id) {
+        return iniciar(id, false);
+    }
+
+    /**
+     * Starts an appointment with optional data restriction.
+     *
+     * @param id The appointment ID
+     * @param restrictSensitiveData If true, excludes client phone and appointment notes
+     * @return AgendamentoResponse
+     */
+    @Transactional
+    public AgendamentoResponse iniciar(Long id, boolean restrictSensitiveData) {
         Agendamento agendamento = getAgendamento(id);
 
         if (agendamento.getStatus() != StatusAgendamento.CONFIRMADO) {
@@ -417,12 +479,25 @@ public class AgendamentoService {
         agendamento = agendamentoRepository.save(agendamento);
         log.info("Agendamento iniciado: {}", id);
 
-        return AgendamentoResponse.fromEntity(agendamento);
+        return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
     }
 
     @Transactional
     @Auditable(action = "COMPLETE", entityType = "Agendamento", captureOldState = true, captureNewState = true)
     public AgendamentoResponse concluir(Long id) {
+        return concluir(id, false);
+    }
+
+    /**
+     * Completes an appointment with optional data restriction.
+     *
+     * @param id The appointment ID
+     * @param restrictSensitiveData If true, excludes client phone and appointment notes
+     * @return AgendamentoResponse
+     */
+    @Transactional
+    @Auditable(action = "COMPLETE", entityType = "Agendamento", captureOldState = true, captureNewState = true)
+    public AgendamentoResponse concluir(Long id, boolean restrictSensitiveData) {
         Agendamento agendamento = getAgendamento(id);
 
         if (agendamento.getStatus() != StatusAgendamento.EM_ANDAMENTO) {
@@ -452,26 +527,24 @@ public class AgendamentoService {
         // Enviar mensagem de pós-atendimento via WhatsApp
         enviarNotificacaoPosAtendimento(agendamento);
 
-        return AgendamentoResponse.fromEntity(agendamento);
+        return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
     }
 
     @Transactional
     @Auditable(action = "CANCEL", entityType = "Agendamento", captureOldState = true, captureNewState = true)
     public AgendamentoResponse cancelar(Long id, CancelamentoRequest request) {
+        return cancelar(id, request, false);
+    }
+
+    @Transactional
+    @Auditable(action = "CANCEL", entityType = "Agendamento", captureOldState = true, captureNewState = true)
+    public AgendamentoResponse cancelar(Long id, CancelamentoRequest request, boolean restrictSensitiveData) {
         Agendamento agendamento = getAgendamento(id);
 
         if (agendamento.getStatus() == StatusAgendamento.CONCLUIDO ||
             agendamento.getStatus() == StatusAgendamento.CANCELADO ||
             agendamento.getStatus() == StatusAgendamento.NO_SHOW) {
             throw new BusinessException("Este agendamento não pode ser cancelado");
-        }
-
-        // Check minimum cancellation time
-        Salon salon = agendamento.getSalon();
-        LocalDateTime limiteCancel = agendamento.getDataHora().minusHours(salon.getCancelamentoMinimoHoras());
-        if (LocalDateTime.now().isAfter(limiteCancel)) {
-            throw new BusinessException("Cancelamento deve ser feito com pelo menos " +
-                    salon.getCancelamentoMinimoHoras() + " horas de antecedência");
         }
 
         agendamento.setStatus(StatusAgendamento.CANCELADO);
@@ -482,12 +555,22 @@ public class AgendamentoService {
         // Enviar notificação WhatsApp de cancelamento
         enviarNotificacaoCancelamento(agendamento, request.getMotivo());
 
-        return AgendamentoResponse.fromEntity(agendamento);
+        // Criar notificação no sistema + enviar email
+        enviarNotificacoesSistemaCancelamento(agendamento, request.getMotivo());
+
+        return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
     }
 
     @Transactional
     @Auditable(action = "RESCHEDULE", entityType = "Agendamento", captureOldState = true, captureNewState = true)
     public AgendamentoResponse reagendar(Long id, ReagendamentoRequest request) {
+        return reagendar(id, request, false);
+    }
+
+    @Transactional
+    @Auditable(action = "RESCHEDULE", entityType = "Agendamento", captureOldState = true, captureNewState = true)
+    @SuppressWarnings("deprecation")
+    public AgendamentoResponse reagendar(Long id, ReagendamentoRequest request, boolean restrictSensitiveData) {
         Agendamento agendamento = getAgendamento(id);
 
         if (agendamento.getStatus() == StatusAgendamento.CONCLUIDO ||
@@ -532,12 +615,28 @@ public class AgendamentoService {
         agendamento = agendamentoRepository.save(agendamento);
         log.info("Agendamento reagendado: {} para {}", id, request.getNovaDataHora());
 
-        return AgendamentoResponse.fromEntity(agendamento);
+        // Criar notificação no sistema + enviar WhatsApp + email
+        enviarNotificacoesReagendamento(agendamento);
+
+        return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
     }
 
     @Transactional
     @Auditable(action = "NO_SHOW", entityType = "Agendamento", captureOldState = true, captureNewState = true)
     public AgendamentoResponse marcarNoShow(Long id) {
+        return marcarNoShow(id, false);
+    }
+
+    /**
+     * Marks an appointment as no-show with optional data restriction.
+     *
+     * @param id The appointment ID
+     * @param restrictSensitiveData If true, excludes client phone and appointment notes
+     * @return AgendamentoResponse
+     */
+    @Transactional
+    @Auditable(action = "NO_SHOW", entityType = "Agendamento", captureOldState = true, captureNewState = true)
+    public AgendamentoResponse marcarNoShow(Long id, boolean restrictSensitiveData) {
         Agendamento agendamento = getAgendamento(id);
 
         if (agendamento.getStatus() != StatusAgendamento.CONFIRMADO) {
@@ -561,7 +660,7 @@ public class AgendamentoService {
 
         log.info("Agendamento marcado como no-show: {}", id);
 
-        return AgendamentoResponse.fromEntity(agendamento);
+        return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
     }
 
     // --- Validation Methods ---
@@ -618,8 +717,9 @@ public class AgendamentoService {
                         horario.getHoraInicio() + " - " + horario.getHoraFim() + ")");
             }
 
-            // Check if appointment overlaps with break
-            if (horarioServico.isBefore(horario.getIntervaloFim()) &&
+            // Check if appointment overlaps with break (interval fields are optional)
+            if (horario.getIntervaloInicio() != null && horario.getIntervaloFim() != null &&
+                horarioServico.isBefore(horario.getIntervaloFim()) &&
                 fimServico.isAfter(horario.getIntervaloInicio())) {
                 throw new BusinessException("Horário conflita com o intervalo do profissional (" +
                         horario.getIntervaloInicio() + " - " + horario.getIntervaloFim() + ")");
@@ -658,8 +758,127 @@ public class AgendamentoService {
     }
 
     /**
+     * Create system notification + send email after appointment creation.
+     */
+    private void enviarNotificacoesSistemaConfirmacao(Agendamento agendamento) {
+        try {
+            notificacaoService.notificarAgendamentoConfirmado(agendamento);
+        } catch (Exception e) {
+            log.error("Erro ao criar notificação de confirmação: {}", e.getMessage(), e);
+        }
+
+        try {
+            Cliente cliente = agendamento.getCliente();
+            if (cliente == null || cliente.getUsuario() == null || cliente.getUsuario().getEmail() == null) return;
+
+            DateTimeFormatter dateFmt = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+            DateTimeFormatter timeFmt = DateTimeFormatter.ofPattern("HH:mm");
+
+            String nomeCliente = cliente.getUsuario().getNome() != null ? cliente.getUsuario().getNome() : "Cliente";
+            String data = agendamento.getDataHora().format(dateFmt);
+            String hora = agendamento.getDataHora().format(timeFmt);
+            String servico = resolverNomeServico(agendamento);
+            String profissional = agendamento.getProfissional() != null && agendamento.getProfissional().getUsuario() != null
+                    ? agendamento.getProfissional().getUsuario().getNome() : "Profissional";
+            String link = frontendUrl + "/confirmar-agendamento/" + agendamento.getTokenConfirmacao();
+
+            emailService.sendAppointmentConfirmationEmail(
+                    cliente.getUsuario().getEmail(), nomeCliente, data, hora, servico, profissional, link);
+        } catch (Exception e) {
+            log.error("Erro ao enviar email de confirmação: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Create system notification + send email after appointment cancellation.
+     */
+    private void enviarNotificacoesSistemaCancelamento(Agendamento agendamento, String motivo) {
+        try {
+            notificacaoService.notificarAgendamentoCancelado(agendamento);
+        } catch (Exception e) {
+            log.error("Erro ao criar notificação de cancelamento: {}", e.getMessage(), e);
+        }
+
+        try {
+            Cliente cliente = agendamento.getCliente();
+            if (cliente == null || cliente.getUsuario() == null || cliente.getUsuario().getEmail() == null) return;
+
+            DateTimeFormatter dateFmt = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+            DateTimeFormatter timeFmt = DateTimeFormatter.ofPattern("HH:mm");
+
+            String nomeCliente = cliente.getUsuario().getNome() != null ? cliente.getUsuario().getNome() : "Cliente";
+            String data = agendamento.getDataHora().format(dateFmt);
+            String hora = agendamento.getDataHora().format(timeFmt);
+            String servico = resolverNomeServico(agendamento);
+            String linkReagendar = frontendUrl + "/agendar/" + agendamento.getSalon().getId();
+
+            emailService.sendAppointmentCancelledEmail(
+                    cliente.getUsuario().getEmail(), nomeCliente, data, hora, servico, motivo, linkReagendar);
+        } catch (Exception e) {
+            log.error("Erro ao enviar email de cancelamento: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Create system notification + send WhatsApp + email after rescheduling.
+     */
+    private void enviarNotificacoesReagendamento(Agendamento agendamento) {
+        try {
+            notificacaoService.notificarAgendamentoReagendado(agendamento);
+        } catch (Exception e) {
+            log.error("Erro ao criar notificação de reagendamento: {}", e.getMessage(), e);
+        }
+
+        try {
+            Cliente cliente = agendamento.getCliente();
+            if (cliente == null || cliente.getUsuario() == null) return;
+
+            DateTimeFormatter dateFmt = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+            DateTimeFormatter timeFmt = DateTimeFormatter.ofPattern("HH:mm");
+
+            String nomeCliente = cliente.getUsuario().getNome() != null ? cliente.getUsuario().getNome() : "Cliente";
+            String novaData = agendamento.getDataHora().format(dateFmt);
+            String novaHora = agendamento.getDataHora().format(timeFmt);
+            String servico = resolverNomeServico(agendamento);
+
+            // WhatsApp (se tem telefone)
+            if (cliente.getUsuario().getTelefone() != null) {
+                String linkConfirmacao = frontendUrl + "/confirmar-agendamento/" + agendamento.getTokenConfirmacao();
+                whatsAppService.enviarLembrete24h(
+                        cliente.getUsuario().getTelefone(), nomeCliente, novaData, novaHora, servico, linkConfirmacao);
+            }
+
+            // Email (se tem email)
+            if (cliente.getUsuario().getEmail() != null) {
+                emailService.sendAppointmentRescheduledEmail(
+                        cliente.getUsuario().getEmail(), nomeCliente, novaData, novaHora, servico);
+            }
+        } catch (Exception e) {
+            log.error("Erro ao enviar notificações de reagendamento: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Resolve the display name for the appointment's service(s).
+     */
+    @SuppressWarnings("deprecation")
+    private String resolverNomeServico(Agendamento agendamento) {
+        if (agendamento.getServico() != null) {
+            return agendamento.getServico().getNome();
+        }
+        if (agendamento.getServicos() != null && !agendamento.getServicos().isEmpty()) {
+            return agendamento.getServicos().stream()
+                    .map(as -> as.getServico().getNome())
+                    .reduce((a, b) -> a + ", " + b)
+                    .orElse("Serviço");
+        }
+        return "Serviço";
+    }
+
+    /**
      * Send WhatsApp confirmation notification to client after appointment creation.
      */
+    @SuppressWarnings("deprecation")
     private void enviarNotificacaoConfirmacao(Agendamento agendamento) {
         try {
             Cliente cliente = agendamento.getCliente();
@@ -744,6 +963,7 @@ public class AgendamentoService {
     /**
      * Send WhatsApp cancellation notification to client.
      */
+    @SuppressWarnings("deprecation")
     private void enviarNotificacaoCancelamento(Agendamento agendamento, String motivo) {
         try {
             Cliente cliente = agendamento.getCliente();

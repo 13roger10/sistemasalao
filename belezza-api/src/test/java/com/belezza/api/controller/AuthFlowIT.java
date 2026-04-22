@@ -16,7 +16,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -318,7 +317,7 @@ class AuthFlowIT {
         );
 
         String token1 = registerResponse.getAccessToken();
-        String refresh1 = registerResponse.getRefreshToken();
+        assertThat(registerResponse.getRefreshToken()).isNotEmpty();
 
         // 2. Access protected resource with registration token
         mockMvc.perform(get("/api/auth/me")

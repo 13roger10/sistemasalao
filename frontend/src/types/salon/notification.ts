@@ -13,6 +13,8 @@ export type NotificationType =
   | 'birthday'
   | 'loyalty_reward'
   | 'stock_low'
+  | 'comissao_disponivel'
+  | 'pagamento_realizado'
   | 'general';
 
 // ===== Push Subscription =====

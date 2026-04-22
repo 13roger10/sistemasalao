@@ -6,6 +6,7 @@ import com.belezza.api.dto.metricas.MetricasFinanceirasResponse.MetricaPorFormaP
 import com.belezza.api.dto.metricas.MetricasFinanceirasResponse.MetricaPorProfissional;
 import com.belezza.api.dto.metricas.MetricasFinanceirasResponse.MetricaPorServico;
 import com.belezza.api.dto.metricas.PeriodoFilter;
+import com.belezza.api.entity.Agendamento;
 import com.belezza.api.entity.FormaPagamento;
 import com.belezza.api.entity.Pagamento;
 import com.belezza.api.entity.StatusPagamento;
@@ -122,9 +123,15 @@ public class MetricasFinanceirasService {
     /**
      * Calculate revenue by service.
      */
+    @SuppressWarnings("deprecation")
     private List<MetricaPorServico> calcularPorServico(List<Pagamento> pagamentos) {
         Map<Long, List<Pagamento>> groupedByServico = pagamentos.stream()
-                .collect(Collectors.groupingBy(p -> p.getAgendamento().getServico().getId()));
+                .collect(Collectors.groupingBy(p -> {
+                    Agendamento ag = p.getAgendamento();
+                    return ag.getServicos() != null && !ag.getServicos().isEmpty()
+                            ? ag.getServicos().get(0).getServico().getId()
+                            : ag.getServico() != null ? ag.getServico().getId() : 0L;
+                }));
 
         return groupedByServico.entrySet().stream()
                 .map(entry -> {
@@ -140,7 +147,10 @@ public class MetricasFinanceirasService {
                     BigDecimal ticketMedio = quantidade > 0 ?
                             total.divide(BigDecimal.valueOf(quantidade), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
 
-                    String servicoNome = servicoPagamentos.get(0).getAgendamento().getServico().getNome();
+                    Agendamento primeiroAg = servicoPagamentos.get(0).getAgendamento();
+                    String servicoNome = primeiroAg.getServicos() != null && !primeiroAg.getServicos().isEmpty()
+                            ? primeiroAg.getServicos().get(0).getServico().getNome()
+                            : primeiroAg.getServico() != null ? primeiroAg.getServico().getNome() : "Serviço";
 
                     return MetricaPorServico.builder()
                             .servicoId(servicoId)

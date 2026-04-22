@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Backlog vs Implementado – Área do Profissional</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    .page-header {
+      background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e1b4b 100%);
+      border-bottom: 1px solid #4c1d95;
+      padding: 40px 48px 36px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    }
+    .page-header h1 {
+      font-size: 1.7rem;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.5px;
+    }
+    .page-header p {
+      color: #a5b4fc;
+      font-size: 0.9rem;
+      margin-top: 4px;
+    }
+
+    /* ── SUMMARY CARDS ── */
+    .summary-bar {
+      display: flex;
+      gap: 16px;
+      padding: 28px 48px;
+      background: #13151f;
+      border-bottom: 1px solid #1e2130;
+      flex-wrap: wrap;
+    }
+    .summary-card {
+      flex: 1;
+      min-width: 160px;
+      border-radius: 12px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .summary-card.done   { background: #052e16; border: 1px solid #166534; }
+    .summary-card.partial{ background: #431407; border: 1px solid #9a3412; }
+    .summary-card.todo   { background: #1c1917; border: 1px solid #44403c; }
+    .summary-card .icon  { font-size: 1.8rem; flex-shrink: 0; }
+    .summary-card .label { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
+    .summary-card .value { font-size: 1.5rem; font-weight: 700; }
+    .summary-card.done   .value { color: #4ade80; }
+    .summary-card.partial .value{ color: #fb923c; }
+    .summary-card.todo   .value { color: #94a3b8; }
+
+    /* ── BODY LAYOUT ── */
+    .container {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 40px 48px 80px;
+    }
+
+    /* ── SECTION ── */
+    .epic {
+      margin-bottom: 48px;
+    }
+    .epic-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #1e2130;
+    }
+    .epic-number {
+      background: linear-gradient(135deg, #6d28d9, #4f46e5);
+      color: #fff;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 20px;
+      letter-spacing: .5px;
+      white-space: nowrap;
+    }
+    .epic-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #c4b5fd;
+    }
+
+    /* ── TASK GROUP ── */
+    .task-group {
+      margin-bottom: 24px;
+    }
+    .task-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #7c3aed;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      margin-bottom: 10px;
+      padding-left: 4px;
+    }
+
+    /* ── TABLE ── */
+    .table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid #1e2130; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    thead tr { background: #1a1d2e; }
+    thead th {
+      padding: 11px 16px;
+      text-align: left;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      border-bottom: 1px solid #1e2130;
+    }
+    tbody tr {
+      border-bottom: 1px solid #1a1d2e;
+      transition: background .15s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #161923; }
+    td { padding: 10px 16px; vertical-align: top; }
+    td:first-child { color: #cbd5e1; font-weight: 500; width: 42%; }
+    td:nth-child(3) { color: #94a3b8; font-size: 0.8rem; font-style: italic; }
+
+    /* ── BADGES ── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge-done    { background: #052e16; color: #4ade80; border: 1px solid #166534; }
+    .badge-partial { background: #431407; color: #fb923c; border: 1px solid #9a3412; }
+    .badge-todo    { background: #1c1917; color: #78716c; border: 1px solid #44403c; }
+
+    /* ── FINAL SUMMARY TABLE ── */
+    .final-summary {
+      margin-top: 56px;
+      padding-top: 40px;
+      border-top: 2px solid #1e2130;
+    }
+    .final-summary h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #c4b5fd;
+      margin-bottom: 20px;
+    }
+    .progress-block {
+      background: #13151f;
+      border: 1px solid #1e2130;
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 16px;
+    }
+    .progress-block .label {
+      font-size: 0.8rem;
+      color: #94a3b8;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    .progress-track {
+      height: 10px;
+      background: #1e2130;
+      border-radius: 99px;
+      overflow: hidden;
+      display: flex;
+      gap: 2px;
+    }
+    .progress-done    { background: #22c55e; border-radius: 99px 0 0 99px; }
+    .progress-partial { background: #f97316; }
+    .progress-todo    { background: #374151; border-radius: 0 99px 99px 0; }
+    .progress-nums {
+      display: flex;
+      gap: 20px;
+      margin-top: 8px;
+      font-size: 0.78rem;
+    }
+    .progress-nums span { display: flex; align-items: center; gap: 6px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dot-done    { background: #22c55e; }
+    .dot-partial { background: #f97316; }
+    .dot-todo    { background: #374151; }
+
+    .conclusion {
+      background: #1a1d2e;
+      border: 1px solid #312e81;
+      border-left: 4px solid #7c3aed;
+      border-radius: 0 10px 10px 0;
+      padding: 16px 20px;
+      margin-top: 24px;
+      font-size: 0.875rem;
+      color: #a5b4fc;
+      line-height: 1.7;
+    }
+    .conclusion strong { color: #c4b5fd; }
+
+    /* ── LEGEND ── */
+    .legend {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+      padding: 14px 18px;
+      background: #13151f;
+      border: 1px solid #1e2130;
+      border-radius: 10px;
+      font-size: 0.8rem;
+    }
+    .legend span { display: flex; align-items: center; gap: 8px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="page-header">
+  <h1>📋 Backlog vs Implementado — Módulo Área do Profissional</h1>
+  <p>Análise comparativa entre as tarefas do backlog e o que foi efetivamente implementado no sistema Belezza</p>
+</header>
+
+<!-- SUMMARY CARDS -->
+<div class="summary-bar">
+  <div class="summary-card done">
+    <div class="icon">✅</div>
+    <div>
+      <div class="label">Feito</div>
+      <div class="value">~85%</div>
+      <div class="label" style="margin-top:2px">Backend</div>
+    </div>
+  </div>
+  <div class="summary-card partial">
+    <div class="icon">⚠️</div>
+    <div>
+      <div class="label">Parcial</div>
+      <div class="value">~15%</div>
+      <div class="label" style="margin-top:2px">Backend</div>
+    </div>
+  </div>
+  <div class="summary-card done">
+    <div class="icon">✅</div>
+    <div>
+      <div class="label">Feito</div>
+      <div class="value">~20%</div>
+      <div class="label" style="margin-top:2px">Frontend</div>
+    </div>
+  </div>
+  <div class="summary-card partial">
+    <div class="icon">⚠️</div>
+    <div>
+      <div class="label">Parcial</div>
+      <div class="value">~15%</div>
+      <div class="label" style="margin-top:2px">Frontend</div>
+    </div>
+  </div>
+  <div class="summary-card todo">
+    <div class="icon">❌</div>
+    <div>
+      <div class="label">Não feito</div>
+      <div class="value">~65%</div>
+      <div class="label" style="margin-top:2px">Frontend</div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="container">
+
+  <!-- LEGEND -->
+  <div class="legend">
+    <span><span class="badge badge-done">✅ Feito</span> Implementado e funcional</span>
+    <span><span class="badge badge-partial">⚠️ Parcial</span> Backend OK, mas frontend incompleto ou sem isolamento</span>
+    <span><span class="badge badge-todo">❌ Não feito</span> Não implementado</span>
+  </div>
+
+  <!-- ÉPICO 1 -->
+  <div class="epic">
+    <div class="epic-header">
+      <span class="epic-number">ÉPICO 1</span>
+      <span class="epic-title">🧩 CONTROLE DE ACESSO E SEGURANÇA</span>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 1.1 – Implementar autenticação e validação de perfil (Profissional)</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Implementar autenticação via JWT</td><td><span class="badge badge-done">✅ Feito</span></td><td>SalonAuthContext + JWT no backend (JwtAuthenticationFilter)</td></tr>
+            <tr><td>Validar perfil do usuário logado</td><td><span class="badge badge-done">✅ Feito</span></td><td>SalonAuthContext retorna role e professionalId</td></tr>
+            <tr><td>Garantir acesso apenas para perfil PROFISSIONAL</td><td><span class="badge badge-done">✅ Feito</span></td><td>SalonProtectedRoute com requiredRole</td></tr>
+            <tr><td>Bloquear acesso ao dashboard geral</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Profissional tem permissão dashboard.view e acessa o mesmo dashboard do admin</td></tr>
+            <tr><td>Criar redirecionamento para área profissional</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>PROFESSIONAL é redirecionado para /salon/appointments, não para uma área própria dedicada</td></tr>
+            <tr><td>Validar regras no backend (não confiar apenas no frontend)</td><td><span class="badge badge-done">✅ Feito</span></td><td>@ProfissionalOrAdmin em todos os endpoints de comissão e pagamento</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 1.2 – Implementar isolamento de dados por profissional</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Filtrar todos os dados por professional_id = usuário logado</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Backend filtra por ID, mas frontend não aplica esse filtro — profissional vê dados de todos na tela</td></tr>
+            <tr><td>Bloquear acesso a dados de outros profissionais</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Backend OK; frontend sem isolamento visual</td></tr>
+            <tr><td>Validar segurança em Agendamentos</td><td><span class="badge badge-done">✅ Feito</span></td><td>GET /agendamentos/profissional/{id} filtra por profissional</td></tr>
+            <tr><td>Validar segurança em Comissões</td><td><span class="badge badge-done">✅ Feito</span></td><td>GET /comissoes/profissional/{id} filtra por profissional</td></tr>
+            <tr><td>Validar segurança em Recebimentos</td><td><span class="badge badge-done">✅ Feito</span></td><td>GET /pagamentos-profissional/profissional/{id} filtra por profissional</td></tr>
+            <tr><td>Criar testes para garantir isolamento</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Sem testes específicos de isolamento</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 1.3 – Restringir acesso aos dados dos clientes</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>✔ Permitido: Nome do cliente</td><td><span class="badge badge-done">✅ Feito</span></td><td>AgendamentoResponse retorna nome do cliente</td></tr>
+            <tr><td>✔ Permitido: Serviço agendado</td><td><span class="badge badge-done">✅ Feito</span></td><td>AgendamentoResponse retorna serviço</td></tr>
+            <tr><td>✔ Permitido: Horário</td><td><span class="badge badge-done">✅ Feito</span></td><td>AgendamentoResponse retorna horário</td></tr>
+            <tr><td>❌ Bloqueado: Telefone</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>AgendamentoResponse retorna todos os dados do cliente sem restrição por role</td></tr>
+            <tr><td>❌ Bloqueado: Email</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Idem</td></tr>
+            <tr><td>❌ Bloqueado: Observações sensíveis</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Idem</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉPICO 2 -->
+  <div class="epic">
+    <div class="epic-header">
+      <span class="epic-number">ÉPICO 2</span>
+      <span class="epic-title">🧩 AGENDA DO PROFISSIONAL</span>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 2.1 – Criar tela de agenda</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Criar visualização por Dia</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>GET /agendamentos/profissional/{id}/agenda-diaria existe no backend; no frontend usa a página geral /salon/appointments</td></tr>
+            <tr><td>Criar visualização por Semana</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Sem tela dedicada para profissional</td></tr>
+            <tr><td>Criar visualização por Mês</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Sem tela dedicada para profissional</td></tr>
+            <tr><td>Exibir apenas agendamentos do profissional</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Frontend exibe todos os agendamentos do salão</td></tr>
+            <tr><td>Exibir: Nome do cliente</td><td><span class="badge badge-done">✅ Feito</span></td><td>Backend retorna nome do cliente no AgendamentoResponse</td></tr>
+            <tr><td>Exibir: Serviço</td><td><span class="badge badge-done">✅ Feito</span></td><td>Backend retorna serviço no AgendamentoResponse</td></tr>
+            <tr><td>Exibir: Horário</td><td><span class="badge badge-done">✅ Feito</span></td><td>Backend retorna horário no AgendamentoResponse</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 2.2 – Implementar status dos agendamentos</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Status: Confirmado</td><td><span class="badge badge-done">✅ Feito</span></td><td>POST /agendamentos/{id}/confirmar</td></tr>
+            <tr><td>Status: Pendente</td><td><span class="badge badge-done">✅ Feito</span></td><td>Status PENDENTE implementado</td></tr>
+            <tr><td>Status: Cancelado</td><td><span class="badge badge-done">✅ Feito</span></td><td>Status CANCELADO implementado</td></tr>
+            <tr><td>Status: Não compareceu</td><td><span class="badge badge-done">✅ Feito</span></td><td>POST /agendamentos/{id}/no-show</td></tr>
+            <tr><td>Status: Concluído</td><td><span class="badge badge-done">✅ Feito</span></td><td>POST /agendamentos/{id}/concluir</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 2.3 – Aplicar regra crítica</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>NÃO permitir visualizar agendamentos de outros profissionais</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Frontend não aplica filtro — tela de agenda é compartilhada com todo o salão</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉPICO 3 -->
+  <div class="epic">
+    <div class="epic-header">
+      <span class="epic-number">ÉPICO 3</span>
+      <span class="epic-title">🧩 DASHBOARD DO PROFISSIONAL</span>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 3.1 – Criar dashboard simplificado</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Dashboard simplificado (não o geral)</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Profissional usa o mesmo /salon/dashboard do admin</td></tr>
+            <tr><td>Exibir: Total ganho no dia</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Sem página própria; dado existe no backend via comissões</td></tr>
+            <tr><td>Exibir: Total ganho no mês</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Sem página própria</td></tr>
+            <tr><td>Exibir: Total de atendimentos</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Sem página própria</td></tr>
+            <tr><td>Exibir: Próximos agendamentos</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Sem página própria; endpoint backend existe</td></tr>
+            <tr><td>Garantir que NÃO é o dashboard geral</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Profissional acessa /salon/dashboard igual ao admin</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉPICO 4 -->
+  <div class="epic">
+    <div class="epic-header">
+      <span class="epic-number">ÉPICO 4</span>
+      <span class="epic-title">🧩 MÓDULO DE COMISSÕES</span>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 4.1 – Listagem de comissões</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Exibir somente comissões do profissional</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>/salon/commission exibe todos os profissionais; sem filtro automático por profissional logado</td></tr>
+            <tr><td>Exibir: Data do atendimento</td><td><span class="badge badge-done">✅ Feito</span></td><td>ComissaoResponse retorna data via agendamento</td></tr>
+            <tr><td>Exibir: Serviço realizado</td><td><span class="badge badge-done">✅ Feito</span></td><td>ComissaoResponse retorna nome do serviço</td></tr>
+            <tr><td>Exibir: Valor do serviço</td><td><span class="badge badge-done">✅ Feito</span></td><td>Campo valorServico em ComissaoResponse</td></tr>
+            <tr><td>Exibir: Comissão gerada</td><td><span class="badge badge-done">✅ Feito</span></td><td>Campo valorComissao em ComissaoResponse</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 4.2 – Filtros de comissão</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Filtro por Dia</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>commissionService.list() aceita dateRange, mas sem filtro pré-configurado por profissional logado</td></tr>
+            <tr><td>Filtro por Semana</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Idem</td></tr>
+            <tr><td>Filtro por Mês</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Idem</td></tr>
+            <tr><td>Filtro por Período personalizado</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Idem</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉPICO 5 -->
+  <div class="epic">
+    <div class="epic-header">
+      <span class="epic-number">ÉPICO 5</span>
+      <span class="epic-title">🧩 ÁREA DE RECEBIMENTO (CORE)</span>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 5.1 – Criar estrutura da área de recebimento</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Criar página de Recebimentos</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Backend tem endpoints; frontend não tem página</td></tr>
+            <tr><td>Garantir acesso somente ao próprio profissional</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Backend filtra por profissionalId; sem página no frontend</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 5.2 – Exibir dados financeiros</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Valor a receber</td><td><span class="badge badge-done">✅ Feito</span></td><td>totalComissoesPendentes() no backend</td></tr>
+            <tr><td>Valor já recebido</td><td><span class="badge badge-done">✅ Feito</span></td><td>totalPagoPorSalon() e listarPorProfissional()</td></tr>
+            <tr><td>Valor pendente</td><td><span class="badge badge-done">✅ Feito</span></td><td>Campo valorTotalComissoes em pagamentos com status PENDENTE</td></tr>
+            <tr><td>Data de pagamento</td><td><span class="badge badge-done">✅ Feito</span></td><td>Campo pagoEm em PagamentoProfissional</td></tr>
+            <tr><td>Forma de pagamento</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Campo referenciaTransacao (texto livre), sem enum de formas de pagamento</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 5.3 – Histórico de atendimentos</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Exibir histórico de clientes atendidos</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Backend retorna via comissões; sem página dedicada no frontend</td></tr>
+            <tr><td>Exibir valores do serviço prestado</td><td><span class="badge badge-done">✅ Feito</span></td><td>Campos valorServico e valorComissao no ComissaoResponse</td></tr>
+            <tr><td>Data do atendimento</td><td><span class="badge badge-done">✅ Feito</span></td><td>Disponível via agendamento na comissão</td></tr>
+            <tr><td>Serviço realizado</td><td><span class="badge badge-done">✅ Feito</span></td><td>Disponível via agendamento na comissão</td></tr>
+            <tr><td>Valor do serviço</td><td><span class="badge badge-done">✅ Feito</span></td><td>Campo valorServico</td></tr>
+            <tr><td>Comissão gerada</td><td><span class="badge badge-done">✅ Feito</span></td><td>Campo valorComissao</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 5.4 – Resumo financeiro</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Total do dia</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Dado no backend via filtro de período; sem página dedicada no frontend</td></tr>
+            <tr><td>Total do mês</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Idem</td></tr>
+            <tr><td>Total de atendimentos</td><td><span class="badge badge-done">✅ Feito</span></td><td>Campo totalServicos em PagamentoProfissional</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 5.5 – Filtros</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Filtro por Dia</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Backend suporta filtro por período; sem UI dedicada</td></tr>
+            <tr><td>Filtro por Semana</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Idem</td></tr>
+            <tr><td>Filtro por Mês</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Idem</td></tr>
+            <tr><td>Filtro por Período personalizado</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Idem</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 5.6 – Notificações</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Notificação: Novo valor disponível para receber</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Sem implementação</td></tr>
+            <tr><td>Notificação: Pagamento realizado</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Sem implementação</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 5.7 – Extrato financeiro</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Exibir: Entradas (comissões)</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Dados no backend; sem tela de extrato no frontend</td></tr>
+            <tr><td>Exibir: Saídas (pagamentos)</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Dados no backend; sem tela de extrato no frontend</td></tr>
+            <tr><td>Exibir: Saldo atual</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Calculável via backend; sem tela</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 5.8 – Exportação</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Exportar para PDF</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>commissionService.export() existe no service frontend, mas sem UI</td></tr>
+            <tr><td>Exportar para Excel</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Idem</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉPICO 6 -->
+  <div class="epic">
+    <div class="epic-header">
+      <span class="epic-number">ÉPICO 6</span>
+      <span class="epic-title">🧩 CONFIRMAÇÃO DE RECEBIMENTO COM SENHA (CRÍTICO)</span>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 6.1 – Criar botão de confirmação</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Botão: "Confirmar Recebimento"</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Sem página / UI no frontend</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 6.2 – Implementar validação de senha</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Solicitar senha do usuário</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Backend tem POST /pagamentos-profissional/{id}/confirmar mas valida referenciaTransacao, não senha do usuário</td></tr>
+            <tr><td>Validar senha no backend</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Endpoint confirma com referenciaTransacao, não revalida a senha JWT do profissional</td></tr>
+            <tr><td>Bloquear operação se senha inválida</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Sem implementação</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 6.3 – Registrar confirmação</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Registrar: ID do profissional</td><td><span class="badge badge-done">✅ Feito</span></td><td>profissional é FK na entidade PagamentoProfissional</td></tr>
+            <tr><td>Registrar: Valor recebido</td><td><span class="badge badge-done">✅ Feito</span></td><td>Campo valorTotalComissoes</td></tr>
+            <tr><td>Registrar: Data e hora</td><td><span class="badge badge-done">✅ Feito</span></td><td>Campo pagoEm = LocalDateTime.now()</td></tr>
+            <tr><td>Registrar: Forma de pagamento</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Campo referenciaTransacao (texto livre, não enum de formas de pagamento)</td></tr>
+            <tr><td>Registrar: Status CONFIRMADO</td><td><span class="badge badge-done">✅ Feito</span></td><td>Status PAGO após confirmarPagamento()</td></tr>
+            <tr><td>Registrar: Flag de autenticação válida</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Sem campo de flag de autenticação</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 6.4 – Atualizar sistema após confirmação</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Atualizar saldo</td><td><span class="badge badge-done">✅ Feito</span></td><td>Comissões são marcadas como PAGA</td></tr>
+            <tr><td>Atualizar status do pagamento</td><td><span class="badge badge-done">✅ Feito</span></td><td>Status muda para PAGO</td></tr>
+            <tr><td>Gerar histórico</td><td><span class="badge badge-done">✅ Feito</span></td><td>Registro permanece em pagamentos_profissional</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉPICO 7 -->
+  <div class="epic">
+    <div class="epic-header">
+      <span class="epic-number">ÉPICO 7</span>
+      <span class="epic-title">🧩 EXTRATO E RELATÓRIOS</span>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 7.1 – Criar extrato</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Listar: Entradas</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Backend tem dados; sem tela de extrato no frontend</td></tr>
+            <tr><td>Listar: Saídas</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Idem</td></tr>
+            <tr><td>Listar: Saldo atual</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Calculável; sem tela</td></tr>
+            <tr><td>Permitir filtro por período</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Backend suporta; sem UI dedicada</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉPICO 8 -->
+  <div class="epic">
+    <div class="epic-header">
+      <span class="epic-number">ÉPICO 8</span>
+      <span class="epic-title">🧩 ENDPOINTS BACKEND</span>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 8.1 – Criar endpoints</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>GET /professional/appointments</td><td><span class="badge badge-done">✅ Feito</span></td><td>GET /api/agendamentos/profissional/{id} e /agenda-diaria</td></tr>
+            <tr><td>GET /professional/commissions</td><td><span class="badge badge-done">✅ Feito</span></td><td>GET /api/comissoes/profissional/{id}</td></tr>
+            <tr><td>GET /professional/earnings</td><td><span class="badge badge-done">✅ Feito</span></td><td>GET /api/pagamentos-profissional/profissional/{id}</td></tr>
+            <tr><td>POST /professional/confirm-receipt</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>POST /api/pagamentos-profissional/{id}/confirmar existe, mas sem validação de senha do usuário</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉPICO 9 -->
+  <div class="epic">
+    <div class="epic-header">
+      <span class="epic-number">ÉPICO 9</span>
+      <span class="epic-title">🧩 ENTIDADES</span>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 9.1 – Validar entidades</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>User</td><td><span class="badge badge-done">✅ Feito</span></td><td>Entidade Usuario com role PROFISSIONAL</td></tr>
+            <tr><td>Professional</td><td><span class="badge badge-done">✅ Feito</span></td><td>Entidade Profissional com tipoComissao, valorComissao, aceitaAgendamentoOnline, etc.</td></tr>
+            <tr><td>Appointment</td><td><span class="badge badge-done">✅ Feito</span></td><td>Entidade Agendamento com múltiplos serviços, status e índices por profissional</td></tr>
+            <tr><td>Service</td><td><span class="badge badge-done">✅ Feito</span></td><td>Entidade Servico com duração, preço e categorias</td></tr>
+            <tr><td>Commission</td><td><span class="badge badge-done">✅ Feito</span></td><td>Entidade Comissao com cálculo automático (PORCENTAGEM ou FIXO)</td></tr>
+            <tr><td>Payment</td><td><span class="badge badge-done">✅ Feito</span></td><td>Entidade PagamentoProfissional com consolidação por período e status</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉPICO 10 -->
+  <div class="epic">
+    <div class="epic-header">
+      <span class="epic-number">ÉPICO 10</span>
+      <span class="epic-title">🧩 REGRAS CRÍTICAS GLOBAIS</span>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 10.1 – Implementar regras globais</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Não permitir acesso a dados de outros profissionais</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Backend OK com filtros por ID; frontend não aplica isolamento visual</td></tr>
+            <tr><td>Não permitir acesso completo aos dados dos clientes</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>AgendamentoResponse retorna todos os dados do cliente sem restrição por role</td></tr>
+            <tr><td>Não permitir acesso ao dashboard geral</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Profissional acessa /salon/dashboard igual ao admin</td></tr>
+            <tr><td>Comissão apenas do próprio profissional</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Backend filtra por profissionalId; frontend não aplica filtro automático</td></tr>
+            <tr><td>Confirmação de recebimento com senha obrigatória</td><td><span class="badge badge-todo">❌ Não feito</span></td><td>Sem revalidação de senha no fluxo de confirmação</td></tr>
+            <tr><td>Registro completo de todas as ações</td><td><span class="badge badge-done">✅ Feito</span></td><td>AuditAspect registra ações no sistema</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉPICO 11 -->
+  <div class="epic">
+    <div class="epic-header">
+      <span class="epic-number">ÉPICO 11</span>
+      <span class="epic-title">🧩 REQUISITOS NÃO FUNCIONAIS</span>
+    </div>
+
+    <div class="task-group">
+      <div class="task-title">📝 Tarefa 11.1 – Implementar requisitos técnicos</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Checklist</th><th>Status</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Performance alta</td><td><span class="badge badge-done">✅ Feito</span></td><td>Índices no banco de dados, lazy loading nas entidades</td></tr>
+            <tr><td>SPA (Single Page Application)</td><td><span class="badge badge-done">✅ Feito</span></td><td>Next.js com client-side navigation</td></tr>
+            <tr><td>SEO básico para link público de agendamento</td><td><span class="badge badge-done">✅ Feito</span></td><td>/book/[salonId] é rota pública</td></tr>
+            <tr><td>Segurança JWT</td><td><span class="badge badge-done">✅ Feito</span></td><td>JwtAuthenticationFilter, tokens com claims de role</td></tr>
+            <tr><td>Estrutura preparada para SaaS multi-tenant</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>salon_id em todas as entidades, mas sem isolamento completo de tenant</td></tr>
+            <tr><td>Modularização por domínio</td><td><span class="badge badge-done">✅ Feito</span></td><td>Separação por packages (service, controller, entity, dto, repository)</td></tr>
+            <tr><td>Interface moderna e intuitiva</td><td><span class="badge badge-done">✅ Feito</span></td><td>Tailwind CSS com componentes reutilizáveis</td></tr>
+            <tr><td>UX focada em produtividade</td><td><span class="badge badge-partial">⚠️ Parcial</span></td><td>Interface geral OK, mas área do profissional ainda é genérica e sem isolamento</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESUMO FINAL -->
+  <div class="final-summary">
+    <h2>📊 Resumo Geral por Categoria</h2>
+
+    <div class="progress-block">
+      <div class="label">Backend (APIs, Entidades, Services, Segurança)</div>
+      <div class="progress-track">
+        <div class="progress-done" style="width:85%"></div>
+        <div class="progress-partial" style="width:10%"></div>
+        <div class="progress-todo" style="width:5%"></div>
+      </div>
+      <div class="progress-nums">
+        <span><span class="dot dot-done"></span> ~85% Feito</span>
+        <span><span class="dot dot-partial"></span> ~10% Parcial</span>
+        <span><span class="dot dot-todo"></span> ~5% Não feito</span>
+      </div>
+    </div>
+
+    <div class="progress-block">
+      <div class="label">Frontend (Telas, UX, Isolamento Visual)</div>
+      <div class="progress-track">
+        <div class="progress-done" style="width:20%"></div>
+        <div class="progress-partial" style="width:15%"></div>
+        <div class="progress-todo" style="width:65%"></div>
+      </div>
+      <div class="progress-nums">
+        <span><span class="dot dot-done"></span> ~20% Feito</span>
+        <span><span class="dot dot-partial"></span> ~15% Parcial</span>
+        <span><span class="dot dot-todo"></span> ~65% Não feito</span>
+      </div>
+    </div>
+
+    <div class="table-wrap" style="margin-top:24px">
+      <table>
+        <thead>
+          <tr>
+            <th>Categoria</th>
+            <th>✅ Feito</th>
+            <th>⚠️ Parcial</th>
+            <th>❌ Não feito</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong style="color:#c4b5fd">Backend (APIs e Entidades)</strong></td>
+            <td><span class="badge badge-done">~85%</span></td>
+            <td><span class="badge badge-partial">~10%</span></td>
+            <td><span class="badge badge-todo">~5%</span></td>
+          </tr>
+          <tr>
+            <td><strong style="color:#c4b5fd">Frontend (Telas e UX)</strong></td>
+            <td><span class="badge badge-done">~20%</span></td>
+            <td><span class="badge badge-partial">~15%</span></td>
+            <td><span class="badge badge-todo">~65%</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="conclusion">
+      <strong>Conclusão:</strong> O <strong>backend está praticamente completo</strong> para a área do profissional — todas as entidades (Profissional, Agendamento, Comissão, PagamentoProfissional), endpoints de consulta e alteração, serviços de cálculo de comissão e consolidação de pagamento estão implementados. O maior gap está no <strong>frontend</strong>: não existe nenhuma área isolada e dedicada para o profissional. O profissional atualmente acessa as mesmas telas do admin (<code>/salon/dashboard</code>, <code>/salon/appointments</code>, <code>/salon/commission</code>) sem filtros automáticos pelos seus próprios dados. As principais entregas pendentes são: <strong>(1)</strong> dashboard pessoal do profissional, <strong>(2)</strong> tela "Minha Agenda" com dados isolados, <strong>(3)</strong> tela "Meus Recebimentos" com extrato e filtros, <strong>(4)</strong> interface de confirmação de recebimento com validação de senha, e <strong>(5)</strong> restrição de campos sensíveis dos clientes por role.
+    </div>
+  </div>
+
+</div><!-- /container -->
+</body>
+</html>

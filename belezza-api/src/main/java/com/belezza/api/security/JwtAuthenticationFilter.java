@@ -20,6 +20,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.UUID;
 
+import com.belezza.api.security.TenantContext;
+
 /**
  * JWT Authentication Filter that processes every request to extract and validate JWT tokens.
  */
@@ -92,7 +94,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             MDC.put(MDC_USER_ID, userId.toString());
                         }
 
-                        log.debug("User {} authenticated successfully", username);
+                        // Populate tenant context from JWT salonId claim
+                        Long salonId = jwtService.extractSalonId(jwt);
+                        TenantContext.setCurrentTenant(salonId);
+
+                        log.debug("User {} authenticated successfully (salonId={})", username, salonId);
                     }
                 }
             }
@@ -100,6 +106,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
         } finally {
             MDC.clear();
+            TenantContext.clear();
         }
     }
 
@@ -128,6 +135,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
+    @SuppressWarnings("null")
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
         // Skip filtering for public endpoints and static resources

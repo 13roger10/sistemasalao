@@ -7,6 +7,7 @@ const logger = createLogger("AuthService");
 interface LoginResponse {
   user: User;
   token: string;
+  refreshToken?: string;
   requiresTwoFactor?: boolean;
 }
 
@@ -34,6 +35,16 @@ interface BackendLoginResponse {
   tokenType?: string;
   expiresIn?: number;
   requiresTwoFactor?: boolean;
+}
+
+/** Decodes the `exp` claim from a JWT (returns Unix epoch seconds, or null on error). */
+export function getTokenExpiry(token: string): number | null {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return typeof payload.exp === "number" ? payload.exp : null;
+  } catch {
+    return null;
+  }
 }
 
 // Mapeia resposta do backend para formato do frontend
@@ -79,6 +90,8 @@ const generateMockToken = () => {
 // Verificar se deve usar autenticação mock (sem backend)
 // Mock auth está desabilitado - usando API real do backend Java
 const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH === "true";
+
+const REFRESH_TOKEN_KEY = "refresh_token";
 
 // Função para definir cookie de autenticação
 const setAuthCookie = (token: string) => {
@@ -141,6 +154,7 @@ export const authService = {
     const mappedResponse: LoginResponse = {
       user: mapBackendUserToFrontend(backendResponse.user!),
       token: backendResponse.accessToken!,
+      refreshToken: backendResponse.refreshToken,
     };
 
     logger.info("Login successful", {
@@ -149,6 +163,9 @@ export const authService = {
     });
 
     setAuthCookie(mappedResponse.token);
+    if (backendResponse.refreshToken) {
+      localStorage.setItem(REFRESH_TOKEN_KEY, backendResponse.refreshToken);
+    }
     return mappedResponse;
   },
 
@@ -211,19 +228,35 @@ export const authService = {
       throw new Error("Token inválido");
     }
 
-    // Em produção, usar API
-    const response = await api.post<LoginResponse>(
-      "/auth/refresh",
-      {},
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
+    // Read stored refresh token
+    const storedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+    if (!storedRefreshToken) {
+      throw new Error("Refresh token não encontrado. Faça login novamente.");
+    }
 
-    setAuthCookie(response.data.token);
-    return response.data;
+    const response = await fetch("/api/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: storedRefreshToken }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Sessão expirada. Faça login novamente.");
+    }
+
+    const data: BackendLoginResponse = await response.json();
+    const newToken = data.accessToken!;
+
+    setAuthCookie(newToken);
+    if (data.refreshToken) {
+      localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+    }
+
+    return {
+      user: mapBackendUserToFrontend(data.user!),
+      token: newToken,
+      refreshToken: data.refreshToken,
+    };
   },
 
   logout() {
@@ -231,6 +264,7 @@ export const authService = {
     if (typeof window !== "undefined") {
       localStorage.removeItem("auth_token");
       localStorage.removeItem("auth_user");
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
     }
   },
 };

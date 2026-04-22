@@ -1,18 +1,14 @@
 package com.belezza.api.controller;
 
-import com.belezza.api.entity.Post;
-import com.belezza.api.entity.StatusPost;
-import com.belezza.api.repository.PostRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * Webhook controller for Meta Graph API callbacks.
@@ -20,12 +16,9 @@ import java.util.Optional;
  */
 @RestController
 @RequestMapping("/api/webhooks/meta")
-@RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Webhooks", description = "Meta Graph API webhook endpoints")
 public class MetaWebhookController {
-
-    private final PostRepository postRepository;
 
     @Value("${meta.webhook.verify-token:belezza_webhook_verify_token}")
     private String verifyToken;
@@ -78,8 +71,9 @@ public class MetaWebhookController {
             if ("instagram".equals(object) || "page".equals(object)) {
                 // Process entries
                 if (payload.containsKey("entry")) {
-                    java.util.List<Map<String, Object>> entries =
-                        (java.util.List<Map<String, Object>>) payload.get("entry");
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> entries =
+                        (List<Map<String, Object>>) payload.get("entry");
 
                     for (Map<String, Object> entry : entries) {
                         processEntry(entry);
@@ -109,8 +103,9 @@ public class MetaWebhookController {
 
             // Process changes
             if (entry.containsKey("changes")) {
-                java.util.List<Map<String, Object>> changes =
-                    (java.util.List<Map<String, Object>>) entry.get("changes");
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> changes =
+                    (List<Map<String, Object>>) entry.get("changes");
 
                 for (Map<String, Object> change : changes) {
                     processChange(change);
@@ -128,6 +123,7 @@ public class MetaWebhookController {
     private void processChange(Map<String, Object> change) {
         try {
             String field = (String) change.get("field");
+            @SuppressWarnings("unchecked")
             Map<String, Object> value = (Map<String, Object>) change.get("value");
 
             log.debug("Processing change - Field: {}, Value: {}", field, value);

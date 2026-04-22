@@ -1,6 +1,5 @@
 package com.belezza.api.scheduler;
 
-import com.belezza.api.entity.RecorrenciaTarefa;
 import com.belezza.api.entity.StatusTarefa;
 import com.belezza.api.entity.TarefaSalon;
 import com.belezza.api.repository.TarefaRepository;
@@ -28,6 +27,7 @@ public class TarefaRecorrenteScheduler {
      */
     @Scheduled(cron = "0 5 0 * * *")
     @Transactional
+    @SuppressWarnings("null")
     public void processarTarefasRecorrentes() {
         log.info("Iniciando processamento de tarefas recorrentes...");
 

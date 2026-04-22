@@ -6,6 +6,7 @@ import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.DuplicateResourceException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.*;
+import com.belezza.api.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
@@ -17,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +28,7 @@ public class FidelidadeService {
     private final FidelidadeClienteRepository fidelidadeClienteRepository;
     private final FidelidadeTransacaoRepository transacaoRepository;
     private final ClienteRepository clienteRepository;
+    private final UsuarioRepository usuarioRepository;
     private final ServicoService servicoService;
     private final SalonService salonService;
     @Lazy
@@ -36,6 +37,7 @@ public class FidelidadeService {
     // ==================== PROGRAMAS ====================
 
     @Transactional
+    @SuppressWarnings("null")
     public FidelidadeProgramaResponse criarPrograma(FidelidadeProgramaRequest request, String emailAdmin) {
         log.info("Criando programa de fidelidade: {}", request.getNome());
 
@@ -132,6 +134,7 @@ public class FidelidadeService {
     // ==================== CLIENTES ====================
 
     @Transactional
+    @SuppressWarnings("null")
     public FidelidadeClienteResponse inscreverCliente(Long clienteId, Long programaId, String emailAdmin) {
         log.info("Inscrevendo cliente {} no programa {}", clienteId, programaId);
 
@@ -213,6 +216,7 @@ public class FidelidadeService {
     // ==================== TRANSAÇÕES ====================
 
     @Transactional
+    @SuppressWarnings("null")
     public FidelidadeTransacaoResponse registrarVisita(Long agendamentoId, Agendamento agendamento) {
         log.info("Registrando visita para agendamento: {}", agendamentoId);
 
@@ -276,6 +280,7 @@ public class FidelidadeService {
     }
 
     @Transactional
+    @SuppressWarnings("null")
     public FidelidadeTransacaoResponse resgatarCredito(Long fidelidadeClienteId, Long agendamentoId, String emailAdmin) {
         log.info("Resgatando crédito para fidelidade cliente: {}", fidelidadeClienteId);
 
@@ -312,6 +317,7 @@ public class FidelidadeService {
     }
 
     @Transactional
+    @SuppressWarnings("null")
     public FidelidadeTransacaoResponse adicionarBonus(Long fidelidadeClienteId, int creditos, String descricao, String emailAdmin) {
         log.info("Adicionando bônus de {} créditos para fidelidade cliente: {}", creditos, fidelidadeClienteId);
 
@@ -447,6 +453,79 @@ public class FidelidadeService {
                 .topClientes(topClientes)
                 .distribuicaoPorNivel(distribuicaoPorNivel)
                 .build();
+    }
+
+    // ==================== ENDPOINTS DO CLIENTE AUTENTICADO ====================
+
+    /**
+     * Retorna todas as inscricoes de fidelidade do cliente autenticado (por email).
+     */
+    @Transactional(readOnly = true)
+    public List<FidelidadeClienteResponse> getMinhaFidelidade(String email) {
+        return usuarioRepository.findByEmailAndAtivoTrue(email)
+                .map(u -> clienteRepository.findByUsuarioId(u.getId()))
+                .orElse(List.of())
+                .stream()
+                .flatMap(c -> fidelidadeClienteRepository.findAllActiveByCliente(c.getId()).stream())
+                .map(FidelidadeClienteResponse::fromEntity)
+                .toList();
+    }
+
+    /**
+     * Retorna o extrato de fidelidade do cliente autenticado.
+     * Se o cliente tiver multiplas inscricoes, retorna a de maior nivel/pontos.
+     */
+    @Transactional(readOnly = true)
+    public ExtratoFidelidadeResponse getMeusExtratos(String email) {
+        List<FidelidadeClienteResponse> fidelidades = getMinhaFidelidade(email);
+        if (fidelidades.isEmpty()) {
+            return ExtratoFidelidadeResponse.builder()
+                    .transacoes(List.of())
+                    .resumo(ExtratoFidelidadeResponse.ResumoExtratoDTO.builder()
+                            .totalVisitasPeriodo(0)
+                            .totalCreditosGanhos(0)
+                            .totalCreditosResgatados(0)
+                            .saldoCreditos(0)
+                            .pontosGanhos(0)
+                            .build())
+                    .build();
+        }
+        return getExtrato(fidelidades.get(0).getId(), null, null);
+    }
+
+    /**
+     * Cliente resgata um credito de servico gratis para si mesmo.
+     */
+    @Transactional
+    public FidelidadeTransacaoResponse clienteResgatarCredito(String email) {
+        log.info("Cliente {} resgatando credito proprio", email);
+
+        Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", email));
+
+        List<Cliente> clientes = clienteRepository.findByUsuarioId(usuario.getId());
+        if (clientes.isEmpty()) {
+            throw new BusinessException("Você não está cadastrado como cliente em nenhum salão");
+        }
+
+        FidelidadeCliente fidelidadeCliente = clientes.stream()
+                .flatMap(c -> fidelidadeClienteRepository.findAllActiveByCliente(c.getId()).stream())
+                .filter(fc -> fc.getCreditosDisponiveis() > 0)
+                .findFirst()
+                .orElseThrow(() -> new BusinessException("Você não possui créditos disponíveis para resgate"));
+
+        boolean resgatou = fidelidadeCliente.resgatarCredito();
+        if (!resgatou) {
+            throw new BusinessException("Não foi possível resgatar o crédito");
+        }
+        fidelidadeCliente = fidelidadeClienteRepository.save(fidelidadeCliente);
+
+        String descricao = "Resgate de serviço grátis - " + fidelidadeCliente.getPrograma().getNome();
+        FidelidadeTransacao transacao = FidelidadeTransacao.criarResgate(fidelidadeCliente, null, descricao);
+        transacao = transacaoRepository.save(transacao);
+
+        log.info("Cliente {} resgatou credito no programa {}", email, fidelidadeCliente.getPrograma().getNome());
+        return FidelidadeTransacaoResponse.fromEntity(transacao);
     }
 
     // ==================== HELPERS ====================

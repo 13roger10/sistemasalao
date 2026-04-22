@@ -61,6 +61,9 @@ public class NotificacaoResponse {
             case PROMOCAO -> "tag";
             case SISTEMA -> "info";
             case POST_FALHOU -> "alert-triangle";
+            case COMISSAO_DISPONIVEL -> "wallet";
+            case PAGAMENTO_REALIZADO -> "check-circle";
+            default -> "bell";
         };
     }
 

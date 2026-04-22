@@ -32,6 +32,7 @@ public class CustomUserDetailsService implements UserDetailsService {
     }
 
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public UserDetails loadUserById(Long id) {
         log.debug("Loading user by id: {}", id);
 

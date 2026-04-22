@@ -27,7 +27,7 @@ export default function CapturePage() {
       setMode("select");
       setCapturedImage(null);
     } else {
-      router.back();
+      router.push("/admin");
     }
   }, [mode, router]);
 
@@ -86,7 +86,7 @@ export default function CapturePage() {
       {/* Header */}
       <header className="flex items-center justify-between border-b border-violet-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 px-4 py-3 backdrop-blur-sm">
         <button
-          onClick={() => router.back()}
+          onClick={() => router.push("/admin")}
           className="flex items-center text-gray-600 dark:text-gray-400 transition-colors hover:text-gray-900 dark:hover:text-white"
         >
           <svg

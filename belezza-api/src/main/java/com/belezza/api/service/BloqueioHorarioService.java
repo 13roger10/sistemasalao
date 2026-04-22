@@ -24,6 +24,7 @@ public class BloqueioHorarioService {
     private final ProfissionalService profissionalService;
 
     @Transactional
+    @SuppressWarnings("null")
     public BloqueioHorarioResponse criar(Long profissionalId, BloqueioHorarioRequest request) {
         Profissional profissional = profissionalService.getProfissionalEntity(profissionalId);
 
@@ -68,6 +69,7 @@ public class BloqueioHorarioService {
     }
 
     @Transactional
+    @SuppressWarnings("null")
     public void remover(Long bloqueioId) {
         BloqueioHorario bloqueio = bloqueioHorarioRepository.findById(bloqueioId)
                 .orElseThrow(() -> new ResourceNotFoundException("Bloqueio", bloqueioId));

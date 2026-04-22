@@ -116,6 +116,7 @@ public class ComissaoService {
     /**
      * Calculate total service value from appointment.
      */
+    @SuppressWarnings("deprecation")
     private BigDecimal calcularValorServicos(Agendamento agendamento) {
         // Try multiple services first
         if (agendamento.getServicos() != null && !agendamento.getServicos().isEmpty()) {

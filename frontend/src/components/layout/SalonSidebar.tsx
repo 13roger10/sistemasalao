@@ -21,6 +21,10 @@ import {
   ChevronDown,
   ChevronRight,
   Share2,
+  Wallet,
+  History,
+  TrendingUp,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
@@ -59,6 +63,13 @@ const MENU_SECTIONS: MenuSection[] = [
         href: "/salon/dashboard",
         icon: LayoutDashboard,
         permission: "dashboard.view",
+        roles: ["ADMIN", "RECEPCIONIST"],
+      },
+      {
+        label: "Início",
+        href: "/salon/professional",
+        icon: LayoutDashboard,
+        roles: ["PROFESSIONAL"],
       },
     ],
   },
@@ -129,6 +140,30 @@ const MENU_SECTIONS: MenuSection[] = [
         permission: "commissions.view",
         roles: ["ADMIN", "PROFESSIONAL"],
       },
+      {
+        label: "Meus Ganhos",
+        href: "/salon/earnings",
+        icon: TrendingUp,
+        roles: ["PROFESSIONAL"],
+      },
+      {
+        label: "Recebimentos",
+        href: "/salon/receipts",
+        icon: Wallet,
+        roles: ["PROFESSIONAL"],
+      },
+      {
+        label: "Histórico",
+        href: "/salon/history",
+        icon: History,
+        roles: ["PROFESSIONAL"],
+      },
+      {
+        label: "Extrato",
+        href: "/salon/statement",
+        icon: FileText,
+        roles: ["PROFESSIONAL"],
+      },
     ],
   },
   {
@@ -177,6 +212,13 @@ const MENU_SECTIONS: MenuSection[] = [
         icon: Star,
         permission: "reviews.view_all",
         roles: ["ADMIN"],
+      },
+      {
+        label: "Minhas Avaliações",
+        href: "/salon/reviews",
+        icon: Star,
+        permission: "reviews.view",
+        roles: ["PROFESSIONAL"],
       },
       {
         label: "Unidades",

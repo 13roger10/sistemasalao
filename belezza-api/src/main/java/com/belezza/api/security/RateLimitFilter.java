@@ -66,6 +66,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
     }
 
+    @SuppressWarnings("deprecation")
     private Bucket createBucket(String key) {
         Bandwidth limit = Bandwidth.classic(
                 requestsPerMinute,
@@ -106,6 +107,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     @Override
+    @SuppressWarnings("null")
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
         // Skip rate limiting for health checks and actuator endpoints

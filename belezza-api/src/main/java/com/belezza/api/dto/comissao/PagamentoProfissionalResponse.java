@@ -1,5 +1,6 @@
 package com.belezza.api.dto.comissao;
 
+import com.belezza.api.entity.FormaPagamento;
 import com.belezza.api.entity.PagamentoProfissional;
 import com.belezza.api.entity.StatusPagamentoProfissional;
 import lombok.AllArgsConstructor;
@@ -28,9 +29,13 @@ public class PagamentoProfissionalResponse {
     private BigDecimal valorTotalComissoes;
     private StatusPagamentoProfissional status;
     private String statusDescricao;
+    private FormaPagamento formaPagamento;
+    private String formaPagamentoDescricao;
     private String observacoes;
     private String referenciaTransacao;
     private LocalDateTime pagoEm;
+    private LocalDateTime recebimentoConfirmadoEm;
+    private boolean autenticacaoValidada;
     private LocalDateTime criadoEm;
 
     public static PagamentoProfissionalResponse fromEntity(PagamentoProfissional pagamento) {
@@ -51,9 +56,13 @@ public class PagamentoProfissionalResponse {
                 .valorTotalComissoes(pagamento.getValorTotalComissoes())
                 .status(pagamento.getStatus())
                 .statusDescricao(pagamento.getStatus().getDescription())
+                .formaPagamento(pagamento.getFormaPagamento())
+                .formaPagamentoDescricao(pagamento.getFormaPagamento() != null ? pagamento.getFormaPagamento().getDescription() : null)
                 .observacoes(pagamento.getObservacoes())
                 .referenciaTransacao(pagamento.getReferenciaTransacao())
                 .pagoEm(pagamento.getPagoEm())
+                .recebimentoConfirmadoEm(pagamento.getRecebimentoConfirmadoEm())
+                .autenticacaoValidada(pagamento.isAutenticacaoValidada())
                 .criadoEm(pagamento.getCriadoEm())
                 .build();
     }

@@ -25,6 +25,7 @@ public class FornecedorService {
     private final SalonService salonService;
 
     @Transactional
+    @SuppressWarnings("null")
     public FornecedorResponse criar(FornecedorRequest request, String emailUsuario) {
         Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
 

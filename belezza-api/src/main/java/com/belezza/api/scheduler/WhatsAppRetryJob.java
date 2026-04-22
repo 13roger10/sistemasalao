@@ -97,6 +97,7 @@ public class WhatsAppRetryJob {
     /**
      * Retry a single failed message.
      */
+    @SuppressWarnings({"unchecked", "null", "rawtypes"})
     private boolean retryMessage(WhatsAppMessage message) {
         log.info("Tentando retry da mensagem {} (tentativa {})", message.getId(), message.getTentativas() + 1);
 

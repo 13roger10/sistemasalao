@@ -18,7 +18,6 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -36,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @DisplayName("Appointment Flow Integration Tests")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@SuppressWarnings("null")
 class AppointmentFlowIT {
 
     @Autowired

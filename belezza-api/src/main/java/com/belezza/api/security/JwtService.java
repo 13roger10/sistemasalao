@@ -59,15 +59,25 @@ public class JwtService {
     }
 
     /**
-     * Generates an access token for the given user.
+     * Generates an access token for the given user without salonId (fallback).
      */
     public String generateAccessToken(UserDetails userDetails) {
+        return generateAccessToken(userDetails, null);
+    }
+
+    /**
+     * Generates an access token including the tenant salonId claim.
+     */
+    public String generateAccessToken(UserDetails userDetails, Long salonId) {
         Map<String, Object> claims = new HashMap<>();
         if (userDetails instanceof Usuario usuario) {
             claims.put("userId", usuario.getId());
             claims.put("role", usuario.getRole().name());
             claims.put("plano", usuario.getPlano().name());
             claims.put("nome", usuario.getNome());
+        }
+        if (salonId != null) {
+            claims.put("salonId", salonId);
         }
         return generateToken(claims, userDetails.getUsername(), accessTokenExpiration);
     }
@@ -110,6 +120,13 @@ public class JwtService {
      */
     public Long extractUserId(String token) {
         return extractClaim(token, claims -> claims.get("userId", Long.class));
+    }
+
+    /**
+     * Extracts the tenant salon ID from the token (null if not present).
+     */
+    public Long extractSalonId(String token) {
+        return extractClaim(token, claims -> claims.get("salonId", Long.class));
     }
 
     /**

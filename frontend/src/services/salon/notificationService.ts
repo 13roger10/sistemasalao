@@ -157,12 +157,37 @@ export const notificationService = {
     // List notifications
     list: async (params?: PaginationParams & { unreadOnly?: boolean }): Promise<PaginatedResponse<Notification>> => {
       try {
-        const response = await api.get<{ content: Notification[]; totalElements: number; totalPages: number; number: number; size: number }>(BASE_PATH, params);
-        // Adaptar formato do Spring Page para PaginatedResponse
-        const items = response.content || [];
+        const response = await api.get<{ content: Record<string, unknown>[]; totalElements: number; totalPages: number; number: number; size: number }>(BASE_PATH, params);
+        const tipoMap: Record<string, NotificationType> = {
+          AGENDAMENTO_CONFIRMADO: 'appointment_confirmed',
+          AGENDAMENTO_CANCELADO: 'appointment_cancelled',
+          AGENDAMENTO_REAGENDADO: 'appointment_rescheduled',
+          LEMBRETE_24H: 'appointment_reminder',
+          LEMBRETE_2H: 'appointment_reminder',
+          AVALIACAO_RECEBIDA: 'review_request',
+          FIDELIDADE_CREDITO: 'loyalty_reward',
+          FIDELIDADE_NIVEL: 'loyalty_reward',
+          PROMOCAO: 'promotion',
+          SISTEMA: 'general',
+          POST_FALHOU: 'general',
+          COMISSAO_DISPONIVEL: 'comissao_disponivel',
+          PAGAMENTO_REALIZADO: 'pagamento_realizado',
+        };
+        const items: Notification[] = (response.content || []).map((n) => ({
+          id: String(n.id),
+          userId: '',
+          type: tipoMap[String(n.tipo)] ?? 'general',
+          title: String(n.titulo ?? ''),
+          body: String(n.mensagem ?? ''),
+          icon: n.icone as string | undefined,
+          url: n.link as string | undefined,
+          read: Boolean(n.lida),
+          sent: true,
+          createdAt: n.criadoEm ? new Date(n.criadoEm as string) : new Date(),
+        }));
         return {
           data: items,
-          items: items,
+          items,
           meta: {
             total: response.totalElements || 0,
             page: response.number || 0,

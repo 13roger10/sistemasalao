@@ -66,7 +66,7 @@ export function NotificacaoProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isAuthenticated || !token) return;
 
-    fetch(`${API_BASE}/api/notificacoes/resumo`, {
+    fetch(`${API_BASE}/notificacoes/resumo`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
@@ -113,7 +113,7 @@ export function NotificacaoProvider({ children }: { children: ReactNode }) {
     setNaoLidas((c) => Math.max(0, c - 1));
 
     try {
-      await fetch(`${API_BASE}/api/notificacoes/${id}/lida`, {
+      await fetch(`${API_BASE}/notificacoes/${id}/lida`, {
         method: "POST",
         headers: { Authorization: `Bearer ${tokenRef.current}` },
       });
@@ -127,7 +127,7 @@ export function NotificacaoProvider({ children }: { children: ReactNode }) {
     setNaoLidas(0);
 
     try {
-      await fetch(`${API_BASE}/api/notificacoes/lidas`, {
+      await fetch(`${API_BASE}/notificacoes/lidas`, {
         method: "POST",
         headers: { Authorization: `Bearer ${tokenRef.current}` },
       });

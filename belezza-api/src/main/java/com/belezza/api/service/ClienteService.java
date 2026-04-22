@@ -35,6 +35,7 @@ public class ClienteService {
     private final PasswordEncoder passwordEncoder;
 
     @Transactional
+    @SuppressWarnings("null")
     public ClienteResponse criar(ClienteRequest request, String emailAdmin) {
         Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
         Long salonId = request.getSalonId() != null ? request.getSalonId() : salon.getId();
@@ -83,6 +84,7 @@ public class ClienteService {
     }
 
     @Transactional
+    @SuppressWarnings("null")
     public ClienteResponse criarOuBuscar(Long salonId, String emailUsuario) {
         Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(emailUsuario)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", emailUsuario));
@@ -104,13 +106,20 @@ public class ClienteService {
 
     @Transactional(readOnly = true)
     public ClienteResponse buscarPorId(Long id) {
+        return buscarPorId(id, false);
+    }
+
+    @Transactional(readOnly = true)
+    public ClienteResponse buscarPorId(Long id, boolean restrictSensitiveData) {
         Cliente cliente = clienteRepository.findByIdWithDetails(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", id));
 
         var fidelidade = fidelidadeRepository.findByClienteIdAndAtivoTrue(id)
                 .stream().findFirst().orElse(null);
 
-        return ClienteResponse.fromEntity(cliente, fidelidade);
+        return restrictSensitiveData
+                ? ClienteResponse.fromEntityForProfessional(cliente, fidelidade)
+                : ClienteResponse.fromEntity(cliente, fidelidade);
     }
 
     @Transactional(readOnly = true)
@@ -120,6 +129,11 @@ public class ClienteService {
 
     @Transactional
     public List<ClienteResponse> listarPorSalon(Long salonId, String search, String status, String loyaltyLevel) {
+        return listarPorSalon(salonId, search, status, loyaltyLevel, false);
+    }
+
+    @Transactional
+    public List<ClienteResponse> listarPorSalon(Long salonId, String search, String status, String loyaltyLevel, boolean restrictSensitiveData) {
         // Sincronizar usuários CLIENTE que ainda não estão vinculados a este salão
         sincronizarUsuariosCliente(salonId);
 
@@ -128,12 +142,12 @@ public class ClienteService {
         // Aplicar filtros
         return clientes.stream()
                 .filter(c -> {
-                    // Filtro de busca
+                    // Filtro de busca — usa nome mesmo para PROFISSIONAL
                     if (search != null && !search.isEmpty()) {
                         String searchLower = search.toLowerCase();
                         return c.getUsuario().getNome().toLowerCase().contains(searchLower)
-                                || (c.getUsuario().getTelefone() != null && c.getUsuario().getTelefone().contains(search))
-                                || (c.getUsuario().getEmail() != null && c.getUsuario().getEmail().toLowerCase().contains(searchLower));
+                                || (!restrictSensitiveData && c.getUsuario().getTelefone() != null && c.getUsuario().getTelefone().contains(search))
+                                || (!restrictSensitiveData && c.getUsuario().getEmail() != null && c.getUsuario().getEmail().toLowerCase().contains(searchLower));
                     }
                     return true;
                 })
@@ -151,7 +165,9 @@ public class ClienteService {
                 .map(c -> {
                     var fidelidade = fidelidadeRepository.findByClienteIdAndAtivoTrue(c.getId())
                             .stream().findFirst().orElse(null);
-                    return ClienteResponse.fromEntity(c, fidelidade);
+                    return restrictSensitiveData
+                            ? ClienteResponse.fromEntityForProfessional(c, fidelidade)
+                            : ClienteResponse.fromEntity(c, fidelidade);
                 })
                 .filter(response -> {
                     // Filtro de nível de fidelidade (aplicado após conversão)
@@ -171,6 +187,7 @@ public class ClienteService {
     }
 
     @Transactional
+    @SuppressWarnings("null")
     public ClienteResponse atualizar(Long id, ClienteRequest request, String emailAdmin) {
         Cliente cliente = clienteRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", id));
@@ -224,6 +241,7 @@ public class ClienteService {
 
     @Transactional
     @Auditable(action = "DELETE", entityType = "Cliente", captureOldState = true)
+    @SuppressWarnings("null")
     public void excluir(Long id, String emailAdmin) {
         Cliente cliente = clienteRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", id));
@@ -239,6 +257,7 @@ public class ClienteService {
     }
 
     @Transactional
+    @SuppressWarnings("null")
     public ClienteResponse atualizarObservacoes(Long id, String observacoes, String emailAdmin) {
         Cliente cliente = clienteRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", id));
@@ -256,6 +275,7 @@ public class ClienteService {
 
     @Transactional
     @Auditable(action = "BLOCK", entityType = "Cliente", captureOldState = true, captureNewState = true)
+    @SuppressWarnings("null")
     public void bloquear(Long id, String emailAdmin) {
         Cliente cliente = clienteRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", id));
@@ -272,6 +292,7 @@ public class ClienteService {
 
     @Transactional
     @Auditable(action = "UNBLOCK", entityType = "Cliente", captureOldState = true, captureNewState = true)
+    @SuppressWarnings("null")
     public void desbloquear(Long id, String emailAdmin) {
         Cliente cliente = clienteRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", id));
@@ -286,6 +307,7 @@ public class ClienteService {
         log.info("Cliente desbloqueado: {}", id);
     }
 
+    @SuppressWarnings("null")
     public Cliente getOrCreateCliente(Long salonId, String emailUsuario) {
         Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(emailUsuario)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", emailUsuario));
@@ -302,6 +324,7 @@ public class ClienteService {
                 });
     }
 
+    @SuppressWarnings("null")
     public Cliente getClienteEntity(Long id) {
         return clienteRepository.findById(id)
                 .filter(Cliente::isAtivo)
@@ -313,6 +336,7 @@ public class ClienteService {
      * Cria automaticamente a entrada na tabela de clientes para esses usuários.
      */
     @Transactional
+    @SuppressWarnings("null")
     public void sincronizarUsuariosCliente(Long salonId) {
         List<Usuario> usuariosNaoVinculados = usuarioRepository.findClientesNaoVinculadosAoSalon(salonId);
 

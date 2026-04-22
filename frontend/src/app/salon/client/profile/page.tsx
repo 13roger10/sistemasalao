@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { useSalonAuth } from '@/contexts/SalonAuthContext';
+import { useSalonNotificacoes } from '@/contexts/SalonNotificacaoContext';
 import {
   User,
   Mail,
@@ -18,12 +20,15 @@ import {
   Gift,
   Edit2,
   Camera,
+  ArrowLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function ClientProfilePage() {
   const { user, logout } = useSalonAuth();
+  const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const { naoLidas } = useSalonNotificacoes();
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -65,7 +70,15 @@ export default function ClientProfilePage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header com gradiente */}
       <div className="relative bg-gradient-to-br from-violet-600 to-purple-700 px-4 pb-20 pt-8">
-        <h1 className="text-xl font-bold text-white">Meu Perfil</h1>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push('/salon/book')}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h1 className="text-xl font-bold text-white">Meu Perfil</h1>
+        </div>
 
         {/* Decoração */}
         <div className="absolute right-0 top-0 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
@@ -143,25 +156,35 @@ export default function ClientProfilePage() {
               {section.title}
             </h3>
             <div className="overflow-hidden rounded-xl bg-white shadow-sm dark:bg-gray-800">
-              {section.items.map(({ icon: Icon, label, href }, index) => (
-                <a
-                  key={href}
-                  href={href}
-                  className={cn(
-                    'flex items-center justify-between px-4 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50',
-                    index !== section.items.length - 1 &&
-                      'border-b border-gray-100 dark:border-gray-700'
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700">
-                      <Icon className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+              {section.items.map(({ icon: Icon, label, href }, index) => {
+                const isNotifications = href === '/salon/client/profile/notifications';
+                return (
+                  <a
+                    key={href}
+                    href={href}
+                    className={cn(
+                      'flex items-center justify-between px-4 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50',
+                      index !== section.items.length - 1 &&
+                        'border-b border-gray-100 dark:border-gray-700'
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700">
+                        <Icon className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                      </div>
+                      <span className="font-medium text-gray-900 dark:text-white">{label}</span>
                     </div>
-                    <span className="font-medium text-gray-900 dark:text-white">{label}</span>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-gray-400" />
-                </a>
-              ))}
+                    <div className="flex items-center gap-2">
+                      {isNotifications && naoLidas > 0 && (
+                        <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-violet-600 px-1.5 text-xs font-bold text-white">
+                          {naoLidas > 99 ? '99+' : naoLidas}
+                        </span>
+                      )}
+                      <ChevronRight className="h-5 w-5 text-gray-400" />
+                    </div>
+                  </a>
+                );
+              })}
             </div>
           </div>
         ))}

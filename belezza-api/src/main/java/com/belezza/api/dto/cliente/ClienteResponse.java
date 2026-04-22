@@ -63,21 +63,58 @@ public class ClienteResponse {
     private LocalDateTime firstVisitAt;
 
     public static ClienteResponse fromEntity(Cliente cliente) {
-        return fromEntity(cliente, null);
+        return fromEntity(cliente, null, false);
     }
 
     public static ClienteResponse fromEntity(Cliente cliente, FidelidadeCliente fidelidade) {
+        return fromEntity(cliente, fidelidade, false);
+    }
+
+    /**
+     * Creates a ClienteResponse with restricted data for professionals.
+     * Excludes: email, phone, whatsapp, notes (sensitive client data).
+     *
+     * @param cliente The client entity
+     * @return ClienteResponse without sensitive client data
+     */
+    public static ClienteResponse fromEntityForProfessional(Cliente cliente) {
+        return fromEntity(cliente, null, true);
+    }
+
+    /**
+     * Creates a ClienteResponse with restricted data for professionals.
+     * Excludes: email, phone, whatsapp, notes (sensitive client data).
+     *
+     * @param cliente The client entity
+     * @param fidelidade The loyalty data (optional)
+     * @return ClienteResponse without sensitive client data
+     */
+    public static ClienteResponse fromEntityForProfessional(Cliente cliente, FidelidadeCliente fidelidade) {
+        return fromEntity(cliente, fidelidade, true);
+    }
+
+    /**
+     * Internal method that creates ClienteResponse with optional data restriction.
+     *
+     * @param cliente The client entity
+     * @param fidelidade The loyalty data (optional)
+     * @param restrictSensitiveData If true, excludes email, phone, whatsapp, and notes
+     * @return ClienteResponse
+     */
+    private static ClienteResponse fromEntity(Cliente cliente, FidelidadeCliente fidelidade, boolean restrictSensitiveData) {
         ClienteResponseBuilder builder = ClienteResponse.builder()
                 .id(cliente.getId())
                 .usuarioId(cliente.getUsuario().getId())
                 .name(cliente.getUsuario().getNome())
-                .email(cliente.getUsuario().getEmail())
-                .phone(cliente.getUsuario().getTelefone())
-                .whatsapp(cliente.getWhatsapp())
+                // Restrict sensitive data for professionals
+                .email(restrictSensitiveData ? null : cliente.getUsuario().getEmail())
+                .phone(restrictSensitiveData ? null : cliente.getUsuario().getTelefone())
+                .whatsapp(restrictSensitiveData ? null : cliente.getWhatsapp())
                 .birthDate(cliente.getDataNascimento())
                 .avatar(cliente.getUsuario().getAvatarUrl())
                 .status(cliente.isBloqueado() ? "inactive" : (cliente.isAtivo() ? "active" : "inactive"))
-                .notes(cliente.getObservacoes())
+                // Restrict sensitive data for professionals
+                .notes(restrictSensitiveData ? null : cliente.getObservacoes())
                 .noShows(cliente.getNoShows())
                 .totalVisits(cliente.getTotalAgendamentos())
                 .totalSpent(cliente.getTotalGasto() != null ? cliente.getTotalGasto() : BigDecimal.ZERO)

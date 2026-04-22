@@ -15,6 +15,7 @@ import {
   Home,
   BarChart2,
   KeyRound,
+  Share2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
@@ -45,6 +46,11 @@ const menuItems = [
     label: "Meus Posts",
     href: "/admin/posts",
     icon: FileText,
+  },
+  {
+    label: "Rede Social",
+    href: "/admin/social",
+    icon: Share2,
   },
   {
     label: "Agendamentos",

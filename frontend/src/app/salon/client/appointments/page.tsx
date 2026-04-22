@@ -19,6 +19,7 @@ import {
 import { format, isPast, isToday, isFuture, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { appointmentService } from "@/services/salon/appointmentService";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
@@ -70,6 +71,8 @@ export default function ClientAppointmentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>("upcoming");
   const [cancelingId, setCancelingId] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [appointmentToCancel, setAppointmentToCancel] = useState<Appointment | null>(null);
 
   // Load appointments
   useEffect(() => {
@@ -153,21 +156,33 @@ export default function ClientAppointmentsPage() {
     return dateB.getTime() - dateA.getTime(); // Most recent first
   });
 
-  // Handle cancel appointment
-  const handleCancel = async (appointmentId: string) => {
-    if (!confirm("Tem certeza que deseja cancelar este agendamento?")) return;
+  // Abre o modal de confirmação
+  const handleCancelClick = (appointment: Appointment) => {
+    setCancelError(null);
+    setAppointmentToCancel(appointment);
+  };
 
-    setCancelingId(appointmentId);
+  // Confirma o cancelamento via API
+  const handleConfirmCancel = async () => {
+    if (!appointmentToCancel) return;
+
+    setCancelingId(appointmentToCancel.id);
+    setCancelError(null);
     try {
-      await appointmentService.cancel(appointmentId, "Cancelado pelo cliente");
+      await appointmentService.cancel(appointmentToCancel.id, "Cancelado pelo cliente");
       setAppointments((prev) =>
         prev.map((apt) =>
-          apt.id === appointmentId ? { ...apt, status: "canceled" as AppointmentStatus } : apt
+          apt.id === appointmentToCancel.id ? { ...apt, status: "canceled" as AppointmentStatus } : apt
         )
       );
+      setAppointmentToCancel(null);
     } catch (err) {
       console.error("Erro ao cancelar agendamento:", err);
-      alert("Nao foi possivel cancelar o agendamento. Tente novamente.");
+      const msg = err instanceof Error
+        ? err.message.replace(/^\[HTTP \d+\] /, "")
+        : "Não foi possível cancelar o agendamento. Tente novamente.";
+      setCancelError(msg);
+      setAppointmentToCancel(null);
     } finally {
       setCancelingId(null);
     }
@@ -222,6 +237,21 @@ export default function ClientAppointmentsPage() {
             Novo Agendamento
           </Button>
         </div>
+
+        {/* Erro de cancelamento */}
+        {cancelError && (
+          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-900/20">
+            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600 dark:text-red-400" />
+            <p className="flex-1 text-sm text-red-800 dark:text-red-300">{cancelError}</p>
+            <button
+              onClick={() => setCancelError(null)}
+              className="text-red-500 hover:text-red-700 dark:text-red-400"
+              aria-label="Fechar"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid gap-4 sm:grid-cols-3">
@@ -416,7 +446,7 @@ export default function ClientAppointmentsPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleCancel(appointment.id)}
+                          onClick={() => handleCancelClick(appointment)}
                           disabled={cancelingId === appointment.id}
                           className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
                         >
@@ -461,6 +491,91 @@ export default function ClientAppointmentsPage() {
           )}
         </div>
       </div>
+
+      {/* Modal de confirmação de cancelamento */}
+      <Modal
+        isOpen={!!appointmentToCancel}
+        onClose={() => setAppointmentToCancel(null)}
+        title="Cancelar Agendamento"
+      >
+        {appointmentToCancel && (
+          <div className="space-y-5">
+            {/* Ícone de alerta */}
+            <div className="flex justify-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+                <XCircle className="h-8 w-8 text-red-600 dark:text-red-400" />
+              </div>
+            </div>
+
+            <p className="text-center text-gray-600 dark:text-gray-400">
+              Tem certeza que deseja cancelar este agendamento?
+            </p>
+
+            {/* Detalhes do agendamento */}
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800">
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                  <Calendar className="h-4 w-4 text-violet-500" />
+                  <span className="capitalize font-medium">
+                    {formatAppointmentDate(appointmentToCancel.date)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                  <Clock className="h-4 w-4 text-violet-500" />
+                  <span>
+                    {appointmentToCancel.startTime}
+                    {appointmentToCancel.endTime && ` - ${appointmentToCancel.endTime}`}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                  <Scissors className="h-4 w-4 text-violet-500" />
+                  <span>{getServiceNames(appointmentToCancel)}</span>
+                </div>
+                {appointmentToCancel.professional && (
+                  <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                    <User className="h-4 w-4 text-violet-500" />
+                    <span>{appointmentToCancel.professional.name}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <p className="text-center text-sm text-gray-500 dark:text-gray-400">
+              Esta ação não pode ser desfeita.
+            </p>
+
+            {/* Botões */}
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={() => setAppointmentToCancel(null)}
+                disabled={!!cancelingId}
+              >
+                Manter Agendamento
+              </Button>
+              <Button
+                variant="primary"
+                className="w-full bg-red-600 hover:bg-red-700 sm:w-auto"
+                onClick={handleConfirmCancel}
+                disabled={!!cancelingId}
+              >
+                {cancelingId ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Cancelando...
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Confirmar Cancelamento
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </SalonLayout>
   );
 }

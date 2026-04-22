@@ -27,6 +27,14 @@ public class ClienteController {
 
     private final ClienteService clienteService;
 
+    private boolean shouldRestrictSensitiveData(UserDetails userDetails) {
+        if (userDetails == null) return true;
+        boolean isAdmin = userDetails.getAuthorities().stream()
+                .map(a -> a.getAuthority())
+                .anyMatch(auth -> auth.equals("ROLE_ADMIN"));
+        return !isAdmin;
+    }
+
     @PostMapping
     @Operation(summary = "Criar cliente", description = "Cria um novo cliente no salão")
     public ResponseEntity<ClienteResponse> criar(
@@ -38,8 +46,11 @@ public class ClienteController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Buscar cliente", description = "Busca um cliente por ID")
-    public ResponseEntity<ClienteResponse> buscarPorId(@PathVariable Long id) {
-        ClienteResponse response = clienteService.buscarPorId(id);
+    public ResponseEntity<ClienteResponse> buscarPorId(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        boolean restrictData = shouldRestrictSensitiveData(userDetails);
+        ClienteResponse response = clienteService.buscarPorId(id, restrictData);
         return ResponseEntity.ok(response);
     }
 
@@ -49,8 +60,10 @@ public class ClienteController {
             @PathVariable Long salonId,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String loyaltyLevel) {
-        List<ClienteResponse> response = clienteService.listarPorSalon(salonId, search, status, loyaltyLevel);
+            @RequestParam(required = false) String loyaltyLevel,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        boolean restrictData = shouldRestrictSensitiveData(userDetails);
+        List<ClienteResponse> response = clienteService.listarPorSalon(salonId, search, status, loyaltyLevel, restrictData);
         return ResponseEntity.ok(response);
     }
 

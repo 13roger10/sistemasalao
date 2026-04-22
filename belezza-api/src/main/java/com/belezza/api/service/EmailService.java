@@ -41,4 +41,43 @@ public interface EmailService {
      * @param errorMessage Last error message from the publishing attempt
      */
     void sendPostFailureEmail(String email, String userName, String postId, String errorMessage);
+
+    /**
+     * Sends appointment confirmation email to client.
+     *
+     * @param email            Client email
+     * @param userName         Client name
+     * @param data             Appointment date (dd/MM/yyyy)
+     * @param hora             Appointment time (HH:mm)
+     * @param servico          Service name(s)
+     * @param profissional     Professional name
+     * @param linkConfirmacao  Confirmation link
+     */
+    void sendAppointmentConfirmationEmail(String email, String userName, String data, String hora,
+                                          String servico, String profissional, String linkConfirmacao);
+
+    /**
+     * Sends appointment cancellation email to client.
+     *
+     * @param email          Client email
+     * @param userName       Client name
+     * @param data           Cancelled appointment date
+     * @param hora           Cancelled appointment time
+     * @param servico        Service name
+     * @param motivo         Cancellation reason
+     * @param linkReagendar  Link to reschedule
+     */
+    void sendAppointmentCancelledEmail(String email, String userName, String data, String hora,
+                                       String servico, String motivo, String linkReagendar);
+
+    /**
+     * Sends rescheduled appointment email to client.
+     *
+     * @param email     Client email
+     * @param userName  Client name
+     * @param novaData  New appointment date
+     * @param novaHora  New appointment time
+     * @param servico   Service name
+     */
+    void sendAppointmentRescheduledEmail(String email, String userName, String novaData, String novaHora, String servico);
 }

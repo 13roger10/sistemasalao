@@ -38,6 +38,7 @@ public class AvaliacaoService {
     private final NotificacaoService notificacaoService;
 
     @Transactional
+    @SuppressWarnings("null")
     public AvaliacaoResponse criar(AvaliacaoRequest request) {
         Agendamento agendamento = agendamentoRepository.findById(request.getAgendamentoId())
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento", request.getAgendamentoId()));

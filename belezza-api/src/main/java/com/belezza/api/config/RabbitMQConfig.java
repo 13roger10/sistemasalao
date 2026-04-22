@@ -102,6 +102,7 @@ public class RabbitMQConfig {
     // ─── Message Converter ────────────────────────────────────────────────────
 
     @Bean
+    @SuppressWarnings("null")
     MessageConverter jacksonMessageConverter(ObjectMapper objectMapper) {
         return new Jackson2JsonMessageConverter(objectMapper);
     }
@@ -109,6 +110,7 @@ public class RabbitMQConfig {
     // ─── RabbitTemplate ───────────────────────────────────────────────────────
 
     @Bean
+    @SuppressWarnings("null")
     RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory,
                                   MessageConverter jacksonMessageConverter) {
         RabbitTemplate template = new RabbitTemplate(connectionFactory);

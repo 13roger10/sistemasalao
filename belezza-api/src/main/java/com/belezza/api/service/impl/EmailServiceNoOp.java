@@ -41,4 +41,24 @@ public class EmailServiceNoOp implements EmailService {
         log.info("[NO-OP EMAIL] Post failure notification - To: {}, User: {}, PostId: {}, Error: {}",
             email, userName, postId, errorMessage);
     }
+
+    @Override
+    public void sendAppointmentConfirmationEmail(String email, String userName, String data, String hora,
+                                                 String servico, String profissional, String linkConfirmacao) {
+        log.info("[NO-OP EMAIL] Appointment confirmation - To: {}, User: {}, Date: {} {}, Service: {}",
+            email, userName, data, hora, servico);
+    }
+
+    @Override
+    public void sendAppointmentCancelledEmail(String email, String userName, String data, String hora,
+                                              String servico, String motivo, String linkReagendar) {
+        log.info("[NO-OP EMAIL] Appointment cancelled - To: {}, User: {}, Date: {} {}, Service: {}, Reason: {}",
+            email, userName, data, hora, servico, motivo);
+    }
+
+    @Override
+    public void sendAppointmentRescheduledEmail(String email, String userName, String novaData, String novaHora, String servico) {
+        log.info("[NO-OP EMAIL] Appointment rescheduled - To: {}, User: {}, NewDate: {} {}, Service: {}",
+            email, userName, novaData, novaHora, servico);
+    }
 }

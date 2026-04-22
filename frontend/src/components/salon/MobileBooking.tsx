@@ -63,6 +63,9 @@ export function MobileBooking({
   // Calendar state
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { locale: ptBR }));
 
+  // Open days (0=Sunday..6=Saturday) loaded from admin config
+  const [openDays, setOpenDays] = useState<Set<number>>(new Set([1, 2, 3, 4, 5, 6])); // Mon-Sat default
+
   // Category filter state
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -91,6 +94,25 @@ export function MobileBooking({
   const filteredServices = selectedCategory
     ? services.filter(s => matchesCategory(s, selectedCategory))
     : services;
+
+  // Load salon open days from admin config
+  useEffect(() => {
+    const loadOpenDays = async () => {
+      try {
+        const salonId = unitId === 'default' ? '1' : unitId;
+        const response = await fetch(`/api/salon/schedule/dias-abertos?salonId=${salonId}`);
+        if (response.ok) {
+          const data = await response.json() as { diasAbertos: number[] };
+          if (data.diasAbertos && data.diasAbertos.length > 0) {
+            setOpenDays(new Set(data.diasAbertos));
+          }
+        }
+      } catch {
+        // Fallback to Mon-Sat if request fails
+      }
+    };
+    loadOpenDays();
+  }, [unitId]);
 
   // Load services - tenta endpoint de cliente, depois público, depois admin
   useEffect(() => {
@@ -493,23 +515,24 @@ export function MobileBooking({
                 const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
                 const isSelected = bookingData.date && isSameDay(day, bookingData.date);
                 const isToday = isSameDay(day, new Date());
-                const isSunday = day.getDay() === 0;
+                const isClosed = !openDays.has(day.getDay());
+                const isDisabled = isPast || isClosed;
 
                 return (
                   <button
                     key={day.toISOString()}
-                    onClick={() => !isPast && setBookingData(prev => ({ ...prev, date: day, time: null }))}
-                    disabled={isPast}
-                    title={isSunday ? "Salao fechado aos domingos" : undefined}
+                    onClick={() => !isDisabled && setBookingData(prev => ({ ...prev, date: day, time: null }))}
+                    disabled={isDisabled}
+                    title={isClosed ? 'Salão fechado neste dia' : undefined}
                     className={cn(
                       'flex flex-col items-center rounded-xl p-3 transition-all',
-                      isPast && 'cursor-not-allowed opacity-40',
+                      isDisabled && 'cursor-not-allowed opacity-40',
                       isSelected
                         ? 'bg-violet-500 text-white'
                         : isToday
                         ? 'border-2 border-violet-500 bg-white'
-                        : isSunday
-                        ? 'bg-orange-50 text-orange-400'
+                        : isClosed
+                        ? 'bg-gray-100 text-gray-400'
                         : 'bg-white hover:bg-gray-50'
                     )}
                   >
@@ -519,6 +542,9 @@ export function MobileBooking({
                     <span className="mt-1 text-lg font-semibold">
                       {format(day, 'd')}
                     </span>
+                    {isClosed && (
+                      <span className="mt-0.5 text-[9px] text-gray-400">fechado</span>
+                    )}
                   </button>
                 );
               })}
@@ -539,9 +565,16 @@ export function MobileBooking({
         {/* Time Selection */}
         {step === 'time' && (
           <div>
-            <div className="mb-4 flex items-center gap-2 text-gray-600">
-              <Clock className="h-5 w-5" />
-              <span>Horarios disponiveis</span>
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-gray-600">
+                <Clock className="h-5 w-5" />
+                <span>Escolha o horário</span>
+              </div>
+              {availableSlots.length > 0 && (
+                <span className="text-xs text-gray-400">
+                  {availableSlots.filter(s => s.available).length} disponíveis
+                </span>
+              )}
             </div>
 
             {isLoading ? (
@@ -552,35 +585,47 @@ export function MobileBooking({
               <div className="rounded-xl bg-gray-100 p-8 text-center">
                 <Calendar className="mx-auto h-12 w-12 text-gray-400" />
                 <p className="mt-2 font-medium text-gray-700">
-                  Nenhum horario disponivel
+                  Nenhum horário disponível
                 </p>
                 <p className="mt-1 text-sm text-gray-500">
-                  {bookingData.professional?.name} nao trabalha neste dia ou todos os horarios ja estao ocupados.
+                  {bookingData.professional?.name} não trabalha neste dia ou todos os horários já estão ocupados.
                 </p>
                 <p className="mt-2 text-sm text-gray-500">
                   Tente outra data.
                 </p>
               </div>
+            ) : availableSlots.filter(s => s.available).length === 0 ? (
+              <div className="rounded-xl bg-gray-100 p-8 text-center">
+                <Clock className="mx-auto h-12 w-12 text-gray-400" />
+                <p className="mt-2 font-medium text-gray-700">
+                  Todos os horários estão ocupados
+                </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  Não há horários livres para esta data. Tente outra data.
+                </p>
+              </div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
-                {availableSlots
-                  .filter(slot => slot.available)
-                  .map(slot => (
-                    <button
-                      key={slot.time}
-                      onClick={() =>
-                        setBookingData(prev => ({ ...prev, time: slot.time }))
-                      }
-                      className={cn(
-                        'rounded-xl py-3 text-center font-medium transition-all',
-                        bookingData.time === slot.time
-                          ? 'bg-violet-500 text-white'
-                          : 'bg-white text-gray-700 hover:bg-gray-50'
-                      )}
-                    >
-                      {slot.time}
-                    </button>
-                  ))}
+                {availableSlots.map(slot => (
+                  <button
+                    key={slot.time}
+                    onClick={() =>
+                      slot.available && setBookingData(prev => ({ ...prev, time: slot.time }))
+                    }
+                    disabled={!slot.available}
+                    title={!slot.available && slot.reason ? slot.reason : undefined}
+                    className={cn(
+                      'rounded-xl py-3 text-center text-sm font-medium transition-all',
+                      !slot.available
+                        ? 'cursor-not-allowed bg-gray-100 text-gray-300 line-through'
+                        : bookingData.time === slot.time
+                        ? 'bg-violet-500 text-white shadow-md'
+                        : 'bg-white text-gray-700 shadow-sm hover:bg-violet-50 hover:text-violet-600'
+                    )}
+                  >
+                    {slot.time}
+                  </button>
+                ))}
               </div>
             )}
           </div>

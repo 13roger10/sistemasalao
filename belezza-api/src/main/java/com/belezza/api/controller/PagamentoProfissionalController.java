@@ -1,9 +1,12 @@
 package com.belezza.api.controller;
 
 import com.belezza.api.dto.comissao.ConfirmarPagamentoRequest;
+import com.belezza.api.dto.comissao.ConfirmarRecebimentoRequest;
 import com.belezza.api.dto.comissao.GerarPagamentoRequest;
 import com.belezza.api.dto.comissao.PagamentoProfissionalResponse;
 import com.belezza.api.entity.StatusPagamentoProfissional;
+import com.belezza.api.repository.ProfissionalRepository;
+import com.belezza.api.repository.UsuarioRepository;
 import com.belezza.api.security.annotation.ProfissionalOrAdmin;
 import com.belezza.api.service.PagamentoProfissionalService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -17,6 +20,10 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -30,6 +37,26 @@ import java.time.LocalDate;
 public class PagamentoProfissionalController {
 
     private final PagamentoProfissionalService pagamentoProfissionalService;
+    private final UsuarioRepository usuarioRepository;
+    private final ProfissionalRepository profissionalRepository;
+
+    private boolean isProfissional(UserDetails userDetails) {
+        if (userDetails == null) return false;
+        return userDetails.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(auth -> auth.equals("ROLE_PROFISSIONAL"));
+    }
+
+    private void enforceOwnership(Long profissionalId, UserDetails userDetails) {
+        if (!isProfissional(userDetails)) return;
+        usuarioRepository.findByEmailAndAtivoTrue(userDetails.getUsername()).ifPresent(usuario ->
+            profissionalRepository.findByUsuarioId(usuario.getId()).ifPresent(profissional -> {
+                if (!profissional.getId().equals(profissionalId)) {
+                    throw new AccessDeniedException("Acesso negado: profissional não pode visualizar recebimentos de outro profissional");
+                }
+            })
+        );
+    }
 
     @PostMapping("/salon/{salonId}")
     @ProfissionalOrAdmin
@@ -70,7 +97,9 @@ public class PagamentoProfissionalController {
     @Operation(summary = "Listar por profissional", description = "Lista pagamentos de um profissional")
     public ResponseEntity<Page<PagamentoProfissionalResponse>> listarPorProfissional(
             @PathVariable Long profissionalId,
-            @PageableDefault(size = 20, sort = "criadoEm") Pageable pageable) {
+            @PageableDefault(size = 20, sort = "criadoEm") Pageable pageable,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        enforceOwnership(profissionalId, userDetails);
         Page<PagamentoProfissionalResponse> response = pagamentoProfissionalService.listarPorProfissional(
                 profissionalId, pageable);
         return ResponseEntity.ok(response);
@@ -91,6 +120,20 @@ public class PagamentoProfissionalController {
             @PathVariable Long id,
             @Valid @RequestBody ConfirmarPagamentoRequest request) {
         PagamentoProfissionalResponse response = pagamentoProfissionalService.confirmarPagamento(id, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{id}/confirmar-recebimento")
+    @ProfissionalOrAdmin
+    @Operation(summary = "Confirmar recebimento", description = "Profissional confirma que recebeu o pagamento após validação de senha")
+    public ResponseEntity<PagamentoProfissionalResponse> confirmarRecebimento(
+            @PathVariable Long id,
+            @Valid @RequestBody ConfirmarRecebimentoRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        PagamentoProfissionalResponse pagamento = pagamentoProfissionalService.buscarPorId(id);
+        enforceOwnership(pagamento.getProfissionalId(), userDetails);
+        PagamentoProfissionalResponse response = pagamentoProfissionalService.confirmarRecebimento(
+                id, request, userDetails.getUsername());
         return ResponseEntity.ok(response);
     }
 

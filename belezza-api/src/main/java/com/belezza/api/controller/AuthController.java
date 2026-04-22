@@ -1,6 +1,7 @@
 package com.belezza.api.controller;
 
 import com.belezza.api.dto.auth.*;
+import com.belezza.api.dto.auth.ValidarSenhaRequest;
 import com.belezza.api.dto.user.UserResponse;
 import com.belezza.api.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -127,5 +128,21 @@ public class AuthController {
         log.info("Email verification request");
         authService.verifyEmail(token);
         return ResponseEntity.ok(Map.of("message", "Email verificado com sucesso"));
+    }
+
+    @PostMapping("/validar-senha")
+    @Operation(
+        summary = "Validar senha",
+        description = "Reautentica o usuário JWT atual validando sua senha — usado antes de ações sensíveis"
+    )
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Resultado da validação"),
+        @ApiResponse(responseCode = "401", description = "Não autenticado")
+    })
+    public ResponseEntity<Map<String, Boolean>> validarSenha(
+            @Valid @RequestBody ValidarSenhaRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        boolean valido = authService.validarSenha(userDetails.getUsername(), request.getSenha());
+        return ResponseEntity.ok(Map.of("valido", valido));
     }
 }

@@ -31,6 +31,7 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
     private final UserDetailsService userDetailsService;
 
     @Override
+    @SuppressWarnings("null")
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor =
             MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);

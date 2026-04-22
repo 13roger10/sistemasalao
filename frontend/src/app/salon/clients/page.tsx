@@ -158,6 +158,7 @@ const LoyaltyProgress = ({ current, total = 10 }: { current: number; total?: num
 export default function ClientsPage() {
   const { user } = useSalonAuth();
   const { selectedUnitId } = useUnit();
+  const isProfessional = user?.role === 'PROFESSIONAL';
 
   // Estados de listagem
   const [clients, setClients] = useState<Client[]>([]);
@@ -672,10 +673,10 @@ export default function ClientsPage() {
         </div>
       ),
     },
-    {
-      key: "contact",
+    ...(!isProfessional ? [{
+      key: "contact" as const,
       header: "Contato",
-      render: (item) => (
+      render: (item: Client) => (
         <div className="space-y-1 text-sm">
           {item.email && (
             <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
@@ -691,7 +692,7 @@ export default function ClientsPage() {
           )}
         </div>
       ),
-    },
+    }] : []),
     {
       key: "loyalty",
       header: "Fidelidade",
@@ -714,15 +715,15 @@ export default function ClientsPage() {
         </div>
       ),
     },
-    {
-      key: "spent",
+    ...(!isProfessional ? [{
+      key: "spent" as const,
       header: "Total Gasto",
-      render: (item) => (
+      render: (item: Client) => (
         <span className="font-medium text-gray-900 dark:text-white">
           {formatCurrency(item.totalSpent)}
         </span>
       ),
-    },
+    }] : []),
     {
       key: "status",
       header: "Status",
@@ -740,9 +741,11 @@ export default function ClientsPage() {
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Clientes</h1>
             <p className="text-gray-500 dark:text-gray-400">Gerencie os clientes do salão</p>
           </div>
-          <Button onClick={() => setIsCreateModalOpen(true)} leftIcon={<Search className="h-4 w-4" />}>
-            Buscar Cliente
-          </Button>
+          {!isProfessional && (
+            <Button onClick={() => setIsCreateModalOpen(true)} leftIcon={<Search className="h-4 w-4" />}>
+              Buscar Cliente
+            </Button>
+          )}
         </div>
 
         {/* Cards de Estatísticas */}
@@ -848,19 +851,23 @@ export default function ClientsPage() {
                 >
                   Ver Histórico
                 </ActionMenuItem>
-                <ActionMenuItem
-                  onClick={() => openEditModal(item)}
-                  icon={<Edit2 className="h-4 w-4" />}
-                >
-                  Editar
-                </ActionMenuItem>
-                <ActionMenuItem
-                  onClick={() => openDeleteModal(item)}
-                  icon={<Trash2 className="h-4 w-4" />}
-                  variant="danger"
-                >
-                  Excluir
-                </ActionMenuItem>
+                {!isProfessional && (
+                  <ActionMenuItem
+                    onClick={() => openEditModal(item)}
+                    icon={<Edit2 className="h-4 w-4" />}
+                  >
+                    Editar
+                  </ActionMenuItem>
+                )}
+                {!isProfessional && (
+                  <ActionMenuItem
+                    onClick={() => openDeleteModal(item)}
+                    icon={<Trash2 className="h-4 w-4" />}
+                    variant="danger"
+                  >
+                    Excluir
+                  </ActionMenuItem>
+                )}
               </>
             )}
             striped

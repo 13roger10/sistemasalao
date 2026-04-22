@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -121,6 +122,7 @@ public class MetricasAgendamentoService {
     /**
      * Calculate metrics grouped by service.
      */
+    @SuppressWarnings("deprecation")
     private List<MetricaPorServico> calcularMetricasPorServico(
             Long salonId, LocalDateTime inicio, LocalDateTime fim) {
 
@@ -128,7 +130,10 @@ public class MetricasAgendamentoService {
                 salonId, inicio, fim);
 
         Map<Long, List<Agendamento>> groupedByServico = agendamentos.stream()
-                .collect(Collectors.groupingBy(a -> a.getServico().getId()));
+                .collect(Collectors.groupingBy(a ->
+                    a.getServicos() != null && !a.getServicos().isEmpty()
+                        ? a.getServicos().get(0).getServico().getId()
+                        : a.getServico() != null ? a.getServico().getId() : 0L));
 
         return groupedByServico.entrySet().stream()
                 .map(entry -> {
@@ -147,9 +152,12 @@ public class MetricasAgendamentoService {
                             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
                     double ticketMedio = concluidos > 0 ?
-                            somaValores.divide(BigDecimal.valueOf(concluidos), 2, BigDecimal.ROUND_HALF_UP).doubleValue() : 0.0;
+                            somaValores.divide(BigDecimal.valueOf(concluidos), 2, RoundingMode.HALF_UP).doubleValue() : 0.0;
 
-                    String nome = servicoAgendamentos.get(0).getServico().getNome();
+                    Agendamento primeiro = servicoAgendamentos.get(0);
+                    String nome = primeiro.getServicos() != null && !primeiro.getServicos().isEmpty()
+                            ? primeiro.getServicos().get(0).getServico().getNome()
+                            : primeiro.getServico() != null ? primeiro.getServico().getNome() : "Serviço";
 
                     return MetricaPorServico.builder()
                             .servicoId(servicoId)

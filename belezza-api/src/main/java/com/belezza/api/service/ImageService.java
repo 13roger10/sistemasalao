@@ -23,7 +23,6 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.net.URI;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -52,6 +51,7 @@ public class ImageService {
     /**
      * Upload a new image.
      */
+    @SuppressWarnings("null")
     public ImagemUploadResponse upload(Long salonId, Long usuarioId, MultipartFile file, String descricao) {
         // Validate file
         validateFile(file);
@@ -114,6 +114,7 @@ public class ImageService {
      * Get image by ID.
      */
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public ImagemResponse getById(Long salonId, Long imagemId) {
         Salon salon = salonRepository.findById(salonId)
             .orElseThrow(() -> new ResourceNotFoundException("Salon not found"));
@@ -128,6 +129,7 @@ public class ImageService {
      * List images by salon.
      */
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public Page<ImagemResponse> listBySalon(Long salonId, Pageable pageable) {
         Salon salon = salonRepository.findById(salonId)
             .orElseThrow(() -> new ResourceNotFoundException("Salon not found"));
@@ -147,7 +149,7 @@ public class ImageService {
             String enhancedUrl = imageAIService.enhance(imagem.getUrlAtual());
 
             // Create version
-            ImagemVersao versao = createVersion(imagem, enhancedUrl, "enhance", null);
+            createVersion(imagem, enhancedUrl, "enhance", null);
 
             // Update current URL
             imagem.setUrlAtual(enhancedUrl);
@@ -172,7 +174,7 @@ public class ImageService {
         try {
             String noBgUrl = imageAIService.removeBackground(imagem.getUrlAtual());
 
-            ImagemVersao versao = createVersion(imagem, noBgUrl, "remove-background", null);
+            createVersion(imagem, noBgUrl, "remove-background", null);
 
             imagem.setUrlAtual(noBgUrl);
             imagemRepository.save(imagem);
@@ -197,7 +199,7 @@ public class ImageService {
             String blurredUrl = imageAIService.blurBackground(imagem.getUrlAtual(), intensity);
 
             String params = "{\"intensity\": " + intensity + "}";
-            ImagemVersao versao = createVersion(imagem, blurredUrl, "blur-background", params);
+            createVersion(imagem, blurredUrl, "blur-background", params);
 
             imagem.setUrlAtual(blurredUrl);
             imagemRepository.save(imagem);
@@ -222,7 +224,7 @@ public class ImageService {
             String styledUrl = imageAIService.applyStyle(imagem.getUrlAtual(), style);
 
             String params = "{\"style\": \"" + style.name() + "\"}";
-            ImagemVersao versao = createVersion(imagem, styledUrl, "apply-style", params);
+            createVersion(imagem, styledUrl, "apply-style", params);
 
             imagem.setUrlAtual(styledUrl);
             imagemRepository.save(imagem);
@@ -247,7 +249,7 @@ public class ImageService {
             String upscaledUrl = imageAIService.upscale(imagem.getUrlAtual(), factor);
 
             String params = "{\"factor\": " + factor + "}";
-            ImagemVersao versao = createVersion(imagem, upscaledUrl, "upscale", params);
+            createVersion(imagem, upscaledUrl, "upscale", params);
 
             imagem.setUrlAtual(upscaledUrl);
             imagem.setLargura(imagem.getLargura() * factor);
@@ -391,7 +393,9 @@ public class ImageService {
 
     // Helper methods
 
+    @SuppressWarnings("null")
     private Imagem getImagemBySalonAndId(Long salonId, Long imagemId) {
+        @SuppressWarnings("null")
         Salon salon = salonRepository.findById(salonId)
             .orElseThrow(() -> new ResourceNotFoundException("Salon not found"));
 

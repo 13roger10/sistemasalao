@@ -28,6 +28,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final WebSocketAuthChannelInterceptor authChannelInterceptor;
 
     @Override
+    @SuppressWarnings("null")
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
             .setAllowedOriginPatterns("*")   // restricted further by CORS config
@@ -35,6 +36,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     }
 
     @Override
+    @SuppressWarnings("null")
     public void configureMessageBroker(MessageBrokerRegistry registry) {
         // Prefix for messages routed to @MessageMapping controllers
         registry.setApplicationDestinationPrefixes("/app");
@@ -47,6 +49,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     }
 
     @Override
+    @SuppressWarnings("null")
     public void configureClientInboundChannel(ChannelRegistration registration) {
         // Validate JWT on every STOMP CONNECT frame
         registration.interceptors(authChannelInterceptor);

@@ -6,6 +6,8 @@ import com.belezza.api.dto.agendamento.CancelamentoRequest;
 import com.belezza.api.dto.agendamento.ReagendamentoRequest;
 import com.belezza.api.dto.disponibilidade.DisponibilidadeRequest;
 import com.belezza.api.dto.disponibilidade.DisponibilidadeResponse;
+import com.belezza.api.repository.ProfissionalRepository;
+import com.belezza.api.repository.UsuarioRepository;
 import com.belezza.api.security.annotation.ProfissionalOrAdmin;
 import com.belezza.api.service.AgendamentoService;
 import com.belezza.api.service.DisponibilidadeService;
@@ -20,6 +22,8 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -37,6 +41,39 @@ public class AgendamentoController {
 
     private final AgendamentoService agendamentoService;
     private final DisponibilidadeService disponibilidadeService;
+    private final UsuarioRepository usuarioRepository;
+    private final ProfissionalRepository profissionalRepository;
+
+    private boolean shouldRestrictSensitiveData(UserDetails userDetails) {
+        if (userDetails == null) return true;
+        boolean isAdmin = userDetails.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(auth -> auth.equals("ROLE_ADMIN"));
+        return !isAdmin;
+    }
+
+    private boolean isProfissional(UserDetails userDetails) {
+        if (userDetails == null) return false;
+        return userDetails.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(auth -> auth.equals("ROLE_PROFISSIONAL"));
+    }
+
+    /**
+     * Enforces that a PROFISSIONAL can only access their own data.
+     * Throws AuthorizationException if the authenticated user is a PROFISSIONAL
+     * trying to access a different professional's resource.
+     */
+    private void enforceOwnership(Long profissionalId, UserDetails userDetails) {
+        if (!isProfissional(userDetails)) return; // ADMIN can access any
+        usuarioRepository.findByEmailAndAtivoTrue(userDetails.getUsername()).ifPresent(usuario -> {
+            profissionalRepository.findByUsuarioId(usuario.getId()).ifPresent(profissional -> {
+                if (!profissional.getId().equals(profissionalId)) {
+                    throw new AccessDeniedException("Acesso negado: profissional não pode visualizar agenda de outro profissional");
+                }
+            });
+        });
+    }
 
     @PostMapping
     @Operation(summary = "Criar agendamento", description = "Cria um novo agendamento")
@@ -70,8 +107,11 @@ public class AgendamentoController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Buscar agendamento", description = "Busca um agendamento por ID")
-    public ResponseEntity<AgendamentoResponse> buscarPorId(@PathVariable Long id) {
-        AgendamentoResponse response = agendamentoService.buscarPorId(id);
+    public ResponseEntity<AgendamentoResponse> buscarPorId(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        boolean restrictData = shouldRestrictSensitiveData(userDetails);
+        AgendamentoResponse response = agendamentoService.buscarPorId(id, restrictData);
         return ResponseEntity.ok(response);
     }
 
@@ -98,8 +138,11 @@ public class AgendamentoController {
     @Operation(summary = "Listar por profissional", description = "Lista agendamentos de um profissional")
     public ResponseEntity<Page<AgendamentoResponse>> listarPorProfissional(
             @PathVariable Long profissionalId,
-            @PageableDefault(size = 20, sort = "dataHora") Pageable pageable) {
-        Page<AgendamentoResponse> response = agendamentoService.listarPorProfissional(profissionalId, pageable);
+            @PageableDefault(size = 20, sort = "dataHora") Pageable pageable,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        enforceOwnership(profissionalId, userDetails);
+        boolean restrictData = shouldRestrictSensitiveData(userDetails);
+        Page<AgendamentoResponse> response = agendamentoService.listarPorProfissional(profissionalId, pageable, restrictData);
         return ResponseEntity.ok(response);
     }
 
@@ -108,32 +151,44 @@ public class AgendamentoController {
     @Operation(summary = "Agenda diária", description = "Lista agendamentos do dia de um profissional")
     public ResponseEntity<List<AgendamentoResponse>> agendaDiaria(
             @PathVariable Long profissionalId,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime data) {
-        List<AgendamentoResponse> response = agendamentoService.listarAgendaDiaria(profissionalId, data);
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime data,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        enforceOwnership(profissionalId, userDetails);
+        boolean restrictData = shouldRestrictSensitiveData(userDetails);
+        List<AgendamentoResponse> response = agendamentoService.listarAgendaDiaria(profissionalId, data, restrictData);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{id}/confirmar")
     @ProfissionalOrAdmin
     @Operation(summary = "Confirmar agendamento", description = "Confirma um agendamento pendente")
-    public ResponseEntity<AgendamentoResponse> confirmar(@PathVariable Long id) {
-        AgendamentoResponse response = agendamentoService.confirmar(id);
+    public ResponseEntity<AgendamentoResponse> confirmar(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        boolean restrictData = shouldRestrictSensitiveData(userDetails);
+        AgendamentoResponse response = agendamentoService.confirmar(id, restrictData);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{id}/iniciar")
     @ProfissionalOrAdmin
     @Operation(summary = "Iniciar atendimento", description = "Marca agendamento como em andamento")
-    public ResponseEntity<AgendamentoResponse> iniciar(@PathVariable Long id) {
-        AgendamentoResponse response = agendamentoService.iniciar(id);
+    public ResponseEntity<AgendamentoResponse> iniciar(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        boolean restrictData = shouldRestrictSensitiveData(userDetails);
+        AgendamentoResponse response = agendamentoService.iniciar(id, restrictData);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{id}/concluir")
     @ProfissionalOrAdmin
     @Operation(summary = "Concluir atendimento", description = "Marca agendamento como concluído")
-    public ResponseEntity<AgendamentoResponse> concluir(@PathVariable Long id) {
-        AgendamentoResponse response = agendamentoService.concluir(id);
+    public ResponseEntity<AgendamentoResponse> concluir(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        boolean restrictData = shouldRestrictSensitiveData(userDetails);
+        AgendamentoResponse response = agendamentoService.concluir(id, restrictData);
         return ResponseEntity.ok(response);
     }
 
@@ -141,8 +196,10 @@ public class AgendamentoController {
     @Operation(summary = "Cancelar agendamento", description = "Cancela um agendamento com motivo")
     public ResponseEntity<AgendamentoResponse> cancelar(
             @PathVariable Long id,
-            @Valid @RequestBody CancelamentoRequest request) {
-        AgendamentoResponse response = agendamentoService.cancelar(id, request);
+            @Valid @RequestBody CancelamentoRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        boolean restrictData = shouldRestrictSensitiveData(userDetails);
+        AgendamentoResponse response = agendamentoService.cancelar(id, request, restrictData);
         return ResponseEntity.ok(response);
     }
 
@@ -150,16 +207,21 @@ public class AgendamentoController {
     @Operation(summary = "Reagendar", description = "Reagenda um agendamento para nova data/hora")
     public ResponseEntity<AgendamentoResponse> reagendar(
             @PathVariable Long id,
-            @Valid @RequestBody ReagendamentoRequest request) {
-        AgendamentoResponse response = agendamentoService.reagendar(id, request);
+            @Valid @RequestBody ReagendamentoRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        boolean restrictData = shouldRestrictSensitiveData(userDetails);
+        AgendamentoResponse response = agendamentoService.reagendar(id, request, restrictData);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{id}/no-show")
     @ProfissionalOrAdmin
     @Operation(summary = "Marcar no-show", description = "Marca cliente como não compareceu")
-    public ResponseEntity<AgendamentoResponse> marcarNoShow(@PathVariable Long id) {
-        AgendamentoResponse response = agendamentoService.marcarNoShow(id);
+    public ResponseEntity<AgendamentoResponse> marcarNoShow(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        boolean restrictData = shouldRestrictSensitiveData(userDetails);
+        AgendamentoResponse response = agendamentoService.marcarNoShow(id, restrictData);
         return ResponseEntity.ok(response);
     }
 
