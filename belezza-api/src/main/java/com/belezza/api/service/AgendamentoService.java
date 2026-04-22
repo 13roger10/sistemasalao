@@ -452,6 +452,8 @@ public class AgendamentoService {
         agendamento = agendamentoRepository.save(agendamento);
         log.info("Agendamento cancelado por token: {} - Motivo: {}", agendamento.getId(), motivo);
 
+        enviarNotificacoesSistemaCancelamento(agendamento, agendamento.getMotivoCancelamento());
+
         return AgendamentoResponse.fromEntity(agendamento);
     }
 
