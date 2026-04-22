@@ -800,6 +800,12 @@ public class AgendamentoService {
         }
 
         try {
+            notificacaoService.notificarProfissionalCancelamento(agendamento);
+        } catch (Exception e) {
+            log.error("Erro ao notificar profissional sobre cancelamento: {}", e.getMessage(), e);
+        }
+
+        try {
             Cliente cliente = agendamento.getCliente();
             if (cliente == null || cliente.getUsuario() == null || cliente.getUsuario().getEmail() == null) return;
 

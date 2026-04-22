@@ -201,6 +201,28 @@ public class NotificacaoService {
     }
 
     @Transactional
+    public void notificarProfissionalCancelamento(Agendamento agendamento) {
+        if (agendamento.getProfissional() == null || agendamento.getProfissional().getUsuario() == null) return;
+
+        Usuario profissional = agendamento.getProfissional().getUsuario();
+        String nomeCliente = agendamento.getCliente() != null && agendamento.getCliente().getUsuario() != null
+                ? agendamento.getCliente().getUsuario().getNome() : "Cliente";
+        String data = agendamento.getDataHora().toLocalDate()
+                .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM"));
+        String hora = agendamento.getDataHora().toLocalTime()
+                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+        String servico = agendamento.getServicos() != null && !agendamento.getServicos().isEmpty()
+                ? agendamento.getServicos().get(0).getServico().getNome() : "Serviço";
+
+        String titulo = "Agendamento Cancelado pelo Cliente";
+        String mensagem = String.format("%s cancelou o agendamento de %s no dia %s às %s.",
+                nomeCliente, servico, data, hora);
+        String link = "/salon/appointments";
+
+        criarNotificacao(profissional, TipoNotificacao.AGENDAMENTO_CANCELADO, titulo, mensagem, link, agendamento.getId());
+    }
+
+    @Transactional
     public void notificarLembrete24h(Agendamento agendamento) {
         Usuario usuario = agendamento.getCliente().getUsuario();
         String titulo = "Lembrete de Agendamento";
