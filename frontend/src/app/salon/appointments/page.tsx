@@ -595,6 +595,217 @@ const TimeSlotCell = ({
   );
 };
 
+// Day Timeline View — appointments span their full duration as positioned blocks
+const DayTimelineView = ({
+  date,
+  appointments,
+  professionals,
+  onSlotClick,
+  onAppointmentClick,
+  workingHours,
+}: {
+  date: Date;
+  appointments: Appointment[];
+  professionals: Professional[];
+  onSlotClick: (time: string, professionalId?: string) => void;
+  onAppointmentClick: (appointment: Appointment) => void;
+  workingHours: string[];
+}) => {
+  const PX_PER_MIN = 2; // 60px per 30-min slot
+
+  const timeToMinutes = (time: string) => {
+    const [h, m] = time.split(":").map(Number);
+    return h * 60 + m;
+  };
+
+  const gridStart = workingHours.length > 0 ? timeToMinutes(workingHours[0]) : 9 * 60;
+  const gridEnd = workingHours.length > 0 ? timeToMinutes(workingHours[workingHours.length - 1]) + 30 : 18 * 60;
+  const totalMinutes = gridEnd - gridStart;
+  const totalHeight = totalMinutes * PX_PER_MIN;
+
+  const minutesToTop = (minutes: number) => (minutes - gridStart) * PX_PER_MIN;
+
+  const dayAppointments = appointments.filter(a => {
+    const d = new Date(a.date);
+    return d.toDateString() === date.toDateString();
+  });
+
+  const getStatusColors = (status: AppointmentStatus): string => {
+    const colors: Record<AppointmentStatus, string> = {
+      pending: "border-yellow-500 bg-yellow-50 dark:bg-yellow-900/50 text-yellow-900 dark:text-yellow-100",
+      confirmed: "border-blue-500 bg-blue-50 dark:bg-blue-900/50 text-blue-900 dark:text-blue-100",
+      in_progress: "border-violet-500 bg-violet-100 dark:bg-violet-900/60 text-violet-900 dark:text-violet-100",
+      completed: "border-green-500 bg-green-50 dark:bg-green-900/50 text-green-900 dark:text-green-100",
+      canceled: "border-red-400 bg-red-50/60 dark:bg-red-900/30 text-red-700 dark:text-red-300 opacity-60",
+      no_show: "border-gray-400 bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 opacity-60",
+    };
+    return colors[status];
+  };
+
+  const handleColumnClick = (e: React.MouseEvent<HTMLDivElement>, professionalId?: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const scrollTop = (e.currentTarget.closest(".overflow-y-auto") as HTMLElement | null)?.scrollTop ?? 0;
+    const y = e.clientY - rect.top + scrollTop;
+    const clickedMin = Math.floor(y / PX_PER_MIN) + gridStart;
+    const rounded = Math.round(clickedMin / 30) * 30;
+    const h = Math.floor(rounded / 60).toString().padStart(2, "0");
+    const m = (rounded % 60).toString().padStart(2, "0");
+    onSlotClick(`${h}:${m}`, professionalId);
+  };
+
+  const renderAppointmentBlock = (appt: Appointment) => {
+    const startMin = timeToMinutes(appt.startTime);
+    const endMin = appt.endTime
+      ? timeToMinutes(appt.endTime)
+      : startMin + appt.totalDurationMinutes;
+    const height = Math.max((endMin - startMin) * PX_PER_MIN, 22);
+
+    return (
+      <div
+        key={appt.id}
+        onClick={(e) => { e.stopPropagation(); onAppointmentClick(appt); }}
+        className={`absolute left-1 right-1 rounded border-l-4 px-1.5 py-0.5 overflow-hidden cursor-pointer hover:brightness-95 transition-all shadow-sm ${getStatusColors(appt.status)}`}
+        style={{ top: minutesToTop(startMin), height }}
+      >
+        <p className="text-[11px] font-semibold truncate leading-tight">
+          {appt.client?.name || "Cliente"}
+        </p>
+        {height > 38 && (
+          <p className="text-[10px] truncate leading-tight opacity-80">
+            {appt.services.map(s => s.service?.name).join(", ")}
+          </p>
+        )}
+        {height > 54 && (
+          <p className="text-[10px] leading-tight opacity-70">
+            {appt.startTime} – {appt.endTime}
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex max-h-[600px] overflow-y-auto">
+      {/* Coluna de horários */}
+      <div
+        className="w-16 flex-shrink-0 relative border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50"
+        style={{ height: totalHeight }}
+      >
+        {workingHours.map((time, i) => (
+          <div
+            key={time}
+            className="absolute left-0 right-0 border-b border-gray-100 dark:border-gray-700/50 flex items-start justify-end pr-2 pt-0.5"
+            style={{ top: minutesToTop(timeToMinutes(time)), height: 30 * PX_PER_MIN }}
+          >
+            {i % 2 === 0 && (
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">{time}</span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Colunas dos profissionais */}
+      <div className="flex flex-1 min-w-0">
+        {professionals.length > 0 ? professionals.map(prof => {
+          const profAppts = dayAppointments.filter(a => a.professionalId === prof.id);
+          const activeAppts = profAppts.filter(a => a.status !== "canceled" && a.status !== "no_show");
+
+          return (
+            <div
+              key={prof.id}
+              className="flex-1 relative border-r border-gray-100 dark:border-gray-700 last:border-r-0 cursor-crosshair"
+              style={{ height: totalHeight }}
+              onClick={(e) => handleColumnClick(e, prof.id)}
+            >
+              {/* Linhas de grade */}
+              {workingHours.map((time, i) => (
+                <div
+                  key={time}
+                  className={`absolute left-0 right-0 border-b pointer-events-none ${
+                    i % 2 === 0
+                      ? "border-gray-200 dark:border-gray-700"
+                      : "border-gray-100 dark:border-gray-700/40"
+                  }`}
+                  style={{ top: minutesToTop(timeToMinutes(time)), height: 30 * PX_PER_MIN }}
+                />
+              ))}
+
+              {/* Fundo bloqueado para slots ocupados */}
+              {activeAppts.map(appt => {
+                const startMin = timeToMinutes(appt.startTime);
+                const endMin = appt.endTime
+                  ? timeToMinutes(appt.endTime)
+                  : startMin + appt.totalDurationMinutes;
+                return (
+                  <div
+                    key={`blocked-${appt.id}`}
+                    className="absolute left-0 right-0 bg-gray-100/60 dark:bg-gray-600/20 pointer-events-none"
+                    style={{
+                      top: minutesToTop(startMin),
+                      height: (endMin - startMin) * PX_PER_MIN,
+                    }}
+                  />
+                );
+              })}
+
+              {/* Blocos de agendamento */}
+              {profAppts.map(renderAppointmentBlock)}
+            </div>
+          );
+        }) : (
+          /* Coluna única sem profissionais */
+          <div
+            className="flex-1 relative cursor-crosshair"
+            style={{ height: totalHeight }}
+            onClick={(e) => handleColumnClick(e)}
+          >
+            {workingHours.map((time, i) => (
+              <div
+                key={time}
+                className={`absolute left-0 right-0 border-b pointer-events-none ${
+                  i % 2 === 0
+                    ? "border-gray-200 dark:border-gray-700"
+                    : "border-gray-100 dark:border-gray-700/40"
+                }`}
+                style={{ top: minutesToTop(timeToMinutes(time)), height: 30 * PX_PER_MIN }}
+              />
+            ))}
+            {dayAppointments.map(appt => {
+              const startMin = timeToMinutes(appt.startTime);
+              const endMin = appt.endTime
+                ? timeToMinutes(appt.endTime)
+                : startMin + appt.totalDurationMinutes;
+              const height = Math.max((endMin - startMin) * PX_PER_MIN, 22);
+              return (
+                <div
+                  key={appt.id}
+                  onClick={(e) => { e.stopPropagation(); onAppointmentClick(appt); }}
+                  className={`absolute left-1 right-1 rounded border-l-4 px-1.5 py-0.5 overflow-hidden cursor-pointer hover:brightness-95 shadow-sm ${getStatusColors(appt.status)}`}
+                  style={{ top: minutesToTop(startMin), height }}
+                >
+                  <p className="text-[11px] font-semibold truncate leading-tight">
+                    {appt.client?.name || "Cliente"} — {appt.professional?.name}
+                  </p>
+                  {height > 38 && (
+                    <p className="text-[10px] truncate leading-tight opacity-80">
+                      {appt.services.map(s => s.service?.name).join(", ")}
+                    </p>
+                  )}
+                  {height > 54 && (
+                    <p className="text-[10px] leading-tight opacity-70">
+                      {appt.startTime} – {appt.endTime}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ===== COMPONENTE PRINCIPAL =====
 export default function AppointmentsPage() {
   const { user } = useSalonAuth();
@@ -687,13 +898,12 @@ export default function AppointmentsPage() {
     professionalId: "",
   });
 
-  // Horários do salão
-  // Horários de funcionamento do salão (09:00 - 18:00)
+  // Horários do salão (09:00 - 21:00)
   const WORKING_HOURS = useMemo(() => {
     const hours: string[] = [];
-    for (let h = 9; h < 18; h++) {
+    for (let h = 9; h <= 21; h++) {
       hours.push(`${h.toString().padStart(2, "0")}:00`);
-      hours.push(`${h.toString().padStart(2, "0")}:30`);
+      if (h < 21) hours.push(`${h.toString().padStart(2, "0")}:30`);
     }
     return hours;
   }, []);
@@ -1757,18 +1967,14 @@ export default function AppointmentsPage() {
                     <RefreshCw className="h-8 w-8 animate-spin text-violet-500" />
                   </div>
                 ) : (
-                  <div className="max-h-[600px] overflow-y-auto">
-                    {WORKING_HOURS.map((time) => (
-                      <TimeSlotCell
-                        key={time}
-                        time={time}
-                        appointments={appointments}
-                        professionals={displayProfessionals}
-                        onSlotClick={handleSlotClick}
-                        onAppointmentClick={handleAppointmentClick}
-                      />
-                    ))}
-                  </div>
+                  <DayTimelineView
+                    date={currentDate}
+                    appointments={appointments}
+                    professionals={displayProfessionals}
+                    onSlotClick={handleSlotClick}
+                    onAppointmentClick={handleAppointmentClick}
+                    workingHours={WORKING_HOURS}
+                  />
                 )}
               </div>
             )}
