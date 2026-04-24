@@ -7,6 +7,7 @@ import com.belezza.api.entity.WhatsAppMessageStatus;
 import com.belezza.api.integration.WhatsAppService;
 import com.belezza.api.repository.WhatsAppMessageRepository;
 import com.belezza.api.security.annotation.ProfissionalOrAdmin;
+import org.springframework.security.access.prepost.PreAuthorize;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -86,7 +87,7 @@ public class WhatsAppMessageController {
     }
 
     @PostMapping("/send")
-    @ProfissionalOrAdmin
+    @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
     @Operation(summary = "Enviar mensagem", description = "Envia uma mensagem WhatsApp direta para um número")
     public ResponseEntity<Map<String, String>> enviarMensagem(@Valid @RequestBody WhatsAppSendRequest request) {
         log.info("Enviando mensagem WhatsApp para {}", request.getTelefone());
