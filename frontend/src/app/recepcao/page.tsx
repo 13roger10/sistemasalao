@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import { Calendar, LogOut, Users } from "lucide-react";
+import { Calendar, LogOut, Users, CreditCard } from "lucide-react";
 
 function RecepcaoHub() {
   const { user, logout } = useAuth();
@@ -48,6 +48,15 @@ function RecepcaoHub() {
               <Users className="h-6 w-6 text-blue-600" />
             </div>
             <span className="text-sm font-medium text-gray-800">Clientes</span>
+          </Link>
+          <Link
+            href="/recepcao/pagamentos"
+            className="flex flex-col items-center gap-3 rounded-xl border bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
+          >
+            <div className="rounded-full bg-green-100 p-3">
+              <CreditCard className="h-6 w-6 text-green-600" />
+            </div>
+            <span className="text-sm font-medium text-gray-800">Pagamentos</span>
           </Link>
         </div>
       </main>

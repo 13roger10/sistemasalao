@@ -4,6 +4,7 @@ import com.belezza.api.dto.pagamento.PagamentoRequest;
 import com.belezza.api.dto.pagamento.PagamentoResponse;
 import com.belezza.api.security.annotation.ProfissionalOrAdmin;
 import com.belezza.api.service.PagamentoService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -34,7 +35,7 @@ public class PagamentoController {
     }
 
     @GetMapping("/agendamento/{agendamentoId}")
-    @ProfissionalOrAdmin
+    @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
     @Operation(summary = "Buscar por agendamento", description = "Busca pagamento de um agendamento")
     public ResponseEntity<PagamentoResponse> buscarPorAgendamento(@PathVariable Long agendamentoId) {
         PagamentoResponse response = pagamentoService.buscarPorAgendamento(agendamentoId);
@@ -42,7 +43,7 @@ public class PagamentoController {
     }
 
     @GetMapping("/salon/{salonId}")
-    @ProfissionalOrAdmin
+    @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
     @Operation(summary = "Listar por salão", description = "Lista pagamentos de um salão")
     public ResponseEntity<Page<PagamentoResponse>> listarPorSalon(
             @PathVariable Long salonId,
