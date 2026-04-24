@@ -27,7 +27,7 @@ public class PagamentoController {
     private final PagamentoService pagamentoService;
 
     @PostMapping
-    @ProfissionalOrAdmin
+    @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
     @Operation(summary = "Registrar pagamento", description = "Registra pagamento de um agendamento")
     public ResponseEntity<PagamentoResponse> registrar(@Valid @RequestBody PagamentoRequest request) {
         PagamentoResponse response = pagamentoService.registrar(request);
