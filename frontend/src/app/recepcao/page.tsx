@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import { Calendar, LogOut, Users, CreditCard, CalendarCheck, UserCheck, MessageCircle } from "lucide-react";
+import { Calendar, LogOut, Users, CreditCard, CalendarCheck, UserCheck, MessageCircle, List } from "lucide-react";
 
 function RecepcaoHub() {
   const { user, logout } = useAuth();
@@ -84,6 +84,15 @@ function RecepcaoHub() {
               <MessageCircle className="h-6 w-6 text-violet-600" />
             </div>
             <span className="text-sm font-medium text-gray-800">Comunicação</span>
+          </Link>
+          <Link
+            href="/recepcao/lista-do-dia"
+            className="flex flex-col items-center gap-3 rounded-xl border bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
+          >
+            <div className="rounded-full bg-orange-100 p-3">
+              <List className="h-6 w-6 text-orange-600" />
+            </div>
+            <span className="text-sm font-medium text-gray-800">Lista do Dia</span>
           </Link>
         </div>
       </main>
