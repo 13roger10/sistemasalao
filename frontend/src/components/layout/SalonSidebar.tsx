@@ -63,7 +63,7 @@ const MENU_SECTIONS: MenuSection[] = [
         href: "/salon/dashboard",
         icon: LayoutDashboard,
         permission: "dashboard.view",
-        roles: ["ADMIN", "RECEPCIONIST"],
+        roles: ["ADMIN"],
       },
       {
         label: "Início",

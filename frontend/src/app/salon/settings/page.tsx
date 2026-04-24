@@ -105,7 +105,7 @@ export default function SettingsPage() {
   const router = useRouter();
 
   return (
-    <SalonLayout>
+    <SalonLayout requiredRole={["ADMIN"]} pageTitle="Configurações">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">

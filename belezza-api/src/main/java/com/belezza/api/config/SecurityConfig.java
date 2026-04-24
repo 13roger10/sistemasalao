@@ -112,6 +112,9 @@ public class SecurityConfig {
                 // Profissional or Admin endpoints
                 .requestMatchers("/api/profissional/**").hasAnyRole("ADMIN", "PROFISSIONAL")
 
+                // Receptionist or Admin endpoints
+                .requestMatchers("/api/recepcao/**").hasAnyRole("ADMIN", "RECEPCIONISTA")
+
                 // All other endpoints require authentication
                 .anyRequest().authenticated()
             )

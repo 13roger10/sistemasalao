@@ -176,7 +176,7 @@ export default function BackupPage() {
 
   if (isLoading) {
     return (
-      <SalonLayout>
+      <SalonLayout requiredRole={["ADMIN"]}>
         <div className="flex min-h-[400px] items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-200 border-t-violet-500" />
         </div>
@@ -185,7 +185,7 @@ export default function BackupPage() {
   }
 
   return (
-    <SalonLayout>
+    <SalonLayout requiredRole={["ADMIN"]}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">

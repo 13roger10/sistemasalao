@@ -115,7 +115,6 @@ export const AUTH_ROLE_PERMISSIONS: Record<AuthUserRole, AuthPermission[]> = {
     'services.view',
     'appointments.view', 'appointments.view_all', 'appointments.create', 'appointments.edit', 'appointments.cancel', 'appointments.confirm', 'appointments.complete', 'appointments.manage_waitlist',
     'finance.view', 'finance.register_payment', 'finance.manage_cash',
-    'dashboard.view',
     'promotions.view',
   ],
   PROFESSIONAL: [

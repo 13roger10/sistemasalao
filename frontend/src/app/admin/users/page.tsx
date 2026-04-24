@@ -35,18 +35,21 @@ const RoleBadge = ({ role }: { role: UserRole }) => {
     ADMIN: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400",
     PROFISSIONAL: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
     CLIENTE: "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300",
+    RECEPCIONISTA: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400",
   };
 
   const icons = {
     ADMIN: <Shield className="h-3 w-3" />,
     PROFISSIONAL: <Building2 className="h-3 w-3" />,
     CLIENTE: <UserIcon className="h-3 w-3" />,
+    RECEPCIONISTA: <UserIcon className="h-3 w-3" />,
   };
 
   const labels = {
     ADMIN: "Admin",
     PROFISSIONAL: "Profissional",
     CLIENTE: "Cliente",
+    RECEPCIONISTA: "Recepcionista",
   };
 
   return (

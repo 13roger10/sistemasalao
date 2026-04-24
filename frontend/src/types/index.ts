@@ -4,7 +4,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'user';
+  role: 'admin' | 'user' | 'receptionist';
   avatar?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -376,7 +376,7 @@ export interface CaptionEditorState {
 
 // ===== User Management Types (Sprint 2) =====
 
-export type UserRole = 'ADMIN' | 'PROFISSIONAL' | 'CLIENTE';
+export type UserRole = 'ADMIN' | 'PROFISSIONAL' | 'CLIENTE' | 'RECEPCIONISTA';
 export type UserPlano = 'FREE' | 'PRO' | 'PREMIUM';
 
 export interface UsuarioListItem {

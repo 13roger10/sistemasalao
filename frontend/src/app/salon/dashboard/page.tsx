@@ -734,7 +734,7 @@ function AdminDashboard() {
   ];
 
   return (
-    <SalonLayout pageTitle="Dashboard" requiredRole={["ADMIN", "RECEPCIONIST"]}>
+    <SalonLayout pageTitle="Dashboard" requiredRole={["ADMIN"]}>
       <div className="space-y-6">
         {/* Welcome message */}
         <div className="rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 p-6 text-white shadow-lg">

@@ -24,7 +24,7 @@ interface BackendLoginResponse {
     email: string;
     nome: string;
     telefone: string;
-    role: "ADMIN" | "PROFISSIONAL" | "CLIENTE";
+    role: "ADMIN" | "PROFISSIONAL" | "CLIENTE" | "RECEPCIONISTA";
     plano: string;
     emailVerificado: boolean;
     criadoEm: string;
@@ -53,7 +53,7 @@ function mapBackendUserToFrontend(backendUser: BackendLoginResponse["user"]): Us
     id: backendUser.id.toString(),
     email: backendUser.email,
     name: backendUser.nome,
-    role: backendUser.role === "ADMIN" ? "admin" : "user",
+    role: backendUser.role === "ADMIN" ? "admin" : backendUser.role === "RECEPCIONISTA" ? "receptionist" : "user",
     avatar: undefined,
     createdAt: new Date(backendUser.criadoEm),
     updatedAt: new Date(backendUser.ultimoLogin || backendUser.criadoEm),

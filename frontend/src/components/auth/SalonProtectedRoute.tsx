@@ -82,7 +82,7 @@ export function SalonProtectedRoute({
       // Redireciona para uma página apropriada baseada na role
       const roleRedirects: Record<AuthUserRole, string> = {
         ADMIN: "/salon/dashboard",
-        RECEPCIONIST: "/salon/dashboard",
+        RECEPCIONIST: "/recepcao",
         PROFESSIONAL: "/salon/professional",
         CLIENT: "/salon/book",
       };

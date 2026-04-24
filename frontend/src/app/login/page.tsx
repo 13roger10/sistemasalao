@@ -18,6 +18,17 @@ export default function LoginPage() {
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [totpCode, setTotpCode] = useState("");
 
+  const getRedirectUrl = () => {
+    try {
+      const userStr = localStorage.getItem("auth_user");
+      const user = userStr ? JSON.parse(userStr) : null;
+      if (user?.role === "receptionist") return "/recepcao";
+    } catch {
+      // fallback
+    }
+    return "/admin/welcome";
+  };
+
   const handleSubmitCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -26,7 +37,7 @@ export default function LoginPage() {
       if (requiresTwoFactor) {
         setStep("totp");
       } else {
-        window.location.href = "/admin/welcome";
+        window.location.href = getRedirectUrl();
       }
     } catch {
       showError("Falha no login", "Email ou senha inválidos");
@@ -43,7 +54,7 @@ export default function LoginPage() {
 
     try {
       await login(formData.email, formData.password, totpCode);
-      window.location.href = "/admin/welcome";
+      window.location.href = getRedirectUrl();
     } catch {
       showError("Código inválido", "Verifique o app autenticador e tente novamente.");
       setTotpCode("");
