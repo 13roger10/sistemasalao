@@ -10,6 +10,7 @@ import com.belezza.api.repository.ProfissionalRepository;
 import com.belezza.api.repository.UsuarioRepository;
 import com.belezza.api.security.annotation.ProfissionalOrAdmin;
 import com.belezza.api.service.AgendamentoService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.belezza.api.service.DisponibilidadeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -160,7 +161,7 @@ public class AgendamentoController {
     }
 
     @PostMapping("/{id}/confirmar")
-    @ProfissionalOrAdmin
+    @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
     @Operation(summary = "Confirmar agendamento", description = "Confirma um agendamento pendente")
     public ResponseEntity<AgendamentoResponse> confirmar(
             @PathVariable Long id,
@@ -171,7 +172,7 @@ public class AgendamentoController {
     }
 
     @PostMapping("/{id}/iniciar")
-    @ProfissionalOrAdmin
+    @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
     @Operation(summary = "Iniciar atendimento", description = "Marca agendamento como em andamento")
     public ResponseEntity<AgendamentoResponse> iniciar(
             @PathVariable Long id,
@@ -182,7 +183,7 @@ public class AgendamentoController {
     }
 
     @PostMapping("/{id}/concluir")
-    @ProfissionalOrAdmin
+    @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
     @Operation(summary = "Concluir atendimento", description = "Marca agendamento como concluído")
     public ResponseEntity<AgendamentoResponse> concluir(
             @PathVariable Long id,
@@ -215,7 +216,7 @@ public class AgendamentoController {
     }
 
     @PostMapping("/{id}/no-show")
-    @ProfissionalOrAdmin
+    @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
     @Operation(summary = "Marcar no-show", description = "Marca cliente como não compareceu")
     public ResponseEntity<AgendamentoResponse> marcarNoShow(
             @PathVariable Long id,
