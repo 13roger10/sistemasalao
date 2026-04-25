@@ -47,10 +47,10 @@ public class AgendamentoController {
 
     private boolean shouldRestrictSensitiveData(UserDetails userDetails) {
         if (userDetails == null) return true;
-        boolean isAdmin = userDetails.getAuthorities().stream()
+        // ADMIN and RECEPCIONISTA can see client phone and appointment notes
+        return userDetails.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
-                .anyMatch(auth -> auth.equals("ROLE_ADMIN"));
-        return !isAdmin;
+                .noneMatch(auth -> auth.equals("ROLE_ADMIN") || auth.equals("ROLE_RECEPCIONISTA"));
     }
 
     private boolean isProfissional(UserDetails userDetails) {

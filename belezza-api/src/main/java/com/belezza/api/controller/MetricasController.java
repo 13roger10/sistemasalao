@@ -5,6 +5,7 @@ import com.belezza.api.dto.metricas.MetricasFinanceirasResponse;
 import com.belezza.api.dto.metricas.MetricasSocialResponse;
 import com.belezza.api.dto.metricas.PeriodoFilter;
 import com.belezza.api.security.annotation.Authenticated;
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.belezza.api.service.MetricasAgendamentoService;
 import com.belezza.api.service.MetricasFinanceirasService;
 import com.belezza.api.service.MetricasSocialService;
@@ -27,6 +28,7 @@ import java.time.LocalDate;
 @RequestMapping("/api/metricas")
 @RequiredArgsConstructor
 @Slf4j
+@PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL')")
 @Tag(name = "Métricas", description = "Relatórios e métricas do salão")
 public class MetricasController {
 

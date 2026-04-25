@@ -35,7 +35,7 @@ export function ProtectedRoute({
     if (!isLoading && isAuthenticated && user && !hasRedirected.current) {
       if (!hasRequiredRole(user.role, requiredRole)) {
         hasRedirected.current = true;
-        router.push("/login");
+        router.push(user.role === "receptionist" ? "/recepcao/acesso-negado" : "/login");
       }
     }
   }, [isLoading, isAuthenticated, user, requiredRole, router]);
