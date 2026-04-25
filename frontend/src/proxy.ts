@@ -154,6 +154,15 @@ export default function proxy(request: NextRequest) {
       return addSecurityHeaders(NextResponse.redirect(loginUrl));
     }
 
+    // Bloqueia RECEPCIONISTA de acessar a área admin
+    if (isProtectedRoute && adminToken) {
+      const adminPayload = decodeJwtPayload(adminToken);
+      if (normalizeRole(adminPayload?.role) === 'RECEPCIONIST') {
+        log("RECEPCIONISTA blocked from /admin, redirecting to /recepcao/acesso-negado");
+        return addSecurityHeaders(NextResponse.redirect(new URL('/recepcao/acesso-negado', request.url)));
+      }
+    }
+
     return addSecurityHeaders(NextResponse.next());
   }
 
@@ -167,8 +176,16 @@ export default function proxy(request: NextRequest) {
     // Obtém o token do cookie
     const salonToken = request.cookies.get('salon_auth_token')?.value;
 
-    // Se não tem token, redireciona para login
+    // Se não tem token, verifica se é RECEPCIONISTA tentando acessar área errada
     if (!salonToken) {
+      const adminToken = request.cookies.get('auth_token')?.value;
+      if (adminToken) {
+        const adminPayload = decodeJwtPayload(adminToken);
+        if (normalizeRole(adminPayload?.role) === 'RECEPCIONIST') {
+          log("RECEPCIONISTA blocked from /salon, redirecting to /recepcao/acesso-negado");
+          return addSecurityHeaders(NextResponse.redirect(new URL('/recepcao/acesso-negado', request.url)));
+        }
+      }
       log("No salon token found, redirecting to /salon/login");
       const loginUrl = new URL('/salon/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
