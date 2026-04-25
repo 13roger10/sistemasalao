@@ -83,6 +83,47 @@ public class ClienteService {
         return ClienteResponse.fromEntity(cliente);
     }
 
+    /** Creates a client directly with a known salonId — used by the receptionist role. */
+    @Transactional
+    @SuppressWarnings("null")
+    public ClienteResponse criarComSalonId(ClienteRequest request, Long salonId) {
+        Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(request.getEmail())
+                .orElseGet(() -> usuarioRepository.findByTelefone(request.getPhone())
+                        .orElse(null));
+
+        if (usuario == null) {
+            usuario = Usuario.builder()
+                    .nome(request.getName())
+                    .email(request.getEmail() != null ? request.getEmail() : request.getPhone() + "@cliente.belezza.ai")
+                    .telefone(request.getPhone())
+                    .password(passwordEncoder.encode(UUID.randomUUID().toString()))
+                    .role(Role.CLIENTE)
+                    .ativo(true)
+                    .build();
+            usuario = usuarioRepository.save(usuario);
+        }
+
+        if (clienteRepository.findByUsuarioIdAndSalonId(usuario.getId(), salonId).isPresent()) {
+            throw new BusinessException("Cliente já cadastrado neste salão");
+        }
+
+        Cliente cliente = Cliente.builder()
+                .usuario(usuario)
+                .salon(salonService.getSalonEntity(salonId))
+                .whatsapp(request.getWhatsapp())
+                .dataNascimento(request.getBirthDate())
+                .observacoes(request.getNotes())
+                .aceitaMarketing(request.getAcceptsMarketing() != null ? request.getAcceptsMarketing() : true)
+                .aceitaWhatsApp(request.getAcceptsWhatsApp() != null ? request.getAcceptsWhatsApp() : true)
+                .aceitaEmail(request.getAcceptsEmail() != null ? request.getAcceptsEmail() : true)
+                .primeiraVisita(LocalDateTime.now())
+                .build();
+
+        cliente = clienteRepository.save(cliente);
+        log.info("Cliente criado pela recepção: {} no salão {}", cliente.getId(), salonId);
+        return ClienteResponse.fromEntity(cliente);
+    }
+
     @Transactional
     @SuppressWarnings("null")
     public ClienteResponse criarOuBuscar(Long salonId, String emailUsuario) {
