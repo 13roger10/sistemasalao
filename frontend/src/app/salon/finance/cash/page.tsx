@@ -201,6 +201,7 @@ const PaymentMethodCard = ({
 // ===== COMPONENTE PRINCIPAL =====
 export default function FinanceCashPage() {
   const { user } = useSalonAuth();
+  const isRecepcionist = user?.role === "RECEPCIONIST";
 
   // Estados principais
   const [currentCashRegister, setCurrentCashRegister] = useState<CashRegister | null>(null);
@@ -592,6 +593,16 @@ export default function FinanceCashPage() {
     };
   }, [dailyReport]);
 
+  // Para recepcionista: apenas as transações que ela mesma registrou
+  const visibleTransactions = isRecepcionist
+    ? transactions.filter((t) => t.createdById === user?.id)
+    : transactions;
+
+  // Total de entradas visíveis (calculado da lista filtrada para recepcionista)
+  const minhasEntradas = visibleTransactions
+    .filter((t) => t.type === "income")
+    .reduce((sum, t) => sum + t.amount, 0);
+
   // Colunas da tabela de transações
   const transactionColumns: Column<Transaction>[] = [
     {
@@ -655,9 +666,13 @@ export default function FinanceCashPage() {
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Caixa Diário</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              {isRecepcionist ? "Minhas Movimentações" : "Caixa Diário"}
+            </h1>
             <p className="text-gray-500 dark:text-gray-400">
-              Gerencie as movimentações financeiras do dia
+              {isRecepcionist
+                ? "Pagamentos registrados por você hoje"
+                : "Gerencie as movimentações financeiras do dia"}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -667,20 +682,24 @@ export default function FinanceCashPage() {
               onChange={(e) => setSelectedDate(new Date(e.target.value))}
               className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             />
-            <Button
-              variant="secondary"
-              onClick={() => setIsLogsModalOpen(true)}
-              leftIcon={<History className="h-4 w-4" />}
-            >
-              Logs
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={handleExportExcel}
-              leftIcon={<Download className="h-4 w-4" />}
-            >
-              Exportar
-            </Button>
+            {!isRecepcionist && (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => setIsLogsModalOpen(true)}
+                  leftIcon={<History className="h-4 w-4" />}
+                >
+                  Logs
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={handleExportExcel}
+                  leftIcon={<Download className="h-4 w-4" />}
+                >
+                  Exportar
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
@@ -717,82 +736,114 @@ export default function FinanceCashPage() {
             </div>
 
             <div className="flex gap-2">
-              {!currentCashRegister || currentCashRegister.status === "closed" ? (
-                <Button
-                  onClick={() => setIsOpenCashModalOpen(true)}
-                  leftIcon={<Unlock className="h-4 w-4" />}
-                >
-                  Abrir Caixa
-                </Button>
-              ) : (
-                <>
+              {isRecepcionist ? (
+                // Recepcionista: apenas registra lançamentos quando o caixa está aberto
+                currentCashRegister?.status === "open" && (
                   <Button
-                    variant="secondary"
-                    onClick={() => setIsWithdrawalModalOpen(true)}
-                    leftIcon={<Minus className="h-4 w-4" />}
-                  >
-                    Sangria
-                  </Button>
-                  <Button
-                    variant="secondary"
                     onClick={() => setIsAddTransactionModalOpen(true)}
                     leftIcon={<Plus className="h-4 w-4" />}
                   >
-                    Lançamento
+                    Registrar Pagamento
                   </Button>
+                )
+              ) : (
+                !currentCashRegister || currentCashRegister.status === "closed" ? (
                   <Button
-                    onClick={() => setIsCloseCashModalOpen(true)}
-                    leftIcon={<Lock className="h-4 w-4" />}
+                    onClick={() => setIsOpenCashModalOpen(true)}
+                    leftIcon={<Unlock className="h-4 w-4" />}
                   >
-                    Fechar Caixa
+                    Abrir Caixa
                   </Button>
-                </>
+                ) : (
+                  <>
+                    <Button
+                      variant="secondary"
+                      onClick={() => setIsWithdrawalModalOpen(true)}
+                      leftIcon={<Minus className="h-4 w-4" />}
+                    >
+                      Sangria
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => setIsAddTransactionModalOpen(true)}
+                      leftIcon={<Plus className="h-4 w-4" />}
+                    >
+                      Lançamento
+                    </Button>
+                    <Button
+                      onClick={() => setIsCloseCashModalOpen(true)}
+                      leftIcon={<Lock className="h-4 w-4" />}
+                    >
+                      Fechar Caixa
+                    </Button>
+                  </>
+                )
               )}
             </div>
           </div>
         </div>
 
         {/* Cards de Estatísticas */}
-        {dailyReport && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {isRecepcionist ? (
+          // Recepcionista: apenas o total das entradas que ela registrou
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <StatsCard
               icon={<ArrowUpRight className="h-5 w-5 text-green-500" />}
-              label="Entradas"
-              value={formatCurrency(dailyReport.revenue.total)}
+              label="Minhas Entradas"
+              value={formatCurrency(minhasEntradas)}
               color="bg-green-100 dark:bg-green-900/30"
-              subtitle={`${dailyReport.appointments.completed} atendimentos`}
-            />
-            <StatsCard
-              icon={<ArrowDownRight className="h-5 w-5 text-red-500" />}
-              label="Saídas"
-              value={formatCurrency(dailyReport.expenses.total)}
-              color="bg-red-100 dark:bg-red-900/30"
-            />
-            <StatsCard
-              icon={<DollarSign className="h-5 w-5 text-violet-500" />}
-              label="Lucro"
-              value={formatCurrency(dailyReport.profit)}
-              color="bg-violet-100 dark:bg-violet-900/30"
-              trend={{ value: 12, positive: true }}
+              subtitle={`${visibleTransactions.filter((t) => t.type === "income").length} pagamentos registrados`}
             />
             <StatsCard
               icon={<Receipt className="h-5 w-5 text-blue-500" />}
-              label="Ticket Médio"
-              value={formatCurrency(dailyReport.averageTicket)}
+              label="Transações Registradas"
+              value={String(visibleTransactions.length)}
               color="bg-blue-100 dark:bg-blue-900/30"
-            />
-            <StatsCard
-              icon={<Wallet className="h-5 w-5 text-amber-500" />}
-              label="Saldo em Caixa"
-              value={formatCurrency(expectedBalance)}
-              color="bg-amber-100 dark:bg-amber-900/30"
-              subtitle="Dinheiro disponível"
+              subtitle="Movimentações do dia"
             />
           </div>
+        ) : (
+          dailyReport && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              <StatsCard
+                icon={<ArrowUpRight className="h-5 w-5 text-green-500" />}
+                label="Entradas"
+                value={formatCurrency(dailyReport.revenue.total)}
+                color="bg-green-100 dark:bg-green-900/30"
+                subtitle={`${dailyReport.appointments.completed} atendimentos`}
+              />
+              <StatsCard
+                icon={<ArrowDownRight className="h-5 w-5 text-red-500" />}
+                label="Saídas"
+                value={formatCurrency(dailyReport.expenses.total)}
+                color="bg-red-100 dark:bg-red-900/30"
+              />
+              <StatsCard
+                icon={<DollarSign className="h-5 w-5 text-violet-500" />}
+                label="Lucro"
+                value={formatCurrency(dailyReport.profit)}
+                color="bg-violet-100 dark:bg-violet-900/30"
+                trend={{ value: 12, positive: true }}
+              />
+              <StatsCard
+                icon={<Receipt className="h-5 w-5 text-blue-500" />}
+                label="Ticket Médio"
+                value={formatCurrency(dailyReport.averageTicket)}
+                color="bg-blue-100 dark:bg-blue-900/30"
+              />
+              <StatsCard
+                icon={<Wallet className="h-5 w-5 text-amber-500" />}
+                label="Saldo em Caixa"
+                value={formatCurrency(expectedBalance)}
+                color="bg-amber-100 dark:bg-amber-900/30"
+                subtitle="Dinheiro disponível"
+              />
+            </div>
+          )
         )}
 
-        {/* Formas de Pagamento */}
-        {paymentMethodTotals && (
+        {/* Formas de Pagamento — visível apenas para ADMIN */}
+        {!isRecepcionist && paymentMethodTotals && (
           <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
             <h3 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
               Controle por Forma de Pagamento
@@ -836,15 +887,24 @@ export default function FinanceCashPage() {
         <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
           <div className="border-b border-gray-200 p-4 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Movimentações do Dia
+              {isRecepcionist ? "Meus Pagamentos Registrados" : "Movimentações do Dia"}
             </h3>
+            {isRecepcionist && (
+              <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+                Apenas os pagamentos registrados por você
+              </p>
+            )}
           </div>
           <DataTable
-            data={transactions}
+            data={visibleTransactions}
             columns={transactionColumns}
             keyExtractor={(item) => item.id}
             isLoading={isLoading}
-            emptyMessage="Nenhuma movimentação registrada"
+            emptyMessage={
+              isRecepcionist
+                ? "Nenhum pagamento registrado por você hoje"
+                : "Nenhuma movimentação registrada"
+            }
             striped
           />
         </div>
