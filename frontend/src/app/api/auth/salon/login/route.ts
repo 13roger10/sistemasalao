@@ -13,7 +13,7 @@ interface BackendAuthResponse {
     nome: string;
     telefone?: string;
     avatarUrl?: string;
-    role: "ADMIN" | "PROFISSIONAL" | "CLIENTE";
+    role: "ADMIN" | "PROFISSIONAL" | "CLIENTE" | "RECEPCIONISTA";
     plano: string;
     emailVerificado: boolean;
     criadoEm: string;
@@ -31,6 +31,7 @@ function mapBackendRole(backendRole: string): AuthUserRole {
     "ADMIN": "ADMIN",
     "PROFISSIONAL": "PROFESSIONAL",
     "CLIENTE": "CLIENT",
+    "RECEPCIONISTA": "RECEPCIONIST",
   };
   return roleMap[backendRole] || "CLIENT";
 }

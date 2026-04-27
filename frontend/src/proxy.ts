@@ -138,6 +138,16 @@ export default function proxy(request: NextRequest) {
 
     // Se o usuário já estiver autenticado e tentar acessar login
     if (pathname === "/login" && adminToken) {
+      const loginPayload = decodeJwtPayload(adminToken);
+      // Token inválido ou expirado — deixa o formulário de login ser exibido
+      if (!loginPayload || isTokenExpired(loginPayload)) {
+        return addSecurityHeaders(NextResponse.next());
+      }
+      const loginRole = normalizeRole(loginPayload?.role);
+      if (loginRole === 'RECEPCIONIST') {
+        log("Receptionist already authenticated, redirecting to /recepcao");
+        return addSecurityHeaders(NextResponse.redirect(new URL("/recepcao", request.url)));
+      }
       log("Redirecting authenticated user from /login to /admin/dashboard");
       return addSecurityHeaders(NextResponse.redirect(new URL("/admin/dashboard", request.url)));
     }
@@ -154,12 +164,12 @@ export default function proxy(request: NextRequest) {
       return addSecurityHeaders(NextResponse.redirect(loginUrl));
     }
 
-    // Bloqueia RECEPCIONISTA de acessar a área admin
+    // Redireciona RECEPCIONISTA para a área correta ao tentar acessar /admin
     if (isProtectedRoute && adminToken) {
       const adminPayload = decodeJwtPayload(adminToken);
       if (normalizeRole(adminPayload?.role) === 'RECEPCIONIST') {
-        log("RECEPCIONISTA blocked from /admin, redirecting to /recepcao/acesso-negado");
-        return addSecurityHeaders(NextResponse.redirect(new URL('/recepcao/acesso-negado', request.url)));
+        log("RECEPCIONISTA redirected from /admin to /recepcao");
+        return addSecurityHeaders(NextResponse.redirect(new URL('/recepcao', request.url)));
       }
     }
 
@@ -182,8 +192,8 @@ export default function proxy(request: NextRequest) {
       if (adminToken) {
         const adminPayload = decodeJwtPayload(adminToken);
         if (normalizeRole(adminPayload?.role) === 'RECEPCIONIST') {
-          log("RECEPCIONISTA blocked from /salon, redirecting to /recepcao/acesso-negado");
-          return addSecurityHeaders(NextResponse.redirect(new URL('/recepcao/acesso-negado', request.url)));
+          log("RECEPCIONISTA redirected from /salon to /recepcao");
+          return addSecurityHeaders(NextResponse.redirect(new URL('/recepcao', request.url)));
         }
       }
       log("No salon token found, redirecting to /salon/login");

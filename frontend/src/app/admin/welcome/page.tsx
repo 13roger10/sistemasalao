@@ -40,9 +40,9 @@ export default function WelcomePage() {
 
   useEffect(() => {
     if (redirect) {
-      router.replace("/admin/dashboard");
+      router.replace(user?.role === "receptionist" ? "/recepcao" : "/admin/dashboard");
     }
-  }, [redirect, router]);
+  }, [redirect, router, user]);
 
   if (isLoading) {
     return (

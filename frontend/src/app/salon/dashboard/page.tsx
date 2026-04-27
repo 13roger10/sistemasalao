@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { useSalonAuth, Can } from "@/contexts/SalonAuthContext";
 import { appointmentService } from "@/services/salon/appointmentService";
@@ -28,6 +29,12 @@ import {
   XCircle,
   RefreshCw,
   Wallet,
+  UserCheck,
+  CreditCard,
+  ScanLine,
+  Timer,
+  MessageCircle,
+  List,
 } from "lucide-react";
 import {
   AreaChart,
@@ -1166,9 +1173,260 @@ function AdminDashboard() {
   );
 }
 
+// ===== DASHBOARD RECEPCIONISTA =====
+interface ReceptionAppointment {
+  id: number;
+  clienteNome: string;
+  clienteTelefone: string;
+  profissionalNome: string;
+  servicos: string[];
+  dataHora: string;
+  status: string;
+  statusDescricao: string;
+  pagamentoStatus: string | null;
+  pagamentoStatusDescricao: string | null;
+  valorPago: number | null;
+}
+
+const STATUS_APPT: Record<string, { label: string; cls: string }> = {
+  PENDENTE:     { label: 'Pendente',       cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300' },
+  CONFIRMADO:   { label: 'Confirmado',     cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+  EM_ANDAMENTO: { label: 'Em atendimento', cls: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300' },
+  CONCLUIDO:    { label: 'Concluído',      cls: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400' },
+  CANCELADO:    { label: 'Cancelado',      cls: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400' },
+  NO_SHOW:      { label: 'Não compareceu', cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300' },
+};
+
+const STATUS_PAG: Record<string, { label: string; cls: string }> = {
+  PAGO:    { label: 'Pago',     cls: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' },
+  PENDENTE:{ label: 'Pendente', cls: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400' },
+};
+
+function ReceptionistDashboard() {
+  const { user } = useSalonAuth();
+  const [appointments, setAppointments] = useState<ReceptionAppointment[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const resp = await api.get<ReceptionAppointment[] | { data?: ReceptionAppointment[]; content?: ReceptionAppointment[] }>(
+        `/api/recepcao/appointments?date=${today}&salonId=1`
+      );
+      const list = Array.isArray(resp)
+        ? resp
+        : (resp as { data?: ReceptionAppointment[]; content?: ReceptionAppointment[] }).data
+          ?? (resp as { data?: ReceptionAppointment[]; content?: ReceptionAppointment[] }).content
+          ?? [];
+      setAppointments(list);
+    } catch {
+      setAppointments([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const todayLabel = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const totalHoje      = appointments.length;
+  const confirmados    = appointments.filter(a => ['CONFIRMADO', 'EM_ANDAMENTO'].includes(a.status)).length;
+  const emAndamento    = appointments.filter(a => a.status === 'EM_ANDAMENTO').length;
+  const pagPendente    = appointments.filter(a => !a.pagamentoStatus || a.pagamentoStatus === 'PENDENTE').length;
+
+  const quickActions = [
+    { href: '/recepcao/checkin',               icon: ScanLine,       label: 'Check-in',         bg: 'bg-teal-50 border-teal-100 hover:bg-teal-100 dark:bg-teal-900/20 dark:border-teal-900/40',   text: 'text-teal-700 dark:text-teal-300',   iconCls: 'text-teal-600 dark:text-teal-400' },
+    { href: '/recepcao/confirmacao-pagamento', icon: CreditCard,     label: 'Confirmar Pgto.',   bg: 'bg-green-50 border-green-100 hover:bg-green-100 dark:bg-green-900/20 dark:border-green-900/40', text: 'text-green-700 dark:text-green-300', iconCls: 'text-green-600 dark:text-green-400' },
+    { href: '/recepcao/fila',                  icon: Timer,          label: 'Fila / Encaixe',   bg: 'bg-amber-50 border-amber-100 hover:bg-amber-100 dark:bg-amber-900/20 dark:border-amber-900/40', text: 'text-amber-700 dark:text-amber-300', iconCls: 'text-amber-600 dark:text-amber-400' },
+    { href: '/recepcao/agenda',                icon: Calendar,       label: 'Agenda',            bg: 'bg-violet-50 border-violet-100 hover:bg-violet-100 dark:bg-violet-900/20 dark:border-violet-900/40', text: 'text-violet-700 dark:text-violet-300', iconCls: 'text-violet-600 dark:text-violet-400' },
+    { href: '/recepcao/lista-do-dia',          icon: List,           label: 'Lista do Dia',      bg: 'bg-orange-50 border-orange-100 hover:bg-orange-100 dark:bg-orange-900/20 dark:border-orange-900/40', text: 'text-orange-700 dark:text-orange-300', iconCls: 'text-orange-600 dark:text-orange-400' },
+    { href: '/recepcao/clientes',              icon: Users,          label: 'Clientes',           bg: 'bg-blue-50 border-blue-100 hover:bg-blue-100 dark:bg-blue-900/20 dark:border-blue-900/40',   text: 'text-blue-700 dark:text-blue-300',   iconCls: 'text-blue-600 dark:text-blue-400' },
+    { href: '/recepcao/atendimento',           icon: UserCheck,      label: 'Atendimento',       bg: 'bg-indigo-50 border-indigo-100 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-900/40', text: 'text-indigo-700 dark:text-indigo-300', iconCls: 'text-indigo-600 dark:text-indigo-400' },
+    { href: '/recepcao/comunicacao',           icon: MessageCircle,  label: 'Comunicação',       bg: 'bg-pink-50 border-pink-100 hover:bg-pink-100 dark:bg-pink-900/20 dark:border-pink-900/40',   text: 'text-pink-700 dark:text-pink-300',   iconCls: 'text-pink-600 dark:text-pink-400' },
+  ];
+
+  return (
+    <SalonLayout pageTitle="Recepção" requiredRole={["ADMIN", "RECEPCIONIST"]}>
+      <div className="space-y-6">
+
+        {/* Banner de boas-vindas */}
+        <div className="rounded-xl bg-gradient-to-r from-teal-600 to-violet-600 p-6 text-white shadow-lg">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold">
+                Olá, {user?.name?.split(' ')[0] || 'Recepcionista'}!
+              </h2>
+              <p className="mt-1 capitalize text-teal-100">{todayLabel}</p>
+            </div>
+            {isLoading ? (
+              <RefreshCw className="h-6 w-6 animate-spin text-white/70" />
+            ) : (
+              <div className="flex items-center gap-4 rounded-lg bg-white/10 px-4 py-3 backdrop-blur-sm">
+                <div className="text-center">
+                  <p className="text-2xl font-bold">{totalHoje}</p>
+                  <p className="text-xs text-teal-200">Agendamentos</p>
+                </div>
+                <div className="h-10 w-px bg-white/20" />
+                <div className="text-center">
+                  <p className="text-2xl font-bold">{emAndamento}</p>
+                  <p className="text-xs text-teal-200">Em atendimento</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Stat cards */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            title="Agendamentos Hoje"
+            value={isLoading ? '—' : totalHoje}
+            icon={<Calendar className="h-6 w-6 text-violet-600 dark:text-violet-400" />}
+            iconBg="bg-violet-100 dark:bg-violet-900/30"
+            subtitle="agenda do dia"
+          />
+          <StatCard
+            title="Confirmados / Ativos"
+            value={isLoading ? '—' : confirmados}
+            icon={<UserCheck className="h-6 w-6 text-blue-600 dark:text-blue-400" />}
+            iconBg="bg-blue-100 dark:bg-blue-900/30"
+            subtitle={`${emAndamento} em atendimento`}
+          />
+          <StatCard
+            title="Aguard. Pagamento"
+            value={isLoading ? '—' : pagPendente}
+            icon={<CreditCard className="h-6 w-6 text-orange-600 dark:text-orange-400" />}
+            iconBg="bg-orange-100 dark:bg-orange-900/30"
+            subtitle="pagamentos pendentes"
+          />
+          <StatCard
+            title="Concluídos"
+            value={isLoading ? '—' : appointments.filter(a => a.status === 'CONCLUIDO').length}
+            icon={<CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />}
+            iconBg="bg-green-100 dark:bg-green-900/30"
+            subtitle="atendimentos finalizados"
+          />
+        </div>
+
+        {/* Ações rápidas */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+          {quickActions.map(({ href, icon: Icon, label, bg, text, iconCls }) => (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                'flex flex-col items-center gap-2 rounded-xl border p-4 text-center transition-colors',
+                bg
+              )}
+            >
+              <Icon className={cn('h-6 w-6', iconCls)} />
+              <span className={cn('text-xs font-medium', text)}>{label}</span>
+            </Link>
+          ))}
+        </div>
+
+        {/* Lista de agendamentos do dia */}
+        <div className="rounded-xl border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-800">
+          <div className="flex items-center justify-between border-b p-4 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-violet-500" />
+              <h3 className="font-semibold text-gray-900 dark:text-white">Agendamentos de Hoje</h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                {totalHoje} agendamentos
+              </span>
+              <button
+                onClick={load}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div className="flex h-48 items-center justify-center">
+              <RefreshCw className="h-6 w-6 animate-spin text-violet-500" />
+            </div>
+          ) : appointments.length === 0 ? (
+            <div className="flex h-48 items-center justify-center text-gray-400 dark:text-gray-600">
+              <div className="text-center">
+                <Calendar className="mx-auto mb-2 h-10 w-10 opacity-30" />
+                <p className="text-sm">Nenhum agendamento para hoje</p>
+              </div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Horário</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Cliente</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Profissional</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Serviço</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Pagamento</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y dark:divide-gray-700">
+                  {appointments
+                    .slice()
+                    .sort((a, b) => new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime())
+                    .map(appt => {
+                      const time = new Date(appt.dataHora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                      const apptStatus  = STATUS_APPT[appt.status]  ?? { label: appt.status, cls: 'bg-gray-100 text-gray-600' };
+                      const pagStatus   = appt.pagamentoStatus ? STATUS_PAG[appt.pagamentoStatus] ?? { label: appt.pagamentoStatus, cls: 'bg-gray-100 text-gray-600' } : null;
+                      return (
+                        <tr key={appt.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                          <td className="whitespace-nowrap px-4 py-3 font-bold text-gray-900 dark:text-white">
+                            {time}
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-gray-900 dark:text-white">{appt.clienteNome}</p>
+                            {appt.clienteTelefone && (
+                              <p className="text-xs text-gray-500 dark:text-gray-400">{appt.clienteTelefone}</p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                            {appt.profissionalNome ?? '—'}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                            {appt.servicos?.join(', ') || '—'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', apptStatus.cls)}>
+                              {apptStatus.label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            {pagStatus ? (
+                              <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', pagStatus.cls)}>
+                                {pagStatus.label}
+                              </span>
+                            ) : (
+                              <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-400 dark:bg-gray-700 dark:text-gray-500">
+                                —
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+      </div>
+    </SalonLayout>
+  );
+}
+
 // ===== ROTEADOR DE DASHBOARD =====
-// Garante que PROFESSIONAL nunca vê o dashboard geral do admin.
-// Hooks chamados incondicionalmente — sem violação das Rules of Hooks.
+// Cada role vê seu dashboard específico — sem redirecionamentos externos.
 export default function SalonDashboardPage() {
   const { user, isLoading } = useSalonAuth();
 
@@ -1180,6 +1438,7 @@ export default function SalonDashboardPage() {
     );
   }
 
-  if (user?.role === 'PROFESSIONAL') return <ProfessionalDashboard />;
+  if (user?.role === 'PROFESSIONAL')  return <ProfessionalDashboard />;
+  if (user?.role === 'RECEPCIONIST')  return <ReceptionistDashboard />;
   return <AdminDashboard />;
 }
