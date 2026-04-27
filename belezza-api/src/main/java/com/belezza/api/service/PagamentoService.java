@@ -4,8 +4,10 @@ import com.belezza.api.dto.pagamento.PagamentoRequest;
 import com.belezza.api.dto.pagamento.PagamentoResponse;
 import com.belezza.api.entity.Agendamento;
 import com.belezza.api.entity.Pagamento;
+import com.belezza.api.entity.Role;
 import com.belezza.api.entity.StatusAgendamento;
 import com.belezza.api.entity.StatusPagamento;
+import com.belezza.api.entity.Usuario;
 import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.AgendamentoRepository;
@@ -30,7 +32,7 @@ public class PagamentoService {
 
     @Transactional
     @Auditable(action = "CREATE", entityType = "Pagamento", captureNewState = true)
-    public PagamentoResponse registrar(PagamentoRequest request) {
+    public PagamentoResponse registrar(PagamentoRequest request, Usuario operador) {
         Agendamento agendamento = agendamentoRepository.findById(request.getAgendamentoId())
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento", request.getAgendamentoId()));
 
@@ -50,10 +52,13 @@ public class PagamentoService {
                 .forma(request.getForma())
                 .status(StatusPagamento.APROVADO)
                 .processadoEm(LocalDateTime.now())
+                .registradoPorId(operador.getId())
+                .registradoPorNome(operador.getNome())
                 .build();
 
         pagamento = pagamentoRepository.save(pagamento);
-        log.info("Pagamento registrado: {} para agendamento {}", pagamento.getId(), request.getAgendamentoId());
+        log.info("Pagamento registrado: {} para agendamento {} por {} (id={})",
+                pagamento.getId(), request.getAgendamentoId(), operador.getNome(), operador.getId());
 
         return PagamentoResponse.fromEntity(pagamento);
     }
@@ -65,8 +70,18 @@ public class PagamentoService {
         return PagamentoResponse.fromEntity(pagamento);
     }
 
+    /**
+     * Lista pagamentos do salão.
+     * RECEPCIONISTA: somente os pagamentos que ela mesma registrou.
+     * ADMIN / PROFISSIONAL: todos os pagamentos do salão.
+     */
     @Transactional(readOnly = true)
-    public Page<PagamentoResponse> listarPorSalon(Long salonId, Pageable pageable) {
+    public Page<PagamentoResponse> listarPorSalon(Long salonId, Pageable pageable, Usuario solicitante) {
+        if (solicitante.getRole() == Role.RECEPCIONISTA) {
+            return pagamentoRepository
+                    .findBySalonIdAndRegistradoPorId(salonId, solicitante.getId(), pageable)
+                    .map(PagamentoResponse::fromEntity);
+        }
         return pagamentoRepository.findBySalonId(salonId, pageable)
                 .map(PagamentoResponse::fromEntity);
     }

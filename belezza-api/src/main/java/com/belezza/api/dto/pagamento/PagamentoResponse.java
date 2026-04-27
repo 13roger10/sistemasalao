@@ -28,6 +28,8 @@ public class PagamentoResponse {
     private String transacaoId;
     private LocalDateTime processadoEm;
     private LocalDateTime criadoEm;
+    private Long registradoPorId;
+    private String registradoPorNome;
 
     public static PagamentoResponse fromEntity(Pagamento pagamento) {
         return PagamentoResponse.builder()
@@ -42,6 +44,8 @@ public class PagamentoResponse {
                 .transacaoId(pagamento.getTransacaoId())
                 .processadoEm(pagamento.getProcessadoEm())
                 .criadoEm(pagamento.getCriadoEm())
+                .registradoPorId(pagamento.getRegistradoPorId())
+                .registradoPorNome(pagamento.getRegistradoPorNome())
                 .build();
     }
 }

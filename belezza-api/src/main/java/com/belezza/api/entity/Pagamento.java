@@ -54,6 +54,14 @@ public class Pagamento {
 
     private LocalDateTime processadoEm;
 
+    /** ID do usuário que registrou o pagamento (pode ser ADMIN, PROFISSIONAL ou RECEPCIONISTA). */
+    @Column(name = "registrado_por_id")
+    private Long registradoPorId;
+
+    /** Nome snapshot do registrador, evita JOIN para auditoria. */
+    @Column(name = "registrado_por_nome", length = 150)
+    private String registradoPorNome;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private LocalDateTime criadoEm;

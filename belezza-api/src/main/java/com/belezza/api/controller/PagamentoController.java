@@ -2,9 +2,11 @@ package com.belezza.api.controller;
 
 import com.belezza.api.dto.pagamento.PagamentoRequest;
 import com.belezza.api.dto.pagamento.PagamentoResponse;
+import com.belezza.api.entity.Usuario;
 import com.belezza.api.security.annotation.ProfissionalOrAdmin;
 import com.belezza.api.service.PagamentoService;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -29,8 +31,10 @@ public class PagamentoController {
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
     @Operation(summary = "Registrar pagamento", description = "Registra pagamento de um agendamento")
-    public ResponseEntity<PagamentoResponse> registrar(@Valid @RequestBody PagamentoRequest request) {
-        PagamentoResponse response = pagamentoService.registrar(request);
+    public ResponseEntity<PagamentoResponse> registrar(
+            @Valid @RequestBody PagamentoRequest request,
+            @AuthenticationPrincipal Usuario operador) {
+        PagamentoResponse response = pagamentoService.registrar(request, operador);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -44,17 +48,18 @@ public class PagamentoController {
 
     @GetMapping("/salon/{salonId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
-    @Operation(summary = "Listar por salão", description = "Lista pagamentos de um salão")
+    @Operation(summary = "Listar por salão", description = "Lista pagamentos do salão. RECEPCIONISTA recebe apenas os seus próprios registros.")
     public ResponseEntity<Page<PagamentoResponse>> listarPorSalon(
             @PathVariable Long salonId,
-            @PageableDefault(size = 20, sort = "criadoEm") Pageable pageable) {
-        Page<PagamentoResponse> response = pagamentoService.listarPorSalon(salonId, pageable);
+            @PageableDefault(size = 20, sort = "criadoEm") Pageable pageable,
+            @AuthenticationPrincipal Usuario solicitante) {
+        Page<PagamentoResponse> response = pagamentoService.listarPorSalon(salonId, pageable, solicitante);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{id}/estornar")
     @ProfissionalOrAdmin
-    @Operation(summary = "Estornar pagamento", description = "Estorna um pagamento aprovado")
+    @Operation(summary = "Estornar pagamento", description = "Estorna um pagamento aprovado. Exclusivo para ADMIN e PROFISSIONAL.")
     public ResponseEntity<PagamentoResponse> estornar(@PathVariable Long id) {
         PagamentoResponse response = pagamentoService.estornar(id);
         return ResponseEntity.ok(response);
