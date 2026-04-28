@@ -308,7 +308,7 @@ function ProfessionalDashboard() {
         commissionService.listByProfessional(String(user.professionalId)),
         reviewService.listByProfessional(String(user.professionalId)),
         api.get<{ content?: { valorTotalComissoes: number; status: string }[] }>(
-          `/api/pagamentos-profissional/profissional/${user.professionalId}`,
+          `/pagamentos-profissional/profissional/${user.professionalId}`,
           { page: 0, size: 500 }
         ),
       ]);
@@ -1212,7 +1212,7 @@ function ReceptionistDashboard() {
     try {
       const today = new Date().toISOString().split('T')[0];
       const resp = await api.get<ReceptionAppointment[] | { data?: ReceptionAppointment[]; content?: ReceptionAppointment[] }>(
-        `/api/recepcao/appointments?date=${today}&salonId=1`
+        `/recepcao/appointments?date=${today}&salonId=1`
       );
       const list = Array.isArray(resp)
         ? resp
