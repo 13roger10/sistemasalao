@@ -2,6 +2,8 @@ package com.belezza.api.controller;
 
 import com.belezza.api.dto.cliente.ClienteRequest;
 import com.belezza.api.dto.cliente.ClienteResponse;
+import com.belezza.api.entity.Role;
+import com.belezza.api.entity.Usuario;
 import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.service.ClienteService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,11 +38,20 @@ public class ClienteController {
     }
 
     @PostMapping
-    @Operation(summary = "Criar cliente", description = "Cria um novo cliente no salão")
+    @Operation(summary = "Criar cliente", description = "Cria um novo cliente no salão. RECEPCIONISTA usa salonId do request.")
     public ResponseEntity<ClienteResponse> criar(
             @Valid @RequestBody ClienteRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        ClienteResponse response = clienteService.criar(request, userDetails.getUsername());
+            @AuthenticationPrincipal Usuario operador) {
+        ClienteResponse response;
+        if (operador.getRole() == Role.RECEPCIONISTA) {
+            Long salonId = request.getSalonId();
+            if (salonId == null) {
+                return ResponseEntity.badRequest().build();
+            }
+            response = clienteService.criarComSalonId(request, salonId);
+        } else {
+            response = clienteService.criar(request, operador.getUsername());
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
