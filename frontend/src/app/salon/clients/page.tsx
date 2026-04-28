@@ -610,24 +610,15 @@ export default function ClientsPage() {
       const salonId = selectedUnitId ? Number(selectedUnitId) : 1;
 
       // 1. Criar o usuário com role CLIENTE
-      // Se o email já existe (409), o criarComSalonId do backend encontra o usuário e vincula
-      try {
-        await userService.create({
-          nome: newClientFormData.nome,
-          email: newClientFormData.email,
-          password: newClientFormData.password,
-          telefone: newClientFormData.telefone || undefined,
-          role: "CLIENTE",
-          plano: "FREE",
-          salonId,
-        });
-      } catch (createUserErr: unknown) {
-        const axiosErr = createUserErr as { response?: { status?: number } };
-        if (axiosErr?.response?.status !== 409) {
-          throw createUserErr;
-        }
-        // 409 = usuário já existe, prossegue para vincular como cliente
-      }
+      await userService.create({
+        nome: newClientFormData.nome,
+        email: newClientFormData.email,
+        password: newClientFormData.password,
+        telefone: newClientFormData.telefone || undefined,
+        role: "CLIENTE",
+        plano: "FREE",
+        salonId,
+      });
 
       // 2. Criar o perfil de cliente
       await clientService.create({
@@ -659,10 +650,14 @@ export default function ClientsPage() {
       setNewClientFormErrors({});
       loadClients();
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } } };
-      setNewClientFormErrors({
-        submit: err.response?.data?.message || "Erro ao criar cliente",
-      });
+      const err = error as { response?: { status?: number; data?: { message?: string } } };
+      if (err?.response?.status === 409) {
+        setNewClientFormErrors({ email: "Este email já está cadastrado no sistema" });
+      } else {
+        setNewClientFormErrors({
+          submit: err.response?.data?.message || "Erro ao criar cliente",
+        });
+      }
     } finally {
       setIsCreatingNewClient(false);
     }
