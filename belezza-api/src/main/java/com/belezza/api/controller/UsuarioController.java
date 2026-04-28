@@ -2,6 +2,7 @@ package com.belezza.api.controller;
 
 import com.belezza.api.dto.user.*;
 import com.belezza.api.entity.Role;
+import com.belezza.api.entity.Usuario;
 import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.service.UsuarioService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -59,19 +62,24 @@ public class UsuarioController {
     }
 
     @PostMapping
-    @AdminOnly
-    @Operation(summary = "Criar usuário", description = "Cria um novo usuário no sistema")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
+    @Operation(summary = "Criar usuário", description = "Cria um novo usuário. RECEPCIONISTA só pode criar usuários com role CLIENTE.")
     public ResponseEntity<UsuarioListResponse> criar(
             @Valid @RequestBody CreateUsuarioRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @AuthenticationPrincipal Usuario operador) {
 
-        if (userDetails == null) {
+        if (operador == null) {
             log.error("Tentativa de criar usuário sem autenticação válida");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        log.info("Requisição para criar usuário: {} por {}", request.getEmail(), userDetails.getUsername());
-        UsuarioListResponse response = usuarioService.criar(request, userDetails.getUsername());
+        // Recepcionista só pode criar clientes
+        if (operador.getRole() == Role.RECEPCIONISTA && request.getRole() != Role.CLIENTE) {
+            throw new AccessDeniedException("Recepcionista só pode criar usuários com role CLIENTE");
+        }
+
+        log.info("Requisição para criar usuário: {} por {}", request.getEmail(), operador.getUsername());
+        UsuarioListResponse response = usuarioService.criar(request, operador.getUsername());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 

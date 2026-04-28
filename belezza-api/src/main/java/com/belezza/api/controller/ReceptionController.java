@@ -8,6 +8,7 @@ import com.belezza.api.dto.cliente.ClienteResponse;
 import com.belezza.api.dto.pagamento.PagamentoRequest;
 import com.belezza.api.dto.pagamento.PagamentoResponse;
 import com.belezza.api.dto.recepcao.ReceptionAppointmentResponse;
+import com.belezza.api.entity.Usuario;
 import com.belezza.api.service.AgendamentoService;
 import com.belezza.api.service.ClienteService;
 import com.belezza.api.service.PagamentoService;
@@ -56,7 +57,8 @@ public class ReceptionController {
     )
     public ResponseEntity<List<ReceptionAppointmentResponse>> listarAgendamentos(
             @RequestParam Long salonId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @AuthenticationPrincipal Usuario operador) {
 
         LocalDate targetDate = date != null ? date : LocalDate.now();
         LocalDateTime dayStart = targetDate.atStartOfDay();
@@ -72,7 +74,7 @@ public class ReceptionController {
 
         // Fetch all payments for the salon and build lookup map
         Map<Long, PagamentoResponse> payMap = new HashMap<>();
-        pagamentoService.listarPorSalon(salonId, PageRequest.of(0, 500))
+        pagamentoService.listarPorSalon(salonId, PageRequest.of(0, 500), operador)
                 .getContent()
                 .forEach(p -> payMap.put(p.getAgendamentoId(), p));
 
@@ -149,14 +151,15 @@ public class ReceptionController {
     )
     public ResponseEntity<List<PagamentoResponse>> listarPagamentos(
             @RequestParam Long salonId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @AuthenticationPrincipal Usuario operador) {
 
         LocalDate targetDate = date != null ? date : LocalDate.now();
         LocalDateTime dayStart = targetDate.atStartOfDay();
         LocalDateTime dayEnd = targetDate.plusDays(1).atStartOfDay();
 
         List<PagamentoResponse> pagamentos = pagamentoService
-                .listarPorSalon(salonId, PageRequest.of(0, 500))
+                .listarPorSalon(salonId, PageRequest.of(0, 500), operador)
                 .getContent()
                 .stream()
                 .filter(p -> {
@@ -176,9 +179,10 @@ public class ReceptionController {
                       "Aceita: DINHEIRO, PIX, CARTAO_CREDITO, CARTAO_DEBITO."
     )
     public ResponseEntity<PagamentoResponse> confirmarPagamento(
-            @Valid @RequestBody PagamentoRequest request) {
+            @Valid @RequestBody PagamentoRequest request,
+            @AuthenticationPrincipal Usuario operador) {
 
-        PagamentoResponse response = pagamentoService.registrar(request);
+        PagamentoResponse response = pagamentoService.registrar(request, operador);
         log.info("POST /recepcao/confirm-payment agendamentoId={} → pagamentoId={}", request.getAgendamentoId(), response.getId());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }

@@ -22,6 +22,8 @@ import {
   ChevronRight,
   Check,
   Filter,
+  UserPlus,
+  Lock,
 } from "lucide-react";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { DataTable, ActionMenuItem, Column } from "@/components/ui/DataTable";
@@ -30,6 +32,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
 import { clientService } from "@/services/salon/clientService";
 import { api } from "@/services/salon/api";
+import { userService } from "@/services/user";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import { useUnit } from "@/contexts/UnitContext";
 
@@ -181,6 +184,23 @@ export default function ClientsPage() {
   const [clientHistory, setClientHistory] = useState<ClientHistory | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // Estados do modal Novo Cliente
+  const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
+  const [newClientFormData, setNewClientFormData] = useState({
+    nome: "",
+    email: "",
+    password: "",
+    telefone: "",
+    whatsapp: "",
+    birthDate: "",
+    notes: "",
+    acceptsMarketing: true,
+    acceptsWhatsApp: true,
+    acceptsEmail: true,
+  });
+  const [newClientFormErrors, setNewClientFormErrors] = useState<Record<string, string>>({});
+  const [isCreatingNewClient, setIsCreatingNewClient] = useState(false);
 
   // Estados do formulário
   const [formData, setFormData] = useState<ClientCreateInput>({
@@ -562,6 +582,83 @@ export default function ClientsPage() {
     setUserSearchTerm("");
   };
 
+  // Novo Cliente – validação
+  const validateNewClientForm = () => {
+    const errors: Record<string, string> = {};
+    if (!newClientFormData.nome.trim()) errors.nome = "Nome é obrigatório";
+    if (!newClientFormData.email.trim()) {
+      errors.email = "Email é obrigatório";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newClientFormData.email)) {
+      errors.email = "Email inválido";
+    }
+    if (!newClientFormData.password.trim()) {
+      errors.password = "Senha é obrigatória";
+    } else if (newClientFormData.password.length < 6) {
+      errors.password = "Senha deve ter pelo menos 6 caracteres";
+    }
+    if (!newClientFormData.telefone.trim()) errors.telefone = "Telefone é obrigatório";
+    if (!newClientFormData.birthDate) errors.birthDate = "Data de nascimento é obrigatória";
+    setNewClientFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // Novo Cliente – criar usuário + perfil de cliente
+  const handleCreateNewClient = async () => {
+    if (!validateNewClientForm()) return;
+    setIsCreatingNewClient(true);
+    try {
+      const salonId = selectedUnitId ? Number(selectedUnitId) : 1;
+
+      // 1. Criar o usuário com role CLIENTE
+      await userService.create({
+        nome: newClientFormData.nome,
+        email: newClientFormData.email,
+        password: newClientFormData.password,
+        telefone: newClientFormData.telefone || undefined,
+        role: "CLIENTE",
+        plano: "FREE",
+        salonId,
+      });
+
+      // 2. Criar o perfil de cliente
+      await clientService.create({
+        name: newClientFormData.nome,
+        phone: newClientFormData.telefone,
+        email: newClientFormData.email,
+        whatsapp: newClientFormData.whatsapp || newClientFormData.telefone,
+        birthDate: newClientFormData.birthDate ? new Date(newClientFormData.birthDate) : undefined,
+        notes: newClientFormData.notes,
+        acceptsMarketing: newClientFormData.acceptsMarketing,
+        acceptsWhatsApp: newClientFormData.acceptsWhatsApp,
+        acceptsEmail: newClientFormData.acceptsEmail,
+        salonId: String(salonId),
+      });
+
+      setIsNewClientModalOpen(false);
+      setNewClientFormData({
+        nome: "",
+        email: "",
+        password: "",
+        telefone: "",
+        whatsapp: "",
+        birthDate: "",
+        notes: "",
+        acceptsMarketing: true,
+        acceptsWhatsApp: true,
+        acceptsEmail: true,
+      });
+      setNewClientFormErrors({});
+      loadClients();
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      setNewClientFormErrors({
+        submit: err.response?.data?.message || "Erro ao criar cliente",
+      });
+    } finally {
+      setIsCreatingNewClient(false);
+    }
+  };
+
   // Funções do Wizard
   const handleSelectUser = (user: User) => {
     setSelectedUser(user);
@@ -742,9 +839,21 @@ export default function ClientsPage() {
             <p className="text-gray-500 dark:text-gray-400">Gerencie os clientes do salão</p>
           </div>
           {!isProfessional && (
-            <Button onClick={() => setIsCreateModalOpen(true)} leftIcon={<Search className="h-4 w-4" />}>
-              Buscar Cliente
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setIsCreateModalOpen(true)}
+                leftIcon={<Search className="h-4 w-4" />}
+              >
+                Buscar Cliente
+              </Button>
+              <Button
+                onClick={() => setIsNewClientModalOpen(true)}
+                leftIcon={<UserPlus className="h-4 w-4" />}
+              >
+                Novo Cliente
+              </Button>
+            </div>
           )}
         </div>
 
@@ -1538,6 +1647,174 @@ export default function ClientsPage() {
             </div>
           </div>
         ) : null}
+      </Modal>
+
+      {/* Modal de Novo Cliente */}
+      <Modal
+        isOpen={isNewClientModalOpen}
+        onClose={() => {
+          setIsNewClientModalOpen(false);
+          setNewClientFormData({
+            nome: "",
+            email: "",
+            password: "",
+            telefone: "",
+            whatsapp: "",
+            birthDate: "",
+            notes: "",
+            acceptsMarketing: true,
+            acceptsWhatsApp: true,
+            acceptsEmail: true,
+          });
+          setNewClientFormErrors({});
+        }}
+        title="Novo Cliente"
+        size="lg"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setIsNewClientModalOpen(false);
+                setNewClientFormErrors({});
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleCreateNewClient}
+              isLoading={isCreatingNewClient}
+              leftIcon={<UserPlus className="h-4 w-4" />}
+            >
+              Criar Cliente
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {newClientFormErrors.submit && (
+            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+              {newClientFormErrors.submit}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input
+              label="Nome *"
+              value={newClientFormData.nome}
+              onChange={(e) => setNewClientFormData({ ...newClientFormData, nome: e.target.value })}
+              error={newClientFormErrors.nome}
+              placeholder="Nome completo"
+              autoComplete="off"
+            />
+            <Input
+              label="Telefone *"
+              value={newClientFormData.telefone}
+              onChange={(e) => setNewClientFormData({ ...newClientFormData, telefone: e.target.value })}
+              error={newClientFormErrors.telefone}
+              placeholder="(00) 00000-0000"
+              leftIcon={<Phone className="h-4 w-4" />}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input
+              label="Email *"
+              type="email"
+              value={newClientFormData.email}
+              onChange={(e) => setNewClientFormData({ ...newClientFormData, email: e.target.value })}
+              error={newClientFormErrors.email}
+              placeholder="email@exemplo.com"
+              leftIcon={<Mail className="h-4 w-4" />}
+              autoComplete="off"
+            />
+            <Input
+              label="WhatsApp"
+              value={newClientFormData.whatsapp}
+              onChange={(e) => setNewClientFormData({ ...newClientFormData, whatsapp: e.target.value })}
+              placeholder="(00) 00000-0000"
+              leftIcon={<MessageCircle className="h-4 w-4" />}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input
+              label="Senha *"
+              type="password"
+              value={newClientFormData.password}
+              onChange={(e) => setNewClientFormData({ ...newClientFormData, password: e.target.value })}
+              error={newClientFormErrors.password}
+              placeholder="Mínimo 6 caracteres"
+              leftIcon={<Lock className="h-4 w-4" />}
+              autoComplete="new-password"
+            />
+            <Input
+              label="Data de Nascimento *"
+              type="date"
+              value={newClientFormData.birthDate}
+              onChange={(e) => setNewClientFormData({ ...newClientFormData, birthDate: e.target.value })}
+              error={newClientFormErrors.birthDate}
+              leftIcon={<Calendar className="h-4 w-4" />}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Observações
+            </label>
+            <textarea
+              value={newClientFormData.notes}
+              onChange={(e) => setNewClientFormData({ ...newClientFormData, notes: e.target.value })}
+              placeholder="Preferências, alergias, observações gerais..."
+              rows={2}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
+            />
+          </div>
+
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800">
+            <label className="mb-3 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Preferências de Comunicação
+            </label>
+            <div className="flex flex-wrap gap-4">
+              <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-700">
+                <input
+                  type="checkbox"
+                  checked={newClientFormData.acceptsWhatsApp}
+                  onChange={(e) => setNewClientFormData({ ...newClientFormData, acceptsWhatsApp: e.target.checked })}
+                  className="h-5 w-5 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
+                />
+                <div>
+                  <span className="font-medium text-gray-900 dark:text-white">WhatsApp</span>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Receber mensagens</p>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-700">
+                <input
+                  type="checkbox"
+                  checked={newClientFormData.acceptsEmail}
+                  onChange={(e) => setNewClientFormData({ ...newClientFormData, acceptsEmail: e.target.checked })}
+                  className="h-5 w-5 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
+                />
+                <div>
+                  <span className="font-medium text-gray-900 dark:text-white">Email</span>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Receber emails</p>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-700">
+                <input
+                  type="checkbox"
+                  checked={newClientFormData.acceptsMarketing}
+                  onChange={(e) => setNewClientFormData({ ...newClientFormData, acceptsMarketing: e.target.checked })}
+                  className="h-5 w-5 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
+                />
+                <div>
+                  <span className="font-medium text-gray-900 dark:text-white">Marketing</span>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Promoções e novidades</p>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
       </Modal>
 
       {/* Modal de Confirmação de Exclusão */}
