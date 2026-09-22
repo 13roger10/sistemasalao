@@ -27,6 +27,7 @@ import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import { useUnit } from "@/contexts/UnitContext";
 import { professionalService } from "@/services/salon/professionalService";
 import { serviceService } from "@/services/salon/serviceService";
+import { dashboardService } from "@/services/salon/dashboardService";
 import { api } from "@/services/salon/api";
 import type { Professional, ProfessionalCreateInput, ProfessionalUpdateInput, Service } from "@/types/salon";
 
@@ -208,6 +209,25 @@ export default function ProfessionalsPage() {
       setProfessionals(response.data);
       setTotalPages(response.meta.totalPages);
       setTotalItems(response.meta.total);
+
+      // Enriquece com faturamento/avaliação reais (vindos de Pagamento/Avaliacao) do mês atual
+      try {
+        const ranking = await dashboardService.getRankingProfissionais("MENSAL");
+        const rankingPorId = new Map(ranking.map((r) => [String(r.profissionalId), r]));
+        setProfessionals((current) =>
+          current.map((professional) => {
+            const dados = rankingPorId.get(String(professional.id));
+            if (!dados) return professional;
+            return {
+              ...professional,
+              totalRevenue: dados.faturamento,
+              averageRating: dados.avaliacaoMedia > 0 ? dados.avaliacaoMedia : professional.averageRating,
+            };
+          })
+        );
+      } catch (rankingError) {
+        console.error("Erro ao carregar ranking de faturamento:", rankingError);
+      }
     } catch (error) {
       console.error("Erro ao carregar profissionais:", error);
       setProfessionals([]);
@@ -464,6 +484,15 @@ export default function ProfessionalsPage() {
       render: (item) => (
         <span className="font-medium text-gray-900 dark:text-white">
           {item.commissionType === "percentage" ? `${item.commissionValue}%` : `R$ ${item.commissionValue}`}
+        </span>
+      ),
+    },
+    {
+      key: "totalRevenue",
+      header: "Faturamento (mês)",
+      render: (item) => (
+        <span className="font-medium text-gray-900 dark:text-white">
+          {(item.totalRevenue || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
         </span>
       ),
     },
