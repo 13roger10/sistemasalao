@@ -34,6 +34,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
 import { DataTable, Column, ActionMenuItem } from "@/components/ui/DataTable";
 import { financeService } from "@/services/salon/financeService";
+import { api } from "@/services/salon/api";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import type {
   CashRegister,
@@ -48,6 +49,29 @@ import type {
 import type { PaymentMethod } from "@/types/salon/common";
 
 // ===== TIPOS =====
+
+// Agendamento pendente de pagamento (vindo direto do backend Java)
+interface ServicoAgendadoDTO {
+  servicoNome: string;
+}
+
+interface AgendamentoPendente {
+  id: number;
+  clienteNome: string;
+  profissionalNome: string;
+  servicos: ServicoAgendadoDTO[];
+  servicoNome?: string;
+  dataHora: string;
+  status: string;
+  valorCobrado?: number;
+}
+
+interface PagamentoBackend {
+  id: number;
+  agendamentoId: number;
+  status: string;
+}
+
 interface AuditLog {
   id: string;
   action: string;
@@ -222,6 +246,14 @@ export default function FinanceCashPage() {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isLogsModalOpen, setIsLogsModalOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+
+  // Registrar pagamento de um agendamento real (fluxo do recepcionista)
+  const [isRegisterPaymentModalOpen, setIsRegisterPaymentModalOpen] = useState(false);
+  const [pendingAppointments, setPendingAppointments] = useState<AgendamentoPendente[]>([]);
+  const [isLoadingPending, setIsLoadingPending] = useState(false);
+  const [paymentTarget, setPaymentTarget] = useState<AgendamentoPendente | null>(null);
+  const [paymentValor, setPaymentValor] = useState("");
+  const [paymentForma, setPaymentForma] = useState("");
 
   // Estados dos formulários
   const [openCashForm, setOpenCashForm] = useState<CashRegisterOpenInput>({
@@ -498,6 +530,79 @@ export default function FinanceCashPage() {
     }
   };
 
+  // Carrega agendamentos concluídos/em andamento que ainda não têm pagamento aprovado
+  const loadPendingAppointments = async () => {
+    setIsLoadingPending(true);
+    setPaymentTarget(null);
+    setPaymentValor("");
+    setPaymentForma("");
+    try {
+      const [apptRes, payRes] = await Promise.all([
+        api.get<{ content: AgendamentoPendente[] } | AgendamentoPendente[]>(
+          "/agendamentos/salon/1",
+          { size: 300, sort: "dataHora" }
+        ),
+        api.get<{ content: PagamentoBackend[] } | PagamentoBackend[]>(
+          "/pagamentos/salon/1",
+          { size: 300 }
+        ),
+      ]);
+
+      const appts = Array.isArray(apptRes) ? apptRes : apptRes.content ?? [];
+      const pays = Array.isArray(payRes) ? payRes : payRes.content ?? [];
+
+      const pagosIds = new Set(
+        pays.filter((p) => p.status === "APROVADO").map((p) => p.agendamentoId)
+      );
+
+      const pendentes = appts.filter(
+        (a) =>
+          (a.status === "CONCLUIDO" || a.status === "EM_ANDAMENTO") &&
+          !pagosIds.has(a.id)
+      );
+
+      setPendingAppointments(pendentes);
+    } catch (error) {
+      console.error("Erro ao carregar agendamentos pendentes de pagamento:", error);
+      setPendingAppointments([]);
+    } finally {
+      setIsLoadingPending(false);
+    }
+  };
+
+  const handleOpenRegisterPayment = () => {
+    setIsRegisterPaymentModalOpen(true);
+    loadPendingAppointments();
+  };
+
+  const handleSelectPaymentTarget = (appt: AgendamentoPendente) => {
+    setPaymentTarget(appt);
+    setPaymentValor(appt.valorCobrado != null ? String(appt.valorCobrado) : "");
+    setPaymentForma("");
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!paymentTarget || !paymentForma) return;
+    const valor = parseFloat(paymentValor.replace(",", "."));
+    if (isNaN(valor) || valor <= 0) return;
+
+    setIsSubmitting(true);
+    try {
+      await api.post("/pagamentos", {
+        agendamentoId: paymentTarget.id,
+        valor,
+        forma: paymentForma,
+      });
+      setIsRegisterPaymentModalOpen(false);
+      setPaymentTarget(null);
+      loadData();
+    } catch (error) {
+      console.error("Erro ao registrar pagamento:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleAddTransaction = async () => {
     if (!transactionForm.description || transactionForm.amount <= 0) return;
 
@@ -745,10 +850,10 @@ export default function FinanceCashPage() {
 
             <div className="flex gap-2">
               {isRecepcionist ? (
-                // Recepcionista: apenas registra lançamentos quando o caixa está aberto
+                // Recepcionista: registra o pagamento de um agendamento concluído/em andamento
                 currentCashRegister?.status === "open" && (
                   <Button
-                    onClick={() => setIsAddTransactionModalOpen(true)}
+                    onClick={handleOpenRegisterPayment}
                     leftIcon={<Plus className="h-4 w-4" />}
                   >
                     Registrar Pagamento
@@ -777,6 +882,13 @@ export default function FinanceCashPage() {
                       leftIcon={<Plus className="h-4 w-4" />}
                     >
                       Lançamento
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={handleOpenRegisterPayment}
+                      leftIcon={<Receipt className="h-4 w-4" />}
+                    >
+                      Registrar Pagamento
                     </Button>
                     <Button
                       onClick={() => setIsCloseCashModalOpen(true)}
@@ -1079,6 +1191,129 @@ export default function FinanceCashPage() {
             />
           </div>
         </div>
+      </Modal>
+
+      {/* Modal de Registrar Pagamento (fluxo real, ligado a um agendamento) */}
+      <Modal
+        isOpen={isRegisterPaymentModalOpen}
+        onClose={() => setIsRegisterPaymentModalOpen(false)}
+        title={paymentTarget ? "Registrar Pagamento" : "Selecione o Atendimento"}
+        size="lg"
+        footer={
+          paymentTarget ? (
+            <>
+              <Button variant="ghost" onClick={() => setPaymentTarget(null)}>
+                Voltar
+              </Button>
+              <Button
+                onClick={handleConfirmPayment}
+                isLoading={isSubmitting}
+                disabled={!paymentForma || !paymentValor}
+              >
+                Confirmar Pagamento
+              </Button>
+            </>
+          ) : (
+            <Button variant="ghost" onClick={() => setIsRegisterPaymentModalOpen(false)}>
+              Cancelar
+            </Button>
+          )
+        }
+      >
+        {!paymentTarget ? (
+          <div className="max-h-96 space-y-2 overflow-y-auto">
+            {isLoadingPending && (
+              <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                Carregando atendimentos...
+              </p>
+            )}
+            {!isLoadingPending && pendingAppointments.length === 0 && (
+              <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                Nenhum atendimento concluído ou em andamento aguardando pagamento.
+              </p>
+            )}
+            {pendingAppointments.map((appt) => (
+              <button
+                key={appt.id}
+                onClick={() => handleSelectPaymentTarget(appt)}
+                className="w-full rounded-lg border border-gray-200 p-3 text-left transition-colors hover:border-violet-500 hover:bg-violet-50 dark:border-gray-700 dark:hover:bg-violet-900/20"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-gray-900 dark:text-white">{appt.clienteNome}</span>
+                  <span className="text-sm font-semibold text-violet-600 dark:text-violet-400">
+                    {appt.valorCobrado != null
+                      ? appt.valorCobrado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                      : "—"}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                  <span>
+                    {appt.servicos?.length ? appt.servicos.map((s) => s.servicoNome).join(" + ") : appt.servicoNome ?? "—"}
+                  </span>
+                  <span>·</span>
+                  <span>{appt.profissionalNome}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-700 dark:bg-gray-900 dark:text-gray-300">
+              <p className="font-medium text-gray-900 dark:text-white">{paymentTarget.clienteNome}</p>
+              <p className="mt-0.5">
+                {paymentTarget.servicos?.length
+                  ? paymentTarget.servicos.map((s) => s.servicoNome).join(" + ")
+                  : paymentTarget.servicoNome ?? "—"}
+                {" · "}
+                {paymentTarget.profissionalNome}
+              </p>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Valor *
+              </label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={paymentValor}
+                  onChange={(e) => setPaymentValor(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 bg-white pl-10 pr-4 py-2.5 text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Forma de Pagamento *
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: "DINHEIRO", label: "Dinheiro", icon: <Wallet className="h-4 w-4" /> },
+                  { value: "PIX", label: "PIX", icon: <QrCode className="h-4 w-4" /> },
+                  { value: "CARTAO_CREDITO", label: "Cartão de Crédito", icon: <CreditCard className="h-4 w-4" /> },
+                  { value: "CARTAO_DEBITO", label: "Cartão de Débito", icon: <CreditCard className="h-4 w-4" /> },
+                ].map((f) => (
+                  <button
+                    key={f.value}
+                    onClick={() => setPaymentForma(f.value)}
+                    className={`flex items-center gap-2 rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-all ${
+                      paymentForma === f.value
+                        ? "border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300"
+                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                    }`}
+                  >
+                    {f.icon}
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Modal de Adicionar Transação */}
