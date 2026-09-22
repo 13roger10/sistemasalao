@@ -18,3 +18,4 @@ export * from './common';
 export * from './notification';
 export * from './audit';
 export * from './business';
+export * from './dashboard';

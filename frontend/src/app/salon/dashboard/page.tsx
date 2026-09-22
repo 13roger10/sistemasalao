@@ -8,15 +8,16 @@ import { useSalonAuth, Can } from "@/contexts/SalonAuthContext";
 import { appointmentService } from "@/services/salon/appointmentService";
 import { commissionService } from "@/services/salon/commissionService";
 import { reviewService } from "@/services/salon/reviewService";
+import { dashboardService } from "@/services/salon/dashboardService";
 import { api } from "@/services/salon/api";
 import type { Appointment } from "@/types/salon";
+import type { DashboardData } from "@/types/salon/dashboard";
 import {
   Calendar,
   Users,
   DollarSign,
   Clock,
   TrendingUp,
-  TrendingDown,
   Star,
   AlertCircle,
   Scissors,
@@ -61,26 +62,6 @@ interface DailyRevenue {
   appointments: number;
 }
 
-interface ProfessionalRanking {
-  id: string;
-  name: string;
-  avatar?: string;
-  revenue: number;
-  appointments: number;
-  rating: number;
-  trend: "up" | "down" | "stable";
-  trendValue: number;
-}
-
-interface ServiceRanking {
-  id: string;
-  name: string;
-  count: number;
-  revenue: number;
-  percentage: number;
-  color: string;
-}
-
 interface AvailableSlot {
   professionalId: string;
   professionalName: string;
@@ -115,63 +96,6 @@ const generateRevenueData = (): DailyRevenue[] => {
   return data;
 };
 
-const professionalsRanking: ProfessionalRanking[] = [
-  {
-    id: "1",
-    name: "Ana Cabeleireira",
-    revenue: 8500,
-    appointments: 45,
-    rating: 4.9,
-    trend: "up",
-    trendValue: 15,
-  },
-  {
-    id: "2",
-    name: "Carlos Barbeiro",
-    revenue: 7200,
-    appointments: 52,
-    rating: 4.8,
-    trend: "up",
-    trendValue: 8,
-  },
-  {
-    id: "3",
-    name: "Juliana Stylist",
-    revenue: 6800,
-    appointments: 38,
-    rating: 4.7,
-    trend: "stable",
-    trendValue: 0,
-  },
-  {
-    id: "4",
-    name: "Roberto Manicure",
-    revenue: 4500,
-    appointments: 60,
-    rating: 4.6,
-    trend: "down",
-    trendValue: 5,
-  },
-  {
-    id: "5",
-    name: "Fernanda Estética",
-    revenue: 3800,
-    appointments: 25,
-    rating: 4.9,
-    trend: "up",
-    trendValue: 22,
-  },
-];
-
-const servicesRanking: ServiceRanking[] = [
-  { id: "1", name: "Corte Masculino", count: 156, revenue: 4680, percentage: 28, color: "#8b5cf6" },
-  { id: "2", name: "Coloração", count: 89, revenue: 8010, percentage: 22, color: "#06b6d4" },
-  { id: "3", name: "Corte Feminino", count: 78, revenue: 5460, percentage: 18, color: "#10b981" },
-  { id: "4", name: "Escova", count: 65, revenue: 2600, percentage: 14, color: "#f59e0b" },
-  { id: "5", name: "Manicure", count: 45, revenue: 1800, percentage: 10, color: "#ec4899" },
-  { id: "6", name: "Outros", count: 32, revenue: 1920, percentage: 8, color: "#6b7280" },
-];
-
 const availableSlots: AvailableSlot[] = [
   { professionalId: "1", professionalName: "Ana", slots: 3, totalSlots: 8 },
   { professionalId: "2", professionalName: "Carlos", slots: 5, totalSlots: 10 },
@@ -179,6 +103,8 @@ const availableSlots: AvailableSlot[] = [
   { professionalId: "4", professionalName: "Roberto", slots: 6, totalSlots: 8 },
   { professionalId: "5", professionalName: "Fernanda", slots: 4, totalSlots: 6 },
 ];
+
+const SERVICE_COLORS = ["#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ec4899", "#6b7280", "#3b82f6", "#ef4444"];
 
 const newClientsData: NewClient[] = [
   { month: "Jul", count: 28, returning: 45 },
@@ -702,21 +628,50 @@ function AdminDashboard() {
   const { user } = useSalonAuth();
   const [revenueFilter, setRevenueFilter] = useState<"week" | "month">("week");
 
-  // Mock data with useMemo
+  // Dados reais de faturamento/comissao/ranking, vindos de /api/dashboard (backed by Pagamento real)
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [todayData, setTodayData] = useState<DashboardData | null>(null);
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [mensal, diario] = await Promise.all([
+          dashboardService.getMensal(),
+          dashboardService.getDiario(),
+        ]);
+        if (!cancelled) {
+          setDashboardData(mensal);
+          setTodayData(diario);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar dashboard:", error);
+      } finally {
+        if (!cancelled) setIsLoadingDashboard(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Mock data with useMemo (usado apenas para o grafico de 7 dias, ainda sem endpoint diario granular)
   const revenueData = useMemo(() => generateRevenueData(), []);
 
-  // Calcular estatísticas
-  const todayRevenue = revenueData[revenueData.length - 1]?.revenue || 0;
-  const yesterdayRevenue = revenueData[revenueData.length - 2]?.revenue || 0;
-  const revenueTrend = yesterdayRevenue > 0
-    ? Math.round(((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100)
+  // Faturamento de hoje: dado real (Pagamento), com variacao vs ontem calculada no backend
+  const todayRevenue = todayData?.faturamento.valorTotal ?? 0;
+  const revenueTrend = todayData
+    ? Math.round(todayData.faturamento.percentualVariacao) * (todayData.faturamento.crescimento ? 1 : -1)
     : 0;
 
-  const totalNewClients = newClientsData.reduce((sum, item) => sum + item.count, 0);
-  const lastMonthClients = newClientsData[newClientsData.length - 2]?.count || 0;
-  const thisMonthClients = newClientsData[newClientsData.length - 1]?.count || 0;
-  const clientsTrend = lastMonthClients > 0
-    ? Math.round(((thisMonthClients - lastMonthClients) / lastMonthClients) * 100)
+  // Clientes novos no mes: dado real
+  const thisMonthClients = dashboardData?.clientes.novosNoPeriodo ?? 0;
+
+  // Avaliacao media do salao: media das avaliacoes reais dos profissionais no ranking
+  const avaliacoesReais = (dashboardData?.rankingProfissionais ?? []).filter(p => p.avaliacaoMedia > 0);
+  const avaliacaoMediaSalao = avaliacoesReais.length > 0
+    ? avaliacoesReais.reduce((sum, p) => sum + p.avaliacaoMedia, 0) / avaliacoesReais.length
     : 0;
 
   const totalAvailableSlots = availableSlots.reduce((sum, p) => sum + p.slots, 0);
@@ -725,6 +680,18 @@ function AdminDashboard() {
 
   const weeklyRevenue = revenueData.reduce((sum, day) => sum + day.revenue, 0);
   const weeklyAppointments = revenueData.reduce((sum, day) => sum + day.appointments, 0);
+
+  // Serviços mais vendidos: dado real, com cores atribuídas por posição
+  const servicosChartData = (dashboardData?.servicosMaisVendidos ?? []).map((servico, index) => ({
+    id: servico.servicoId,
+    name: servico.nome,
+    percentage: servico.percentualTotal,
+    revenue: servico.faturamento,
+    color: SERVICE_COLORS[index % SERVICE_COLORS.length],
+  }));
+
+  // Ranking de profissionais: dado real, incluindo comissão acumulada
+  const rankingChartData = dashboardData?.rankingProfissionais ?? [];
 
   const upcomingAppointments = [
     { id: 1, client: "João Silva", service: "Corte Masculino", time: "09:00", professional: "Carlos Barbeiro", status: "confirmed" },
@@ -800,20 +767,16 @@ function AdminDashboard() {
             value={thisMonthClients}
             icon={<Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />}
             iconBg="bg-blue-100 dark:bg-blue-900/30"
-            trend={{
-              value: Math.abs(clientsTrend),
-              isPositive: clientsTrend >= 0,
-              label: "vs mês anterior",
-            }}
+            subtitle={isLoadingDashboard ? "Carregando..." : "Cadastrados este mês"}
           />
 
           {/* Avaliação */}
           <StatCard
             title="Avaliação Média"
-            value="4.8"
+            value={avaliacaoMediaSalao > 0 ? avaliacaoMediaSalao.toFixed(1) : "—"}
             icon={<Star className="h-6 w-6 text-yellow-500" />}
             iconBg="bg-yellow-100 dark:bg-yellow-900/30"
-            subtitle="Baseado em 245 avaliações"
+            subtitle={avaliacoesReais.length > 0 ? `Média entre ${avaliacoesReais.length} profissionais` : "Sem avaliações no período"}
           />
         </div>
 
@@ -876,46 +839,52 @@ function AdminDashboard() {
             title="Serviços Mais Vendidos"
             subtitle="Distribuição por tipo de serviço"
           >
-            <div className="flex h-72 items-center">
-              <div className="w-1/2">
-                <ResponsiveContainer width="100%" height={250} minHeight={200}>
-                  <PieChart>
-                    <Pie
-                      data={servicesRanking}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={90}
-                      paddingAngle={2}
-                      dataKey="percentage"
-                    >
-                      {servicesRanking.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value, name, props) => [`${value}%`, props.payload.name]}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+            {servicosChartData.length === 0 ? (
+              <div className="flex h-72 items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+                {isLoadingDashboard ? "Carregando..." : "Nenhum serviço vendido neste mês"}
               </div>
-              <div className="w-1/2 space-y-2 pl-4">
-                {servicesRanking.slice(0, 5).map((service) => (
-                  <div key={service.id} className="flex items-center gap-2">
-                    <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: service.color }}
-                    />
-                    <span className="flex-1 text-sm text-gray-600 dark:text-gray-400">
-                      {service.name}
-                    </span>
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">
-                      {service.percentage}%
-                    </span>
-                  </div>
-                ))}
+            ) : (
+              <div className="flex h-72 items-center">
+                <div className="w-1/2">
+                  <ResponsiveContainer width="100%" height={250} minHeight={200}>
+                    <PieChart>
+                      <Pie
+                        data={servicosChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={90}
+                        paddingAngle={2}
+                        dataKey="percentage"
+                      >
+                        {servicosChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value, name, props) => [`${value}%`, props.payload.name]}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="w-1/2 space-y-2 pl-4">
+                  {servicosChartData.slice(0, 5).map((service) => (
+                    <div key={service.id} className="flex items-center gap-2">
+                      <div
+                        className="h-3 w-3 rounded-full"
+                        style={{ backgroundColor: service.color }}
+                      />
+                      <span className="flex-1 text-sm text-gray-600 dark:text-gray-400">
+                        {service.name}
+                      </span>
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">
+                        {service.percentage.toFixed(0)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </ChartCard>
         </div>
 
@@ -1023,8 +992,13 @@ function AdminDashboard() {
                 </p>
               </div>
               <div className="divide-y dark:divide-gray-700">
-                {professionalsRanking.map((professional, index) => (
-                  <div key={professional.id} className="flex items-center gap-4 p-4">
+                {rankingChartData.length === 0 && (
+                  <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                    {isLoadingDashboard ? "Carregando..." : "Nenhum atendimento faturado este mês"}
+                  </div>
+                )}
+                {rankingChartData.map((professional, index) => (
+                  <div key={professional.profissionalId} className="flex items-center gap-4 p-4">
                     <div className={cn(
                       "flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold",
                       index === 0 && "bg-yellow-100 text-yellow-700",
@@ -1036,31 +1010,25 @@ function AdminDashboard() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-gray-900 dark:text-white truncate">
-                        {professional.name}
+                        {professional.nome}
                       </p>
                       <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                        <span>{professional.appointments} atend.</span>
-                        <span className="text-yellow-500 flex items-center gap-0.5">
-                          <Star className="h-3 w-3 fill-current" />
-                          {professional.rating}
-                        </span>
+                        <span>{professional.atendimentos} atend.</span>
+                        {professional.avaliacaoMedia > 0 && (
+                          <span className="text-yellow-500 flex items-center gap-0.5">
+                            <Star className="h-3 w-3 fill-current" />
+                            {professional.avaliacaoMedia.toFixed(1)}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-gray-900 dark:text-white">
-                        R$ {(professional.revenue / 1000).toFixed(1)}k
+                        {professional.faturamentoFormatado}
                       </p>
-                      <div className={cn(
-                        "flex items-center justify-end gap-0.5 text-xs",
-                        professional.trend === "up" && "text-green-600",
-                        professional.trend === "down" && "text-red-600",
-                        professional.trend === "stable" && "text-gray-500"
-                      )}>
-                        {professional.trend === "up" && <TrendingUp className="h-3 w-3" />}
-                        {professional.trend === "down" && <TrendingDown className="h-3 w-3" />}
-                        {professional.trend !== "stable" && `${professional.trendValue}%`}
-                        {professional.trend === "stable" && "—"}
-                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Comissão: {professional.comissaoTotalFormatada}
+                      </p>
                     </div>
                   </div>
                 ))}
