@@ -1096,10 +1096,13 @@ export default function AppointmentsPage() {
     }
 
     try {
+      // Parse date components manually to avoid timezone issues
+      // new Date("2026-03-26") interprets as UTC midnight, causing day shift
+      const [year, month, day] = formData.date.split("-").map(Number);
       const response = await appointmentService.checkAvailability({
         professionalId: formData.professionalId,
         serviceIds: formData.serviceIds,
-        date: new Date(formData.date),
+        date: new Date(year, month - 1, day),
         unitId: "1",
       });
 
@@ -1384,23 +1387,25 @@ export default function AppointmentsPage() {
     };
   }, [formData.serviceIds, services]);
 
-  // Calcular estatísticas do dia
+  // Calcular estatísticas do dia sendo visualizado na agenda (não sempre "hoje")
+  const viewedDate = selectedDay || currentDate;
+  const isViewingToday = viewedDate.toDateString() === new Date().toDateString();
+
   const todayStats = useMemo(() => {
-    const today = new Date();
-    const todayAppointments = appointments.filter(
-      (a) => new Date(a.date).toDateString() === today.toDateString()
+    const viewedAppointments = appointments.filter(
+      (a) => new Date(a.date).toDateString() === viewedDate.toDateString()
     );
 
     return {
-      total: todayAppointments.length,
-      confirmed: todayAppointments.filter((a) => a.status === "confirmed").length,
-      pending: todayAppointments.filter((a) => a.status === "pending").length,
-      completed: todayAppointments.filter((a) => a.status === "completed").length,
-      revenue: todayAppointments
+      total: viewedAppointments.length,
+      confirmed: viewedAppointments.filter((a) => a.status === "confirmed").length,
+      pending: viewedAppointments.filter((a) => a.status === "pending").length,
+      completed: viewedAppointments.filter((a) => a.status === "completed").length,
+      revenue: viewedAppointments
         .filter((a) => a.status === "completed")
         .reduce((acc, a) => acc + a.finalPrice, 0),
     };
-  }, [appointments]);
+  }, [appointments, viewedDate]);
 
   // Link público do salão
   const publicLink = typeof window !== "undefined"
@@ -1596,7 +1601,7 @@ export default function AppointmentsPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatsCard
             icon={<CalendarIcon className="h-5 w-5 text-violet-500" />}
-            label="Agendamentos Hoje"
+            label={isViewingToday ? "Agendamentos Hoje" : `Agendamentos em ${viewedDate.toLocaleDateString("pt-BR")}`}
             value={todayStats.total}
             color="bg-violet-100 dark:bg-violet-900/30"
           />
@@ -1614,7 +1619,7 @@ export default function AppointmentsPage() {
           />
           <StatsCard
             icon={<Scissors className="h-5 w-5 text-green-500" />}
-            label="Receita Hoje"
+            label={isViewingToday ? "Receita Hoje" : "Receita do Dia"}
             value={formatCurrency(todayStats.revenue)}
             color="bg-green-100 dark:bg-green-900/30"
           />
