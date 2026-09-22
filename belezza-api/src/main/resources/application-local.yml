@@ -1,5 +1,6 @@
 # Belezza API - Local Profile
-# Uses H2 in-memory database (no Docker required)
+# Uses H2 file-based database (no Docker required)
+# Data persists on disk across backend restarts (belezza-api/data/belezza_local.mv.db)
 # Run with: mvnw spring-boot:run -Dspring-boot.run.profiles=local
 
 spring:
@@ -7,9 +8,10 @@ spring:
   mail:
     enabled: false
 
-  # H2 In-Memory Database (PostgreSQL compatibility mode)
+  # H2 File-Based Database (PostgreSQL compatibility mode)
+  # AUTO_SERVER allows the H2 console / a second connection to attach while the app runs
   datasource:
-    url: jdbc:h2:mem:belezza_local;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    url: jdbc:h2:file:./data/belezza_local;MODE=PostgreSQL;AUTO_SERVER=TRUE
     username: sa
     password:
     driver-class-name: org.h2.Driver
@@ -18,7 +20,8 @@ spring:
   jpa:
     database-platform: org.hibernate.dialect.H2Dialect
     hibernate:
-      ddl-auto: create-drop
+      # 'update' preserves existing data/schema across restarts (was 'create-drop', which wiped data every restart)
+      ddl-auto: update
     show-sql: true
     properties:
       hibernate:

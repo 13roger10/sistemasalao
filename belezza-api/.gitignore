@@ -89,3 +89,8 @@ docker-compose.override.yml
 
 # Local development
 local/
+
+# H2 file-based database (local profile persistence)
+data/
+*.mv.db
+*.trace.db
