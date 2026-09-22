@@ -19,6 +19,8 @@ public interface PagamentoRepository extends JpaRepository<Pagamento, Long> {
 
     Optional<Pagamento> findByAgendamentoId(Long agendamentoId);
 
+    List<Pagamento> findByAgendamentoClienteId(Long clienteId);
+
     Page<Pagamento> findBySalonId(Long salonId, Pageable pageable);
 
     Page<Pagamento> findBySalonIdAndRegistradoPorId(Long salonId, Long registradoPorId, Pageable pageable);

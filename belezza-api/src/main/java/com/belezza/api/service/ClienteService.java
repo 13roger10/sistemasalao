@@ -1,25 +1,41 @@
 package com.belezza.api.service;
 
+import com.belezza.api.dto.cliente.ClienteHistoryResponse;
 import com.belezza.api.dto.cliente.ClienteRequest;
 import com.belezza.api.dto.cliente.ClienteResponse;
+import com.belezza.api.entity.Agendamento;
+import com.belezza.api.entity.AgendamentoServico;
 import com.belezza.api.entity.Cliente;
+import com.belezza.api.entity.Pagamento;
 import com.belezza.api.entity.Role;
 import com.belezza.api.entity.Salon;
+import com.belezza.api.entity.Servico;
+import com.belezza.api.entity.StatusAgendamento;
+import com.belezza.api.entity.StatusPagamento;
 import com.belezza.api.entity.Usuario;
 import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.ResourceNotFoundException;
+import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.ClienteRepository;
 import com.belezza.api.repository.FidelidadeClienteRepository;
+import com.belezza.api.repository.PagamentoRepository;
 import com.belezza.api.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.belezza.api.security.annotation.Auditable;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -33,6 +49,8 @@ public class ClienteService {
     private final FidelidadeClienteRepository fidelidadeRepository;
     private final SalonService salonService;
     private final PasswordEncoder passwordEncoder;
+    private final AgendamentoRepository agendamentoRepository;
+    private final PagamentoRepository pagamentoRepository;
 
     @Transactional
     @SuppressWarnings("null")
@@ -161,6 +179,158 @@ public class ClienteService {
         return restrictSensitiveData
                 ? ClienteResponse.fromEntityForProfessional(cliente, fidelidade)
                 : ClienteResponse.fromEntity(cliente, fidelidade);
+    }
+
+    /**
+     * Monta o histórico de atendimentos e gastos do cliente a partir dos
+     * agendamentos e pagamentos reais associados a ele.
+     */
+    @Transactional(readOnly = true)
+    public ClienteHistoryResponse buscarHistorico(Long clienteId) {
+        if (!clienteRepository.existsById(clienteId)) {
+            throw new ResourceNotFoundException("Cliente", clienteId);
+        }
+
+        List<Agendamento> agendamentos = agendamentoRepository
+                .findByClienteId(clienteId, PageRequest.of(0, 200, Sort.by(Sort.Direction.DESC, "dataHora")))
+                .getContent();
+
+        List<ClienteHistoryResponse.AppointmentHistoryDTO> appointments = new ArrayList<>();
+        Map<Long, String> servicoNomes = new java.util.LinkedHashMap<>();
+        Map<Long, Long> servicoContagem = new java.util.LinkedHashMap<>();
+        Map<Long, String> profissionalNomes = new java.util.LinkedHashMap<>();
+        Map<Long, Long> profissionalContagem = new java.util.LinkedHashMap<>();
+        BigDecimal totalSpent = BigDecimal.ZERO;
+
+        for (Agendamento agendamento : agendamentos) {
+            List<String> nomesServicos = agendamento.getServicos() != null && !agendamento.getServicos().isEmpty()
+                    ? agendamento.getServicos().stream()
+                        .map(AgendamentoServico::getServico)
+                        .filter(java.util.Objects::nonNull)
+                        .map(Servico::getNome)
+                        .collect(Collectors.toList())
+                    : agendamento.getServico() != null
+                        ? List.of(agendamento.getServico().getNome())
+                        : List.of();
+
+            String profissionalNome = agendamento.getProfissional() != null
+                    && agendamento.getProfissional().getUsuario() != null
+                    ? agendamento.getProfissional().getUsuario().getNome()
+                    : "—";
+
+            // Valor de um pagamento realmente aprovado para este agendamento (se houver)
+            BigDecimal valorPagoAprovado = pagamentoRepository.findByAgendamentoId(agendamento.getId())
+                    .filter(p -> p.getStatus() == StatusPagamento.APROVADO)
+                    .map(Pagamento::getValor)
+                    .orElse(null);
+
+            // "Total gasto" só soma o que foi de fato pago; agendamentos sem pagamento aprovado não contam
+            if (valorPagoAprovado != null) {
+                totalSpent = totalSpent.add(valorPagoAprovado);
+            }
+
+            // Na listagem, mostra o valor pago ou, na falta dele, o valor cobrado (previsto) do agendamento
+            BigDecimal valorExibido = valorPagoAprovado != null
+                    ? valorPagoAprovado
+                    : agendamento.getValorCobrado() != null ? agendamento.getValorCobrado() : BigDecimal.ZERO;
+
+            appointments.add(ClienteHistoryResponse.AppointmentHistoryDTO.builder()
+                    .id(agendamento.getId())
+                    .date(agendamento.getDataHora())
+                    .services(nomesServicos)
+                    .professional(profissionalNome)
+                    .total(valorExibido)
+                    .status(mapStatusParaFrontend(agendamento.getStatus()))
+                    .build());
+
+            if (agendamento.getServico() != null) {
+                Long servicoId = agendamento.getServico().getId();
+                servicoNomes.putIfAbsent(servicoId, agendamento.getServico().getNome());
+                servicoContagem.merge(servicoId, 1L, Long::sum);
+            }
+            if (agendamento.getProfissional() != null) {
+                Long profissionalId = agendamento.getProfissional().getId();
+                profissionalNomes.putIfAbsent(profissionalId, profissionalNome);
+                profissionalContagem.merge(profissionalId, 1L, Long::sum);
+            }
+        }
+
+        List<ClienteHistoryResponse.FavoriteServiceDTO> favoriteServices = servicoContagem.entrySet().stream()
+                .sorted(Map.Entry.<Long, Long>comparingByValue().reversed())
+                .map(entry -> ClienteHistoryResponse.FavoriteServiceDTO.builder()
+                        .serviceId(entry.getKey())
+                        .serviceName(servicoNomes.get(entry.getKey()))
+                        .count(entry.getValue())
+                        .build())
+                .collect(Collectors.toList());
+
+        ClienteHistoryResponse.FavoriteProfessionalDTO favoriteProfessional = profissionalContagem.entrySet().stream()
+                .max(Comparator.comparingLong(Map.Entry::getValue))
+                .map(entry -> ClienteHistoryResponse.FavoriteProfessionalDTO.builder()
+                        .professionalId(entry.getKey())
+                        .professionalName(profissionalNomes.get(entry.getKey()))
+                        .count(entry.getValue())
+                        .build())
+                .orElse(null);
+
+        return ClienteHistoryResponse.builder()
+                .appointments(appointments)
+                .totalAppointments(appointments.size())
+                .totalSpent(totalSpent)
+                .favoriteServices(favoriteServices)
+                .favoriteProfessional(favoriteProfessional)
+                .build();
+    }
+
+    /**
+     * Recalcula totalGasto, ticketMedio, primeiraVisita e ultimaVisita de todos os
+     * clientes ativos do salão a partir dos pagamentos aprovados reais.
+     * Útil para reconciliar estatísticas de pagamentos registrados antes de esse
+     * cálculo automático existir, ou após qualquer divergência de dados.
+     */
+    @Transactional
+    public int recalcularEstatisticas(Long salonId) {
+        List<Cliente> clientes = clienteRepository.findBySalonIdAndAtivoTrue(salonId);
+
+        for (Cliente cliente : clientes) {
+            List<Pagamento> pagamentos = pagamentoRepository.findByAgendamentoClienteId(cliente.getId()).stream()
+                    .filter(p -> p.getStatus() == StatusPagamento.APROVADO)
+                    .toList();
+
+            BigDecimal totalGasto = pagamentos.stream()
+                    .map(Pagamento::getValor)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            cliente.setTotalGasto(totalGasto);
+            cliente.setTicketMedio(cliente.getTotalAgendamentos() > 0
+                    ? totalGasto.divide(BigDecimal.valueOf(cliente.getTotalAgendamentos()), 2, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO);
+
+            pagamentos.stream().map(Pagamento::getCriadoEm).min(Comparator.naturalOrder())
+                    .ifPresent(cliente::setPrimeiraVisita);
+            pagamentos.stream().map(Pagamento::getCriadoEm).max(Comparator.naturalOrder())
+                    .ifPresent(cliente::setUltimaVisita);
+
+            clienteRepository.save(cliente);
+        }
+
+        log.info("Estatísticas recalculadas para {} clientes do salon {}", clientes.size(), salonId);
+        return clientes.size();
+    }
+
+    /**
+     * Converte o status do agendamento para as strings em inglês que o frontend já usa
+     * (AppointmentStatus), para que o histórico do cliente exiba os badges corretamente.
+     */
+    private String mapStatusParaFrontend(StatusAgendamento status) {
+        return switch (status) {
+            case PENDENTE -> "pending";
+            case CONFIRMADO -> "confirmed";
+            case EM_ANDAMENTO -> "in_progress";
+            case CONCLUIDO -> "completed";
+            case CANCELADO -> "canceled";
+            case NO_SHOW -> "no_show";
+        };
     }
 
     @Transactional(readOnly = true)

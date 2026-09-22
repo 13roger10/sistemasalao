@@ -1,5 +1,6 @@
 package com.belezza.api.controller;
 
+import com.belezza.api.dto.cliente.ClienteHistoryResponse;
 import com.belezza.api.dto.cliente.ClienteRequest;
 import com.belezza.api.dto.cliente.ClienteResponse;
 import com.belezza.api.entity.Role;
@@ -62,6 +63,21 @@ public class ClienteController {
             @AuthenticationPrincipal UserDetails userDetails) {
         boolean restrictData = shouldRestrictSensitiveData(userDetails);
         ClienteResponse response = clienteService.buscarPorId(id, restrictData);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/salon/{salonId}/recalcular-estatisticas")
+    @AdminOnly
+    @Operation(summary = "Recalcular estatísticas", description = "Recalcula totalGasto/ticketMedio/visitas de todos os clientes a partir dos pagamentos reais")
+    public ResponseEntity<Map<String, Object>> recalcularEstatisticas(@PathVariable Long salonId) {
+        int atualizados = clienteService.recalcularEstatisticas(salonId);
+        return ResponseEntity.ok(Map.of("clientesAtualizados", atualizados));
+    }
+
+    @GetMapping("/{id}/history")
+    @Operation(summary = "Histórico do cliente", description = "Retorna o histórico de atendimentos e gastos reais do cliente")
+    public ResponseEntity<ClienteHistoryResponse> buscarHistorico(@PathVariable Long id) {
+        ClienteHistoryResponse response = clienteService.buscarHistorico(id);
         return ResponseEntity.ok(response);
     }
 
