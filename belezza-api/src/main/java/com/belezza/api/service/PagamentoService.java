@@ -3,6 +3,7 @@ package com.belezza.api.service;
 import com.belezza.api.dto.pagamento.PagamentoRequest;
 import com.belezza.api.dto.pagamento.PagamentoResponse;
 import com.belezza.api.entity.Agendamento;
+import com.belezza.api.entity.Cliente;
 import com.belezza.api.entity.Pagamento;
 import com.belezza.api.entity.Role;
 import com.belezza.api.entity.StatusAgendamento;
@@ -11,6 +12,7 @@ import com.belezza.api.entity.Usuario;
 import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.AgendamentoRepository;
+import com.belezza.api.repository.ClienteRepository;
 import com.belezza.api.repository.PagamentoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +22,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.belezza.api.security.annotation.Auditable;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 
 @Service
@@ -29,6 +33,7 @@ public class PagamentoService {
 
     private final PagamentoRepository pagamentoRepository;
     private final AgendamentoRepository agendamentoRepository;
+    private final ClienteRepository clienteRepository;
 
     @Transactional
     @Auditable(action = "CREATE", entityType = "Pagamento", captureNewState = true)
@@ -60,7 +65,32 @@ public class PagamentoService {
         log.info("Pagamento registrado: {} para agendamento {} por {} (id={})",
                 pagamento.getId(), request.getAgendamentoId(), operador.getNome(), operador.getId());
 
+        atualizarEstatisticasCliente(agendamento.getCliente(), request.getValor());
+
         return PagamentoResponse.fromEntity(pagamento);
+    }
+
+    /**
+     * Atualiza o total gasto, o ticket médio e as datas de visita do cliente
+     * sempre que um pagamento é registrado, para que essas estatísticas
+     * reflitam os pagamentos reais em vez de ficarem paradas em zero.
+     */
+    private void atualizarEstatisticasCliente(Cliente cliente, BigDecimal valorPago) {
+        LocalDateTime agora = LocalDateTime.now();
+
+        cliente.setTotalGasto(cliente.getTotalGasto().add(valorPago));
+        if (cliente.getPrimeiraVisita() == null) {
+            cliente.setPrimeiraVisita(agora);
+        }
+        cliente.setUltimaVisita(agora);
+
+        if (cliente.getTotalAgendamentos() > 0) {
+            cliente.setTicketMedio(
+                    cliente.getTotalGasto().divide(
+                            BigDecimal.valueOf(cliente.getTotalAgendamentos()), 2, RoundingMode.HALF_UP));
+        }
+
+        clienteRepository.save(cliente);
     }
 
     @Transactional(readOnly = true)
