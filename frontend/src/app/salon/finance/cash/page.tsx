@@ -277,6 +277,14 @@ export default function FinanceCashPage() {
       // Carregar relatório diário
       const report = await financeService.reports.daily(selectedDate);
       setDailyReport(report);
+
+      // Carregar transações (pagamentos reais registrados)
+      const transactionsPage = await financeService.transactions.list({
+        unitId: "1",
+        page: 1,
+        limit: 50,
+      });
+      setTransactions(transactionsPage.data ?? transactionsPage.items ?? []);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
 

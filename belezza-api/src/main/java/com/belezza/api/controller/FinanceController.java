@@ -1,10 +1,24 @@
 package com.belezza.api.controller;
 
+import com.belezza.api.entity.Agendamento;
+import com.belezza.api.entity.Cliente;
+import com.belezza.api.entity.FormaPagamento;
+import com.belezza.api.entity.Pagamento;
+import com.belezza.api.entity.Role;
+import com.belezza.api.entity.Servico;
+import com.belezza.api.entity.Usuario;
+import com.belezza.api.repository.PagamentoRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -18,6 +32,82 @@ import java.util.*;
 @Slf4j
 @Tag(name = "Finanças", description = "Gerenciamento financeiro do salão")
 public class FinanceController {
+
+    private final PagamentoRepository pagamentoRepository;
+
+    // ===== TRANSACTIONS =====
+
+    @GetMapping("/transactions")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Listar transações", description = "Lista os pagamentos registrados como transações do caixa. RECEPCIONISTA recebe apenas os que ela mesma registrou.")
+    public ResponseEntity<PaginatedTransactionsResponse> listTransactions(
+            @RequestParam(required = false, defaultValue = "1") Long unitId,
+            @RequestParam(required = false, defaultValue = "1") int page,
+            @RequestParam(required = false, defaultValue = "50") int limit,
+            @AuthenticationPrincipal Usuario operador) {
+        log.debug("Listing finance transactions for unitId: {}", unitId);
+
+        // Frontend pagination is 1-based; Spring's Pageable is 0-based.
+        Pageable pageable = PageRequest.of(Math.max(0, page - 1), limit, Sort.by(Sort.Direction.DESC, "criadoEm"));
+
+        Page<Pagamento> pagamentos = (operador != null && operador.getRole() == Role.RECEPCIONISTA)
+                ? pagamentoRepository.findBySalonIdAndRegistradoPorId(unitId, operador.getId(), pageable)
+                : pagamentoRepository.findBySalonId(unitId, pageable);
+
+        List<TransactionResponse> data = pagamentos.getContent().stream()
+                .map(this::toTransactionResponse)
+                .toList();
+
+        PageMeta meta = new PageMeta(
+                pagamentos.getTotalElements(),
+                page,
+                limit,
+                pagamentos.getTotalPages(),
+                pagamentos.hasNext(),
+                pagamentos.hasPrevious()
+        );
+
+        return ResponseEntity.ok(new PaginatedTransactionsResponse(data, data, meta));
+    }
+
+    private TransactionResponse toTransactionResponse(Pagamento pagamento) {
+        Agendamento agendamento = pagamento.getAgendamento();
+        Cliente cliente = agendamento != null ? agendamento.getCliente() : null;
+        Servico servico = agendamento != null ? agendamento.getServico() : null;
+
+        String clienteNome = cliente != null && cliente.getUsuario() != null
+                ? cliente.getUsuario().getNome() : null;
+        String servicoNome = servico != null ? servico.getNome() : "Atendimento";
+
+        return new TransactionResponse(
+                String.valueOf(pagamento.getId()),
+                String.valueOf(pagamento.getSalon().getId()),
+                String.valueOf(pagamento.getSalon().getId()),
+                "income",
+                "service",
+                clienteNome != null ? servicoNome + " - " + clienteNome : servicoNome,
+                pagamento.getValor().doubleValue(),
+                mapFormaPagamento(pagamento.getForma()),
+                agendamento != null ? String.valueOf(agendamento.getId()) : null,
+                cliente != null ? String.valueOf(cliente.getId()) : null,
+                clienteNome,
+                pagamento.getRegistradoPorId() != null ? String.valueOf(pagamento.getRegistradoPorId()) : null,
+                pagamento.getRegistradoPorNome(),
+                pagamento.getCriadoEm(),
+                pagamento.getCriadoEm()
+        );
+    }
+
+    private String mapFormaPagamento(FormaPagamento forma) {
+        return switch (forma) {
+            case DINHEIRO -> "cash";
+            case PIX -> "pix";
+            case CARTAO_CREDITO -> "credit_card";
+            case CARTAO_DEBITO -> "debit_card";
+            case VALE -> "voucher";
+            case TRANSFERENCIA -> "debit_card";
+        };
+    }
 
     // ===== CASH REGISTER =====
 
@@ -341,6 +431,41 @@ public class FinanceController {
     }
 
     // Response records
+
+    // Transaction records (backed by real Pagamento data)
+    public record TransactionResponse(
+        String id,
+        String cashRegisterId,
+        String unitId,
+        String type,
+        String category,
+        String description,
+        double amount,
+        String paymentMethod,
+        String appointmentId,
+        String clientId,
+        String clientName,
+        String createdById,
+        String createdByName,
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt
+    ) {}
+
+    public record PaginatedTransactionsResponse(
+        List<TransactionResponse> data,
+        List<TransactionResponse> items,
+        PageMeta meta
+    ) {}
+
+    public record PageMeta(
+        long total,
+        int page,
+        int limit,
+        int totalPages,
+        boolean hasNextPage,
+        boolean hasPrevPage
+    ) {}
+
     public record FinanceStatsResponse(
         TodayStats today,
         WeekStats week,
