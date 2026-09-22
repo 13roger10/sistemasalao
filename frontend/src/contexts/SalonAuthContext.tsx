@@ -120,14 +120,14 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
         localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
       }
 
-      // Salva timestamp de expiração
+      // Salva timestamp de expiração (expiresIn vem em milissegundos do backend)
       if (expiresIn) {
-        const expiry = Date.now() + expiresIn * 1000;
+        const expiry = Date.now() + expiresIn;
         localStorage.setItem(TOKEN_EXPIRY_KEY, expiry.toString());
       }
 
       // Define cookie para o servidor
-      const expires = new Date(Date.now() + (expiresIn || 86400) * 1000).toUTCString();
+      const expires = new Date(Date.now() + (expiresIn || 86400000)).toUTCString();
       document.cookie = `salon_auth_token=${token}; path=/; expires=${expires}; SameSite=Lax`;
     }
 
@@ -140,9 +140,9 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
       permissions,
     });
 
-    // Configura refresh automático (5 minutos antes de expirar)
+    // Configura refresh automático (5 minutos antes de expirar; expiresIn ja vem em ms)
     if (expiresIn && refreshToken) {
-      const refreshTime = (expiresIn - 300) * 1000; // 5 minutos antes
+      const refreshTime = expiresIn - 5 * 60 * 1000; // 5 minutos antes, em ms
       if (refreshTime > 0) {
         refreshTimeoutRef.current = setTimeout(() => {
           refreshAuth();
