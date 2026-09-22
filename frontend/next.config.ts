@@ -14,6 +14,15 @@ const nextConfig: NextConfig = {
   },
   // Configuração vazia do Turbopack para compatibilidade com plugins webpack
   turbopack: {},
+  async redirects() {
+    return [
+      {
+        source: "/",
+        destination: "/salon/login?redirect=%2Fsalon%2Fdashboard",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 const pwaConfig = withPWA({
