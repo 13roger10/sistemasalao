@@ -28,6 +28,30 @@ public class DashboardController {
     private final DashboardService dashboardService;
     private final SalonService salonService;
 
+    /**
+     * Resolve a data de início do período a partir de hoje.
+     */
+    private LocalDate resolveDataInicio(LocalDate hoje, String periodo) {
+        return switch (periodo.toUpperCase()) {
+            case "DIARIO" -> hoje;
+            case "SEMANAL" -> hoje.minusDays(hoje.getDayOfWeek().getValue() - 1);
+            default -> hoje.withDayOfMonth(1);
+        };
+    }
+
+    /**
+     * Resolve a data de fim do período completo (não apenas "até hoje"), para que
+     * agendamentos futuros dentro do próprio período (ex: já concluídos antes da
+     * data marcada) não fiquem de fora do cálculo de faturamento/ranking/comissão.
+     */
+    private LocalDate resolveDataFim(LocalDate hoje, String periodo) {
+        return switch (periodo.toUpperCase()) {
+            case "DIARIO" -> hoje;
+            case "SEMANAL" -> hoje.minusDays(hoje.getDayOfWeek().getValue() - 1).plusDays(6);
+            default -> hoje.withDayOfMonth(hoje.lengthOfMonth());
+        };
+    }
+
     @GetMapping("/diario")
     @ProfissionalOrAdmin
     @Operation(summary = "Dashboard diario", description = "Retorna metricas do dia atual")
@@ -103,14 +127,8 @@ public class DashboardController {
 
         Long salonId = salonService.getSalonIdDoUsuarioLogado();
         LocalDate hoje = LocalDate.now();
-        LocalDate dataInicio;
-        LocalDate dataFim = hoje;
-
-        switch (periodo.toUpperCase()) {
-            case "DIARIO" -> dataInicio = hoje;
-            case "SEMANAL" -> dataInicio = hoje.minusDays(hoje.getDayOfWeek().getValue() - 1);
-            default -> dataInicio = hoje.withDayOfMonth(1);
-        }
+        LocalDate dataInicio = resolveDataInicio(hoje, periodo);
+        LocalDate dataFim = resolveDataFim(hoje, periodo);
 
         DashboardResponse dashboard = dashboardService.getDashboard(salonId, dataInicio, dataFim, periodo);
         return ResponseEntity.ok(dashboard.getRankingProfissionais());
@@ -125,14 +143,8 @@ public class DashboardController {
 
         Long salonId = salonService.getSalonIdDoUsuarioLogado();
         LocalDate hoje = LocalDate.now();
-        LocalDate dataInicio;
-        LocalDate dataFim = hoje;
-
-        switch (periodo.toUpperCase()) {
-            case "DIARIO" -> dataInicio = hoje;
-            case "SEMANAL" -> dataInicio = hoje.minusDays(hoje.getDayOfWeek().getValue() - 1);
-            default -> dataInicio = hoje.withDayOfMonth(1);
-        }
+        LocalDate dataInicio = resolveDataInicio(hoje, periodo);
+        LocalDate dataFim = resolveDataFim(hoje, periodo);
 
         DashboardResponse dashboard = dashboardService.getDashboard(salonId, dataInicio, dataFim, periodo);
         return ResponseEntity.ok(dashboard.getServicosMaisVendidos());
@@ -147,14 +159,8 @@ public class DashboardController {
 
         Long salonId = salonService.getSalonIdDoUsuarioLogado();
         LocalDate hoje = LocalDate.now();
-        LocalDate dataInicio;
-        LocalDate dataFim = hoje;
-
-        switch (periodo.toUpperCase()) {
-            case "SEMANAL" -> dataInicio = hoje.minusDays(hoje.getDayOfWeek().getValue() - 1);
-            case "MENSAL" -> dataInicio = hoje.withDayOfMonth(1);
-            default -> dataInicio = hoje;
-        }
+        LocalDate dataInicio = resolveDataInicio(hoje, periodo);
+        LocalDate dataFim = resolveDataFim(hoje, periodo);
 
         DashboardResponse dashboard = dashboardService.getDashboard(salonId, dataInicio, dataFim, periodo);
         return ResponseEntity.ok(dashboard.getAgendamentos());
@@ -169,14 +175,8 @@ public class DashboardController {
 
         Long salonId = salonService.getSalonIdDoUsuarioLogado();
         LocalDate hoje = LocalDate.now();
-        LocalDate dataInicio;
-        LocalDate dataFim = hoje;
-
-        switch (periodo.toUpperCase()) {
-            case "DIARIO" -> dataInicio = hoje;
-            case "SEMANAL" -> dataInicio = hoje.minusDays(hoje.getDayOfWeek().getValue() - 1);
-            default -> dataInicio = hoje.withDayOfMonth(1);
-        }
+        LocalDate dataInicio = resolveDataInicio(hoje, periodo);
+        LocalDate dataFim = resolveDataFim(hoje, periodo);
 
         DashboardResponse dashboard = dashboardService.getDashboard(salonId, dataInicio, dataFim, periodo);
         return ResponseEntity.ok(dashboard.getClientes());
@@ -191,14 +191,8 @@ public class DashboardController {
 
         Long salonId = salonService.getSalonIdDoUsuarioLogado();
         LocalDate hoje = LocalDate.now();
-        LocalDate dataInicio;
-        LocalDate dataFim = hoje;
-
-        switch (periodo.toUpperCase()) {
-            case "DIARIO" -> dataInicio = hoje;
-            case "SEMANAL" -> dataInicio = hoje.minusDays(hoje.getDayOfWeek().getValue() - 1);
-            default -> dataInicio = hoje.withDayOfMonth(1);
-        }
+        LocalDate dataInicio = resolveDataInicio(hoje, periodo);
+        LocalDate dataFim = resolveDataFim(hoje, periodo);
 
         DashboardResponse dashboard = dashboardService.getDashboard(salonId, dataInicio, dataFim, periodo);
         return ResponseEntity.ok(dashboard.getComissoes());
