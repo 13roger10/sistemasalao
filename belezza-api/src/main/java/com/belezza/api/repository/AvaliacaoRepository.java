@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -20,6 +21,8 @@ public interface AvaliacaoRepository extends JpaRepository<Avaliacao, Long> {
     Page<Avaliacao> findBySalonId(Long salonId, Pageable pageable);
 
     Page<Avaliacao> findByProfissionalId(Long profissionalId, Pageable pageable);
+
+    List<Avaliacao> findByAgendamento_Cliente_Usuario_IdOrderByCriadoEmDesc(Long usuarioId);
 
     @Query("SELECT AVG(a.nota) FROM Avaliacao a WHERE a.salon.id = :salonId")
     Double findAverageNotaBySalonId(@Param("salonId") Long salonId);

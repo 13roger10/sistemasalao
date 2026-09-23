@@ -469,16 +469,31 @@ export const appointmentService = {
     return api.post<Appointment>(`/salon/appointments/my/${id}/cancel`, { reason });
   },
 
-  // Reschedule appointment for the authenticated client
+  // Reschedule appointment for the authenticated client.
+  // Backend route: POST /api/salon/appointments/{id}/reschedule (MeusAgendamentosController) —
+  // ownership of the appointment is enforced server-side, and the team (professional,
+  // receptionists, admin) is notified once this succeeds.
   rescheduleMyAppointment: (
     id: string,
-    newDate: string,
-    newTime: string
+    data: {
+      date: Date;
+      startTime: string;
+      professionalId?: string;
+      serviceIds?: string[];
+      clientNotes?: string;
+    }
   ): Promise<Appointment> => {
-    return api.post<Appointment>(`/salon/appointments/my/${id}/reschedule`, {
-      date: newDate,
-      startTime: newTime,
-    });
+    const year = data.date.getFullYear();
+    const month = String(data.date.getMonth() + 1).padStart(2, '0');
+    const day = String(data.date.getDate()).padStart(2, '0');
+    const novaDataHora = `${year}-${month}-${day}T${data.startTime}:00`;
+
+    return api.post<AgendamentoBackendResponse>(`/salon/appointments/${id}/reschedule`, {
+      novaDataHora,
+      novoProfissionalId: data.professionalId ? Number(data.professionalId) : undefined,
+      servicoIds: data.serviceIds?.length ? data.serviceIds.map(Number) : undefined,
+      observacoes: data.clientNotes,
+    }).then(mapAgendamentoToFrontend);
   },
 
   // Get single appointment by ID

@@ -208,6 +208,38 @@ public class NotificacaoService {
         }
     }
 
+    /**
+     * Notifica o profissional, a recepção e o administrador do salão que o cliente
+     * reagendou o próprio atendimento (data/hora, e possivelmente profissional/serviços).
+     */
+    @Transactional
+    public void notificarEquipeAgendamentoReagendadoPeloCliente(Agendamento agendamento) {
+        Salon salon = agendamento.getSalon();
+        String nomeCliente = agendamento.getCliente() != null && agendamento.getCliente().getUsuario() != null
+                ? agendamento.getCliente().getUsuario().getNome() : "Cliente";
+        String data = agendamento.getDataHora().toLocalDate()
+                .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM"));
+        String hora = agendamento.getDataHora().toLocalTime()
+                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+
+        String titulo = "Cliente reagendou atendimento";
+        String mensagem = String.format("%s reagendou o atendimento para %s às %s.", nomeCliente, data, hora);
+        String link = "/salon/appointments";
+
+        if (agendamento.getProfissional() != null && agendamento.getProfissional().getUsuario() != null) {
+            criarNotificacao(agendamento.getProfissional().getUsuario(), TipoNotificacao.AGENDAMENTO_REAGENDADO, titulo, mensagem, link, agendamento.getId());
+        }
+
+        if (salon.getAdmin() != null) {
+            criarNotificacao(salon.getAdmin(), TipoNotificacao.AGENDAMENTO_REAGENDADO, titulo, mensagem, link, agendamento.getId());
+        }
+
+        List<Usuario> recepcionistas = usuarioRepository.findByRoleAndSalonIdAndAtivoTrue(Role.RECEPCIONISTA, salon.getId());
+        for (Usuario recepcionista : recepcionistas) {
+            criarNotificacao(recepcionista, TipoNotificacao.AGENDAMENTO_REAGENDADO, titulo, mensagem, link, agendamento.getId());
+        }
+    }
+
     @Transactional
     public void notificarAgendamentoConfirmado(Agendamento agendamento) {
         Usuario usuario = agendamento.getCliente().getUsuario();
@@ -215,7 +247,7 @@ public class NotificacaoService {
         String mensagem = String.format("Seu agendamento para %s às %s foi confirmado!",
                 agendamento.getDataHora().toLocalDate().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM")),
                 agendamento.getDataHora().toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")));
-        String link = "/meus-agendamentos/" + agendamento.getId();
+        String link = "/salon/client/appointments";
 
         criarNotificacao(usuario, TipoNotificacao.AGENDAMENTO_CONFIRMADO, titulo, mensagem, link, agendamento.getId());
     }
@@ -227,7 +259,7 @@ public class NotificacaoService {
         String mensagem = String.format("Seu agendamento foi reagendado para %s às %s.",
                 agendamento.getDataHora().toLocalDate().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM")),
                 agendamento.getDataHora().toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")));
-        String link = "/meus-agendamentos/" + agendamento.getId();
+        String link = "/salon/client/appointments";
 
         criarNotificacao(usuario, TipoNotificacao.AGENDAMENTO_REAGENDADO, titulo, mensagem, link, agendamento.getId());
     }
@@ -239,7 +271,7 @@ public class NotificacaoService {
         String mensagem = String.format("Seu agendamento para %s às %s foi cancelado.",
                 agendamento.getDataHora().toLocalDate().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM")),
                 agendamento.getDataHora().toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")));
-        String link = "/agendar/" + agendamento.getSalon().getId();
+        String link = "/salon/client/appointments";
 
         criarNotificacao(usuario, TipoNotificacao.AGENDAMENTO_CANCELADO, titulo, mensagem, link, agendamento.getId());
     }
@@ -272,7 +304,7 @@ public class NotificacaoService {
         String titulo = "Lembrete de Agendamento";
         String mensagem = String.format("Seu agendamento é amanhã às %s. Não se esqueça!",
                 agendamento.getDataHora().toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")));
-        String link = "/meus-agendamentos/" + agendamento.getId();
+        String link = "/salon/client/appointments";
 
         criarNotificacao(usuario, TipoNotificacao.LEMBRETE_24H, titulo, mensagem, link, agendamento.getId());
     }
@@ -283,7 +315,7 @@ public class NotificacaoService {
         String titulo = "Seu agendamento é em breve!";
         String mensagem = String.format("Seu agendamento é em 2 horas, às %s. Estamos te esperando!",
                 agendamento.getDataHora().toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")));
-        String link = "/meus-agendamentos/" + agendamento.getId();
+        String link = "/salon/client/appointments";
 
         criarNotificacao(usuario, TipoNotificacao.LEMBRETE_2H, titulo, mensagem, link, agendamento.getId());
     }
@@ -293,7 +325,7 @@ public class NotificacaoService {
         Usuario usuario = cliente.getUsuario();
         String titulo = "Você ganhou um crédito!";
         String mensagem = String.format("Parabéns! Você completou as visitas do programa %s e ganhou um crédito de recompensa!", programaNome);
-        String link = "/fidelidade";
+        String link = "/salon/client/loyalty";
 
         criarNotificacao(usuario, TipoNotificacao.FIDELIDADE_CREDITO, titulo, mensagem, link, null);
     }
@@ -303,7 +335,7 @@ public class NotificacaoService {
         Usuario usuario = cliente.getUsuario();
         String titulo = "Você subiu de nível!";
         String mensagem = String.format("Parabéns! Você alcançou o nível %s no programa de fidelidade!", novoNivel.name());
-        String link = "/fidelidade";
+        String link = "/salon/client/loyalty";
 
         criarNotificacao(usuario, TipoNotificacao.FIDELIDADE_NIVEL, titulo, mensagem, link, null);
     }
@@ -313,7 +345,7 @@ public class NotificacaoService {
         Usuario usuario = profissional.getUsuario();
         String titulo = "Nova avaliação recebida!";
         String mensagem = String.format("Você recebeu uma avaliação de %d estrelas. Continue o ótimo trabalho!", nota);
-        String link = "/avaliacoes";
+        String link = "/salon/appointments";
 
         criarNotificacao(usuario, TipoNotificacao.AVALIACAO_RECEBIDA, titulo, mensagem, link, null);
     }

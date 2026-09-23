@@ -193,6 +193,12 @@ public class FidelidadeService {
 
     @Transactional(readOnly = true)
     public List<FidelidadeClienteResponse> buscarFidelidadesCliente(Long clienteId) {
+        Long salonId = salonService.getSalonIdDoUsuarioLogado();
+        Cliente cliente = clienteRepository.findById(clienteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cliente", clienteId));
+        if (!cliente.getSalon().getId().equals(salonId)) {
+            throw new BusinessException("Cliente não pertence a este salão");
+        }
         return fidelidadeClienteRepository.findAllActiveByCliente(clienteId).stream()
                 .map(FidelidadeClienteResponse::fromEntity)
                 .toList();
@@ -345,6 +351,22 @@ public class FidelidadeService {
     }
 
     // ==================== EXTRATO ====================
+
+    /**
+     * Enforces that a fidelidade enrollment belongs to the calling staff member's own salon.
+     * Used only by the staff-facing extrato endpoint — the client's own /me/extrato path
+     * never calls this, because it always resolves the fidelidadeClienteId from the caller's
+     * own enrollments first (getMinhaFidelidade), so it can never point at someone else's.
+     */
+    @Transactional(readOnly = true)
+    public void assertExtratoAcessivelPorEquipe(Long fidelidadeClienteId) {
+        Long salonId = salonService.getSalonIdDoUsuarioLogado();
+        FidelidadeCliente fidelidadeCliente = fidelidadeClienteRepository.findById(fidelidadeClienteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Inscrição de fidelidade", fidelidadeClienteId));
+        if (!fidelidadeCliente.getPrograma().getSalon().getId().equals(salonId)) {
+            throw new BusinessException("Inscrição não pertence a este salão");
+        }
+    }
 
     @Transactional(readOnly = true)
     public ExtratoFidelidadeResponse getExtrato(Long fidelidadeClienteId, LocalDateTime inicio, LocalDateTime fim) {

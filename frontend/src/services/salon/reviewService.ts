@@ -275,4 +275,23 @@ export const reviewService = {
       meta: { total: response.totalElements || reviews.length, page: (response.number || 0) + 1, limit: params.size || 100, totalPages: response.totalPages || 1, hasNextPage: false, hasPrevPage: false },
     };
   },
+
+  // GET /api/avaliacoes/me — avaliações feitas pelo cliente autenticado
+  listMine: async (): Promise<Review[]> => {
+    const response = await api.get<Record<string, unknown>[]>('/avaliacoes/me');
+    return (response || []).map(mapAvaliacaoToFrontend);
+  },
+
+  // POST /api/avaliacoes — cliente avalia um agendamento concluído próprio.
+  // O backend valida posse (o agendamento tem que pertencer ao cliente autenticado)
+  // e que o agendamento está CONCLUIDO e ainda não foi avaliado.
+  createReal: (data: { agendamentoId: string | number; nota: number; comentario?: string }): Promise<Review> => {
+    return api
+      .post<Record<string, unknown>>('/avaliacoes', {
+        agendamentoId: Number(data.agendamentoId),
+        nota: data.nota,
+        comentario: data.comentario || undefined,
+      })
+      .then(mapAvaliacaoToFrontend);
+  },
 };

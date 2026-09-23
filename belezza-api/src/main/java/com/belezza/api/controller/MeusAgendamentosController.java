@@ -1,7 +1,9 @@
 package com.belezza.api.controller;
 
+import com.belezza.api.dto.agendamento.AgendamentoResponse;
 import com.belezza.api.dto.agendamento.MeuAgendamentoDTO;
 import com.belezza.api.dto.agendamento.MeusAgendamentosResponse;
+import com.belezza.api.dto.agendamento.ReagendamentoRequest;
 import com.belezza.api.entity.Usuario;
 import com.belezza.api.service.AgendamentoService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,6 +14,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -117,6 +120,32 @@ public class MeusAgendamentosController {
             @AuthenticationPrincipal Usuario userDetails) {
         log.info("POST /api/salon/appointments/{}/confirm - userId: {}", id, userDetails.getId());
         MeuAgendamentoDTO response = agendamentoService.confirmarComoCliente(id, userDetails.getId());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Reschedules one of the authenticated client's own appointments (date/time, and
+     * optionally professional and/or services). Ownership is enforced in the service layer
+     * (AgendamentoService.enforceModificationOwnership) — a client can never touch another
+     * client's appointment through this route. Notifies the professional, receptionists and
+     * admin once the reschedule succeeds.
+     */
+    @PostMapping("/{id}/reschedule")
+    @Operation(
+        summary = "Reagendar meu agendamento",
+        description = "Reagenda um agendamento pertencente ao cliente autenticado (data/hora, profissional e/ou serviços)"
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Agendamento reagendado com sucesso"),
+        @ApiResponse(responseCode = "403", description = "Agendamento não pertence ao cliente autenticado", content = @Content),
+        @ApiResponse(responseCode = "404", description = "Agendamento não encontrado", content = @Content)
+    })
+    public ResponseEntity<AgendamentoResponse> reagendarMeuAgendamento(
+            @PathVariable Long id,
+            @Valid @RequestBody ReagendamentoRequest request,
+            @AuthenticationPrincipal Usuario userDetails) {
+        log.info("POST /api/salon/appointments/{}/reschedule - userId: {}", id, userDetails.getId());
+        AgendamentoResponse response = agendamentoService.reagendar(id, request, true, true, userDetails);
         return ResponseEntity.ok(response);
     }
 }

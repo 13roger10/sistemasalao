@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Builder
@@ -20,4 +21,11 @@ public class ReagendamentoRequest {
     private LocalDateTime novaDataHora;
 
     private Long novoProfissionalId;
+
+    // Optional: replaces the appointment's services when provided (e.g. the client changed
+    // their service selection while rescheduling). Left null/empty keeps the existing services.
+    private List<Long> servicoIds;
+
+    // Optional: updates the client-visible observation. Left null keeps the existing value.
+    private String observacoes;
 }

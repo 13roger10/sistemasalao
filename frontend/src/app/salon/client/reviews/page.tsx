@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Star,
   MessageSquare,
@@ -12,12 +12,17 @@ import {
   User,
   AlertCircle,
   RefreshCw,
+  Loader2,
 } from "lucide-react";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { cn } from "@/lib/utils";
-import type { Review } from "@/types/salon";
+import { appointmentService } from "@/services/salon/appointmentService";
+import { reviewService } from "@/services/salon/reviewService";
+import { useSalonAuth } from "@/contexts/SalonAuthContext";
+import type { Appointment } from "@/types/salon";
+import type { Review } from "@/types/salon/review";
 
 // ===== COMPONENTES =====
 
@@ -85,13 +90,7 @@ const PendingReviewCard = ({
   appointment,
   onReview,
 }: {
-  appointment: {
-    id: string;
-    professionalName: string;
-    serviceName: string;
-    date: Date;
-    completedAt?: Date;
-  };
+  appointment: Appointment;
   onReview: () => void;
 }) => {
   const formatDate = (date: Date) => {
@@ -100,6 +99,8 @@ const PendingReviewCard = ({
       month: "short",
     });
   };
+
+  const serviceName = appointment.services?.[0]?.service?.name || "Atendimento";
 
   return (
     <div className="rounded-xl border bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
@@ -110,10 +111,10 @@ const PendingReviewCard = ({
           </div>
           <div>
             <p className="font-medium text-gray-900 dark:text-white">
-              {appointment.serviceName}
+              {serviceName}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              com {appointment.professionalName}
+              com {appointment.professional?.name || "profissional"}
             </p>
           </div>
         </div>
@@ -157,7 +158,7 @@ const CompletedReviewCard = ({ review }: { review: Review }) => {
           </div>
           <div>
             <p className="font-medium text-gray-900 dark:text-white">
-              {review.serviceNames.join(", ")}
+              {review.serviceNames.join(", ") || "Atendimento"}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               com {review.professionalName}
@@ -201,99 +202,78 @@ const ratingLabels: Record<number, string> = {
   5: "Excelente",
 };
 
-// ===== MOCK DATA =====
-
-const mockPendingAppointments = [
-  {
-    id: "1",
-    professionalName: "Ana Silva",
-    serviceName: "Corte Feminino",
-    date: new Date("2024-01-15"),
-    completedAt: new Date("2024-01-15"),
-  },
-  {
-    id: "2",
-    professionalName: "Carlos Souza",
-    serviceName: "Barba",
-    date: new Date("2024-01-14"),
-    completedAt: new Date("2024-01-14"),
-  },
-];
-
-const mockCompletedReviews: Review[] = [
-  {
-    id: "r1",
-    clientId: "c1",
-    clientName: "Você",
-    professionalId: "p1",
-    professionalName: "Ana Silva",
-    appointmentId: "a1",
-    serviceIds: ["s1"],
-    serviceNames: ["Coloração"],
-    rating: 5,
-    comment: "Atendimento maravilhoso! A cor ficou exatamente como eu queria.",
-    status: "published",
-    isVerified: true,
-    source: "online",
-    unitId: "u1",
-    createdAt: new Date("2024-01-10"),
-    updatedAt: new Date("2024-01-10"),
-    response: "Muito obrigada pelo carinho! Foi um prazer atendê-la.",
-    respondedAt: new Date("2024-01-11"),
-  },
-  {
-    id: "r2",
-    clientId: "c1",
-    clientName: "Você",
-    professionalId: "p2",
-    professionalName: "Mariana Costa",
-    appointmentId: "a2",
-    serviceIds: ["s2"],
-    serviceNames: ["Escova"],
-    rating: 4,
-    comment: "Bom atendimento, fiquei satisfeita com o resultado.",
-    status: "published",
-    isVerified: true,
-    source: "online",
-    unitId: "u1",
-    createdAt: new Date("2024-01-05"),
-    updatedAt: new Date("2024-01-05"),
-  },
-  {
-    id: "r3",
-    clientId: "c1",
-    clientName: "Você",
-    professionalId: "p1",
-    professionalName: "Ana Silva",
-    appointmentId: "a3",
-    serviceIds: ["s1", "s3"],
-    serviceNames: ["Corte Feminino", "Hidratação"],
-    rating: 5,
-    comment: "Como sempre, perfeito!",
-    status: "published",
-    isVerified: true,
-    source: "online",
-    unitId: "u1",
-    createdAt: new Date("2023-12-20"),
-    updatedAt: new Date("2023-12-20"),
-  },
-];
-
 // ===== PÁGINA PRINCIPAL =====
 
 export default function ClientReviewsPage() {
+  const { user, isLoading: authLoading } = useSalonAuth();
+
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const [activeTab, setActiveTab] = useState<"pending" | "completed">("pending");
-  const [selectedAppointment, setSelectedAppointment] = useState<typeof mockPendingAppointments[0] | null>(null);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
-  const handleOpenReview = (appointment: typeof mockPendingAppointments[0]) => {
+  // Load the client's own appointments + their own reviews
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) return;
+
+    const load = async () => {
+      setIsLoading(true);
+      setLoadError(null);
+      try {
+        const [appointmentsResponse, myReviews] = await Promise.all([
+          appointmentService.getMyAppointments({ page: 1, limit: 100 }),
+          reviewService.listMine(),
+        ]);
+        setAppointments(appointmentsResponse.data);
+        setReviews(myReviews);
+      } catch (err) {
+        console.error("Erro ao carregar avaliações:", err);
+        setLoadError("Não foi possível carregar suas avaliações. Tente novamente.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    load();
+  }, [user, authLoading]);
+
+  // Completed appointments that still don't have a review
+  const pendingAppointments = useMemo(() => {
+    const reviewedIds = new Set(reviews.map((r) => String(r.appointmentId)));
+    return appointments
+      .filter((apt) => apt.status === "completed" && !reviewedIds.has(apt.id))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [appointments, reviews]);
+
+  // Reviews enriched with service names from the matching appointment
+  // (AvaliacaoResponse from the backend doesn't carry service info by itself)
+  const completedReviews = useMemo(() => {
+    const byId = new Map(appointments.map((apt) => [apt.id, apt]));
+    return reviews
+      .map((review) => {
+        const apt = byId.get(String(review.appointmentId));
+        return apt
+          ? { ...review, serviceNames: apt.services.map((s) => s.service?.name || "Atendimento") }
+          : review;
+      })
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }, [appointments, reviews]);
+
+  const handleOpenReview = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
     setRating(0);
     setComment("");
+    setSubmitError(null);
     setSubmitSuccess(false);
     setShowReviewModal(true);
   };
@@ -302,26 +282,48 @@ export default function ClientReviewsPage() {
     if (!selectedAppointment || rating === 0) return;
 
     setIsSubmitting(true);
-    // Simular API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setIsSubmitting(false);
-    setSubmitSuccess(true);
-
-    // Fechar modal após 2 segundos de sucesso
-    setTimeout(() => {
-      setShowReviewModal(false);
-      setSelectedAppointment(null);
-    }, 2000);
+    setSubmitError(null);
+    try {
+      const created = await reviewService.createReal({
+        agendamentoId: selectedAppointment.id,
+        nota: rating,
+        comentario: comment || undefined,
+      });
+      setReviews((prev) => [
+        { ...created, serviceNames: selectedAppointment.services.map((s) => s.service?.name || "Atendimento") },
+        ...prev,
+      ]);
+      setSubmitSuccess(true);
+      setTimeout(() => {
+        setShowReviewModal(false);
+        setSelectedAppointment(null);
+      }, 2000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.replace(/^\[HTTP \d+\] /, "") : "Não foi possível enviar sua avaliação. Tente novamente.";
+      setSubmitError(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Estatísticas do cliente
   const clientStats = useMemo(() => {
-    const totalReviews = mockCompletedReviews.length;
+    const totalReviews = completedReviews.length;
     const avgRating = totalReviews > 0
-      ? mockCompletedReviews.reduce((acc, r) => acc + r.rating, 0) / totalReviews
+      ? completedReviews.reduce((acc, r) => acc + r.rating, 0) / totalReviews
       : 0;
     return { totalReviews, avgRating };
-  }, []);
+  }, [completedReviews]);
+
+  if (isLoading || authLoading) {
+    return (
+      <SalonLayout>
+        <div className="flex h-64 items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+        </div>
+      </SalonLayout>
+    );
+  }
 
   return (
     <SalonLayout>
@@ -336,6 +338,12 @@ export default function ClientReviewsPage() {
           </p>
         </div>
 
+        {loadError && (
+          <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+            {loadError}
+          </div>
+        )}
+
         {/* Stats Cards */}
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-xl border bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
@@ -345,7 +353,7 @@ export default function ClientReviewsPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {mockPendingAppointments.length}
+                  {pendingAppointments.length}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   Pendentes
@@ -398,9 +406,9 @@ export default function ClientReviewsPage() {
           >
             <Clock className="h-4 w-4" />
             Pendentes
-            {mockPendingAppointments.length > 0 && (
+            {pendingAppointments.length > 0 && (
               <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/50 dark:text-amber-400">
-                {mockPendingAppointments.length}
+                {pendingAppointments.length}
               </span>
             )}
           </button>
@@ -421,7 +429,7 @@ export default function ClientReviewsPage() {
         {/* Content */}
         {activeTab === "pending" && (
           <div className="space-y-4">
-            {mockPendingAppointments.length === 0 ? (
+            {pendingAppointments.length === 0 ? (
               <div className="rounded-xl border bg-white p-12 text-center dark:border-gray-800 dark:bg-gray-900">
                 <CheckCircle className="mx-auto h-12 w-12 text-green-500" />
                 <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-white">
@@ -438,7 +446,7 @@ export default function ClientReviewsPage() {
                     <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
                     <div>
                       <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                        Você tem {mockPendingAppointments.length} atendimento(s) aguardando avaliação
+                        Você tem {pendingAppointments.length} atendimento(s) aguardando avaliação
                       </p>
                       <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">
                         Sua opinião é muito importante para nós!
@@ -446,7 +454,7 @@ export default function ClientReviewsPage() {
                     </div>
                   </div>
                 </div>
-                {mockPendingAppointments.map((appointment) => (
+                {pendingAppointments.map((appointment) => (
                   <PendingReviewCard
                     key={appointment.id}
                     appointment={appointment}
@@ -460,7 +468,7 @@ export default function ClientReviewsPage() {
 
         {activeTab === "completed" && (
           <div className="space-y-4">
-            {mockCompletedReviews.length === 0 ? (
+            {completedReviews.length === 0 ? (
               <div className="rounded-xl border bg-white p-12 text-center dark:border-gray-800 dark:bg-gray-900">
                 <MessageSquare className="mx-auto h-12 w-12 text-gray-400" />
                 <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-white">
@@ -471,7 +479,7 @@ export default function ClientReviewsPage() {
                 </p>
               </div>
             ) : (
-              mockCompletedReviews.map((review) => (
+              completedReviews.map((review) => (
                 <CompletedReviewCard key={review.id} review={review} />
               ))
             )}
@@ -509,14 +517,20 @@ export default function ClientReviewsPage() {
                     </div>
                     <div>
                       <p className="font-medium text-gray-900 dark:text-white">
-                        {selectedAppointment.professionalName}
+                        {selectedAppointment.professional?.name || "Profissional"}
                       </p>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {selectedAppointment.serviceName}
+                        {selectedAppointment.services?.[0]?.service?.name || "Atendimento"}
                       </p>
                     </div>
                   </div>
                 </div>
+
+                {submitError && (
+                  <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                    {submitError}
+                  </div>
+                )}
 
                 {/* Rating */}
                 <div className="text-center">

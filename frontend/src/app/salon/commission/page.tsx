@@ -529,6 +529,10 @@ export default function CommissionPage() {
 
   // ===== CARREGAR DADOS =====
   const loadData = useCallback(async () => {
+    // Auth hydrates from localStorage asynchronously — user is briefly null on mount.
+    // Without this guard, that first render fires with user=null, which falls through
+    // to the ADMIN/RECEPCIONIST branch below (listBySalon) before the real role is known.
+    if (!user) return;
     setLoading(true);
     try {
       let data: Commission[];

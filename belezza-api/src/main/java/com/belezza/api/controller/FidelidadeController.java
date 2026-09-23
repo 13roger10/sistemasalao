@@ -157,13 +157,14 @@ public class FidelidadeController {
 
     @GetMapping("/extrato/{fidelidadeClienteId}")
     @ProfissionalOrAdmin
-    @Operation(summary = "Extrato de fidelidade", description = "Retorna o extrato completo de um cliente")
+    @Operation(summary = "Extrato de fidelidade", description = "Retorna o extrato completo de um cliente. Restrito à equipe do salão do cliente.")
     public ResponseEntity<ExtratoFidelidadeResponse> getExtrato(
             @PathVariable Long fidelidadeClienteId,
             @Parameter(description = "Data inicial (yyyy-MM-ddTHH:mm:ss)")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime inicio,
             @Parameter(description = "Data final (yyyy-MM-ddTHH:mm:ss)")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fim) {
+        fidelidadeService.assertExtratoAcessivelPorEquipe(fidelidadeClienteId);
         ExtratoFidelidadeResponse extrato = fidelidadeService.getExtrato(fidelidadeClienteId, inicio, fim);
         return ResponseEntity.ok(extrato);
     }

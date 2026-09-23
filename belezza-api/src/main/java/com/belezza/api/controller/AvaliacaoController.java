@@ -4,6 +4,7 @@ import com.belezza.api.dto.avaliacao.AvaliacaoRequest;
 import com.belezza.api.dto.avaliacao.AvaliacaoResponse;
 import com.belezza.api.dto.avaliacao.RankingAvaliacaoDTO;
 import com.belezza.api.dto.avaliacao.ResumoAvaliacoesDTO;
+import com.belezza.api.entity.Usuario;
 import com.belezza.api.security.annotation.ProfissionalOrAdmin;
 import com.belezza.api.service.AvaliacaoService;
 import com.belezza.api.service.SalonService;
@@ -17,6 +18,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -33,10 +37,20 @@ public class AvaliacaoController {
     private final SalonService salonService;
 
     @PostMapping
-    @Operation(summary = "Criar avaliação", description = "Cria uma avaliação para um agendamento concluído")
-    public ResponseEntity<AvaliacaoResponse> criar(@Valid @RequestBody AvaliacaoRequest request) {
-        AvaliacaoResponse response = avaliacaoService.criar(request);
+    @Operation(summary = "Criar avaliação", description = "Cria uma avaliação para um agendamento concluído. Cliente só pode avaliar os próprios atendimentos.")
+    public ResponseEntity<AvaliacaoResponse> criar(
+            @Valid @RequestBody AvaliacaoRequest request,
+            @AuthenticationPrincipal Usuario operador) {
+        AvaliacaoResponse response = avaliacaoService.criar(request, operador);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @GetMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Minhas avaliações", description = "Retorna as avaliações feitas pelo cliente autenticado")
+    public ResponseEntity<List<AvaliacaoResponse>> minhasAvaliacoes(Authentication auth) {
+        List<AvaliacaoResponse> response = avaliacaoService.getMinhasAvaliacoes(auth.getName());
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/agendamento/{agendamentoId}")
@@ -47,7 +61,8 @@ public class AvaliacaoController {
     }
 
     @GetMapping("/salon/{salonId}")
-    @Operation(summary = "Listar por salão", description = "Lista avaliações de um salão")
+    @ProfissionalOrAdmin
+    @Operation(summary = "Listar por salão", description = "Lista avaliações de um salão. Restrito à equipe do salão.")
     public ResponseEntity<Page<AvaliacaoResponse>> listarPorSalon(
             @PathVariable Long salonId,
             @PageableDefault(size = 20, sort = "criadoEm") Pageable pageable) {

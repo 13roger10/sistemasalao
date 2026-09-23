@@ -41,8 +41,17 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         // Prefix for messages routed to @MessageMapping controllers
         registry.setApplicationDestinationPrefixes("/app");
 
-        // In-memory broker for /topic (broadcast) and /user (point-to-point)
-        registry.enableSimpleBroker("/topic", "/user");
+        // In-memory broker for /topic (broadcast) and /queue (point-to-point).
+        // IMPORTANT: "/user" must NOT be listed here. UserDestinationMessageHandler resolves
+        // "/user/{name}/queue/X" into a per-session destination like "/queue/X-user<sessionId>"
+        // and re-publishes it to the broker — the broker then needs "/queue" registered as one
+        // of its own prefixes to recognize and deliver that resolved destination. With "/user"
+        // registered here instead of "/queue", every resolved per-session message fell outside
+        // the broker's known prefixes and was silently dropped: convertAndSendToUser() never
+        // threw, SimpUserRegistry always had the right session, but no MESSAGE frame ever
+        // reached the client — only plain /topic broadcasts worked. This is why users had to
+        // log out and back in (forcing a fresh REST fetch) to see new notifications at all.
+        registry.enableSimpleBroker("/topic", "/queue");
 
         // Prefix Spring adds internally to user destinations
         registry.setUserDestinationPrefix("/user");

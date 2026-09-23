@@ -16,7 +16,6 @@ import type { PaginatedResponse, PaginationParams } from '@/types/salon/common';
 
 // IMPORTANTE: O backend usa /servicos (português), não /services
 const BASE_PATH = '/servicos';
-const PUBLIC_PATH = '/public/servicos';
 
 // Mapeamento de categoria para TipoServico do backend
 const categoryToTipoServico: Record<string, string> = {
@@ -98,17 +97,19 @@ const mapBackendToFrontend = (servico: ServicoBackendResponse): Service => {
 export const serviceService = {
   // ===== PUBLIC/CLIENT ENDPOINTS =====
 
-  // List services for public booking (no auth required)
-  // Usa endpoint público do backend em português
+  // List services for public/client booking. There is no dedicated "/servicos/client" or
+  // "/public/servicos" route on the backend (both 404/500'd — confirmed with a live browser
+  // audit) — the real, working endpoint for listing a salon's active services, with or
+  // without auth, is GET /servicos/salon/{salonId}, same as getAll() below.
   listPublic: (unitId?: string): Promise<Service[]> => {
-    return api.get<Service[]>(PUBLIC_PATH, { unitId, salonId: unitId || '1' });
+    const salonId = !unitId || unitId === 'default' ? '1' : unitId;
+    return api.get<ServicoBackendResponse[]>(`${BASE_PATH}/salon/${salonId}`)
+      .then((backendServices) => backendServices.map(mapBackendToFrontend));
   },
 
-  // List services for authenticated client
+  // List services for authenticated client (same real endpoint as listPublic)
   listForClient: (unitId?: string): Promise<Service[]> => {
-    // Tenta endpoint de cliente, fallback para público
-    return api.get<Service[]>(`${BASE_PATH}/client`, { unitId })
-      .catch(() => api.get<Service[]>(PUBLIC_PATH, { unitId, salonId: unitId || '1' }));
+    return serviceService.listPublic(unitId);
   },
 
   // ===== ADMIN/STAFF ENDPOINTS =====

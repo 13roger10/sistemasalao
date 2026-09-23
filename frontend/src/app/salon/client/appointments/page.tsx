@@ -22,9 +22,11 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { appointmentService } from "@/services/salon/appointmentService";
+import { professionalService } from "@/services/salon/professionalService";
+import { serviceService } from "@/services/salon/serviceService";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import { cn } from "@/lib/utils";
-import type { Appointment, AppointmentStatus } from "@/types/salon";
+import type { Appointment, AppointmentStatus, Professional, Service, TimeSlot } from "@/types/salon";
 
 // Status configuration
 const STATUS_CONFIG: Record<AppointmentStatus, { label: string; color: string; icon: ReactNode }> = {
@@ -62,6 +64,17 @@ const STATUS_CONFIG: Record<AppointmentStatus, { label: string; color: string; i
 
 type TabType = "upcoming" | "past";
 
+// Fallback quando a checagem real de disponibilidade falha (ex: regra de antecedência
+// máxima, backend fora do ar) — o backend ainda valida conflitos de verdade ao submeter.
+const FALLBACK_WORKING_HOURS: string[] = (() => {
+  const hours: string[] = [];
+  for (let h = 9; h <= 21; h++) {
+    hours.push(`${String(h).padStart(2, "0")}:00`);
+    if (h < 21) hours.push(`${String(h).padStart(2, "0")}:30`);
+  }
+  return hours;
+})();
+
 export default function ClientAppointmentsPage() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useSalonAuth();
@@ -75,6 +88,64 @@ export default function ClientAppointmentsPage() {
   const [appointmentToCancel, setAppointmentToCancel] = useState<Appointment | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+
+  // Reagendamento
+  const [professionals, setProfessionals] = useState<Professional[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
+  const [appointmentToReschedule, setAppointmentToReschedule] = useState<Appointment | null>(null);
+  const [rescheduleForm, setRescheduleForm] = useState({
+    professionalId: "",
+    serviceIds: [] as string[],
+    date: "",
+    startTime: "",
+    clientNotes: "",
+  });
+  const [rescheduleErrors, setRescheduleErrors] = useState<Record<string, string>>({});
+  const [isRescheduling, setIsRescheduling] = useState(false);
+
+  // Carrega profissionais e serviços (para o modal de reagendamento)
+  useEffect(() => {
+    if (authLoading || !user) return;
+
+    professionalService.getAll({ salonId: "1" }).then(setProfessionals).catch((err) => {
+      console.error("Erro ao carregar profissionais:", err);
+    });
+    serviceService.getAll({ salonId: "1" }).then(setServices).catch((err) => {
+      console.error("Erro ao carregar serviços:", err);
+    });
+  }, [user, authLoading]);
+
+  // Verifica disponibilidade de horários para o profissional/serviços/data escolhidos
+  useEffect(() => {
+    if (!rescheduleForm.professionalId || rescheduleForm.serviceIds.length === 0 || !rescheduleForm.date) {
+      setAvailableSlots([]);
+      return;
+    }
+
+    const [year, month, day] = rescheduleForm.date.split("-").map(Number);
+    appointmentService
+      .checkAvailability({
+        professionalId: rescheduleForm.professionalId,
+        serviceIds: rescheduleForm.serviceIds,
+        date: new Date(year, month - 1, day),
+        unitId: "1",
+      })
+      .then((response) => {
+        if (response.professionals && response.professionals.length > 0) {
+          setAvailableSlots(response.professionals[0].slots);
+        } else {
+          setAvailableSlots([]);
+        }
+      })
+      .catch((err) => {
+        // Ex: data > 30 dias de antecedência, ou o backend fora do ar — mesmo assim deixa
+        // o cliente escolher um horário; o backend valida de verdade (conflito real) ao
+        // enviar o reagendamento, então isso é só um fallback de UI, não a fonte da verdade.
+        console.error("Erro ao verificar disponibilidade:", err);
+        setAvailableSlots(FALLBACK_WORKING_HOURS.map((time) => ({ time, available: true })));
+      });
+  }, [rescheduleForm.professionalId, rescheduleForm.serviceIds, rescheduleForm.date]);
 
   // Load appointments
   useEffect(() => {
@@ -196,6 +267,71 @@ export default function ClientAppointmentsPage() {
     }
   };
 
+  // Abre o modal de reagendamento, pré-preenchido com os dados atuais do agendamento
+  const handleOpenReschedule = (appointment: Appointment) => {
+    setRescheduleErrors({});
+    const dateObj = new Date(appointment.date);
+    const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}-${String(dateObj.getDate()).padStart(2, "0")}`;
+    setRescheduleForm({
+      professionalId: appointment.professionalId,
+      serviceIds: appointment.services.map((s) => s.serviceId),
+      date: dateStr,
+      startTime: appointment.startTime,
+      clientNotes: appointment.clientNotes || "",
+    });
+    setAppointmentToReschedule(appointment);
+  };
+
+  // Confirma o reagendamento via API
+  const handleSubmitReschedule = async () => {
+    if (!appointmentToReschedule) return;
+
+    const errors: Record<string, string> = {};
+    if (!rescheduleForm.professionalId) errors.professionalId = "Selecione um profissional";
+    if (rescheduleForm.serviceIds.length === 0) errors.serviceIds = "Selecione pelo menos um serviço";
+    if (!rescheduleForm.date) errors.date = "Selecione uma data";
+    if (!rescheduleForm.startTime) errors.startTime = "Selecione um horário";
+
+    if (rescheduleForm.date && rescheduleForm.startTime) {
+      const [year, month, day] = rescheduleForm.date.split("-").map(Number);
+      const [hours, minutes] = rescheduleForm.startTime.split(":").map(Number);
+      const novaDataHora = new Date(year, month - 1, day, hours, minutes, 0, 0);
+      if (novaDataHora < new Date()) {
+        errors.startTime = "Não é possível reagendar para um horário passado";
+      }
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setRescheduleErrors(errors);
+      return;
+    }
+
+    setIsRescheduling(true);
+    setRescheduleErrors({});
+    try {
+      const [year, month, day] = rescheduleForm.date.split("-").map(Number);
+      const updated = await appointmentService.rescheduleMyAppointment(appointmentToReschedule.id, {
+        date: new Date(year, month - 1, day),
+        startTime: rescheduleForm.startTime,
+        professionalId: rescheduleForm.professionalId,
+        serviceIds: rescheduleForm.serviceIds,
+        clientNotes: rescheduleForm.clientNotes || undefined,
+      });
+      setAppointments((prev) =>
+        prev.map((apt) => (apt.id === appointmentToReschedule.id ? { ...apt, ...updated, id: apt.id } : apt))
+      );
+      setAppointmentToReschedule(null);
+    } catch (err) {
+      console.error("Erro ao reagendar:", err);
+      const msg = err instanceof Error
+        ? err.message.replace(/^\[HTTP \d+\] /, "")
+        : "Não foi possível reagendar. Tente novamente.";
+      setRescheduleErrors({ submit: msg });
+    } finally {
+      setIsRescheduling(false);
+    }
+  };
+
   // Format date for display
   const formatAppointmentDate = (date: Date | string) => {
     const dateObj = typeof date === "string" ? parseISO(date) : date;
@@ -206,6 +342,26 @@ export default function ClientAppointmentsPage() {
 
     return format(dateObj, "EEEE, d 'de' MMMM", { locale: ptBR });
   };
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+
+  const formatDuration = (minutes: number) => {
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+  };
+
+  const rescheduleServicesTotal = services
+    .filter((s) => rescheduleForm.serviceIds.includes(s.id))
+    .reduce(
+      (acc, s) => ({
+        price: acc.price + (s.promotionalPrice || s.price),
+        duration: acc.duration + s.durationMinutes,
+      }),
+      { price: 0, duration: 0 }
+    );
 
   // Get service names
   const getServiceNames = (apt: Appointment) => {
@@ -487,7 +643,7 @@ export default function ClientAppointmentsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => router.push("/salon/book")}
+                          onClick={() => handleOpenReschedule(appointment)}
                           className="text-gray-600 dark:text-gray-400"
                         >
                           <RefreshCw className="mr-1 h-3 w-3" />
@@ -617,6 +773,182 @@ export default function ClientAppointmentsPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Modal de Reagendamento */}
+      <Modal
+        isOpen={!!appointmentToReschedule}
+        onClose={() => setAppointmentToReschedule(null)}
+        title="Reagendamento"
+        size="lg"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => setAppointmentToReschedule(null)}
+              disabled={isRescheduling}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleSubmitReschedule} isLoading={isRescheduling}>
+              Reagendar
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-6">
+          {rescheduleErrors.submit && (
+            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+              {rescheduleErrors.submit}
+            </div>
+          )}
+
+          {/* Profissional */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Profissional *
+            </label>
+            <select
+              value={rescheduleForm.professionalId}
+              onChange={(e) => setRescheduleForm({ ...rescheduleForm, professionalId: e.target.value, startTime: "" })}
+              className={`w-full rounded-lg border px-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 dark:text-white ${
+                rescheduleErrors.professionalId
+                  ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
+                  : "border-gray-300 focus:border-violet-500 focus:ring-violet-500/20 dark:border-gray-600"
+              } bg-white dark:bg-gray-700`}
+            >
+              <option value="">Selecione um profissional</option>
+              {professionals.map((prof) => (
+                <option key={prof.id} value={prof.id}>
+                  {prof.name}
+                </option>
+              ))}
+            </select>
+            {rescheduleErrors.professionalId && (
+              <p className="mt-1 text-sm text-red-500">{rescheduleErrors.professionalId}</p>
+            )}
+          </div>
+
+          {/* Serviços */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Serviços *
+            </label>
+            <div className={`max-h-48 space-y-2 overflow-y-auto rounded-lg border p-3 ${
+              rescheduleErrors.serviceIds ? "border-red-500" : "border-gray-300 dark:border-gray-600"
+            }`}>
+              {services
+                .filter((s) => s.status === "active")
+                .map((service) => (
+                  <label
+                    key={service.id}
+                    className="flex items-center gap-3 rounded-lg p-2 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={rescheduleForm.serviceIds.includes(service.id)}
+                      onChange={(e) => {
+                        setRescheduleForm({
+                          ...rescheduleForm,
+                          startTime: "",
+                          serviceIds: e.target.checked
+                            ? [...rescheduleForm.serviceIds, service.id]
+                            : rescheduleForm.serviceIds.filter((id) => id !== service.id),
+                        });
+                      }}
+                      className="h-4 w-4 rounded border-gray-300 text-violet-500 focus:ring-violet-500"
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        {service.name}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {formatCurrency(service.promotionalPrice || service.price)} •{" "}
+                        {formatDuration(service.durationMinutes)}
+                      </p>
+                    </div>
+                  </label>
+                ))}
+            </div>
+            {rescheduleErrors.serviceIds && (
+              <p className="mt-1 text-sm text-red-500">{rescheduleErrors.serviceIds}</p>
+            )}
+            {rescheduleForm.serviceIds.length > 0 && (
+              <div className="mt-2 rounded-lg bg-violet-50 p-2 dark:bg-violet-900/20">
+                <p className="text-sm text-violet-700 dark:text-violet-300">
+                  Total: {formatCurrency(rescheduleServicesTotal.price)} •{" "}
+                  {formatDuration(rescheduleServicesTotal.duration)}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Data e Hora */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Data *
+              </label>
+              <input
+                type="date"
+                value={rescheduleForm.date}
+                onChange={(e) => setRescheduleForm({ ...rescheduleForm, date: e.target.value, startTime: "" })}
+                min={new Date().toISOString().split("T")[0]}
+                className={`w-full rounded-lg border px-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 dark:text-white ${
+                  rescheduleErrors.date
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
+                    : "border-gray-300 focus:border-violet-500 focus:ring-violet-500/20 dark:border-gray-600"
+                } bg-white dark:bg-gray-700`}
+              />
+              {rescheduleErrors.date && (
+                <p className="mt-1 text-sm text-red-500">{rescheduleErrors.date}</p>
+              )}
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Horário *
+              </label>
+              <select
+                value={rescheduleForm.startTime}
+                onChange={(e) => setRescheduleForm({ ...rescheduleForm, startTime: e.target.value })}
+                className={`w-full rounded-lg border px-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 dark:text-white ${
+                  rescheduleErrors.startTime
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
+                    : "border-gray-300 focus:border-violet-500 focus:ring-violet-500/20 dark:border-gray-600"
+                } bg-white dark:bg-gray-700`}
+              >
+                <option value="">Selecione um horário</option>
+                {availableSlots.map((slot) => (
+                  <option
+                    key={slot.time}
+                    value={slot.time}
+                    disabled={!slot.available}
+                    className={!slot.available ? "text-gray-400" : ""}
+                  >
+                    {slot.time} {!slot.available ? "(Ocupado)" : ""}
+                  </option>
+                ))}
+              </select>
+              {rescheduleErrors.startTime && (
+                <p className="mt-1 text-sm text-red-500">{rescheduleErrors.startTime}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Observações */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Observações do Cliente
+            </label>
+            <textarea
+              value={rescheduleForm.clientNotes}
+              onChange={(e) => setRescheduleForm({ ...rescheduleForm, clientNotes: e.target.value })}
+              placeholder="Observações do cliente..."
+              rows={2}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
+            />
+          </div>
+        </div>
       </Modal>
     </SalonLayout>
   );

@@ -6,8 +6,12 @@ import SockJS from "sockjs-client";
 
 // WebSocket must connect directly to the backend — cannot go through the
 // Next.js HTTP catch-all proxy because SockJS needs a real WebSocket upgrade.
+// The backend serves /ws on the same port as the REST API (8080, not a separate
+// service) — confirmed via belezza-api's WebSocketConfig, which registers "/ws"
+// on the default Spring Boot embedded server. A stale 8081 default here caused
+// every page to fail this connection with ERR_CONNECTION_REFUSED.
 const WS_URL =
-  (process.env.NEXT_PUBLIC_WS_URL ?? "http://localhost:8081") + "/ws";
+  (process.env.NEXT_PUBLIC_WS_URL ?? "http://localhost:8080") + "/ws";
 
 export type WsMessageHandler<T = unknown> = (payload: T) => void;
 

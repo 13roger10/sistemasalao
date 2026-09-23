@@ -94,6 +94,14 @@ management:
   health:
     redis:
       enabled: false
+    # Mail and RabbitMQ are external services this local dev profile never runs (no SMTP
+    # server, no broker) — their auto-registered health indicators were failing every
+    # /actuator/health check and reporting the whole app DOWN even though it was fully
+    # functional. Same reasoning as disabling the redis check above.
+    mail:
+      enabled: false
+    rabbit:
+      enabled: false
 
 # Logging
 logging:

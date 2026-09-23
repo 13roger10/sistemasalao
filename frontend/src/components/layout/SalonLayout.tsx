@@ -42,7 +42,10 @@ export function SalonLayout({
         />
 
         {/* Main Content */}
-        <div className="flex flex-1 flex-col">
+        {/* min-w-0 lets this flex item actually shrink to the viewport instead of stretching
+            to its widest content's intrinsic width — without it, some pages (content whose
+            children don't wrap) push the whole layout wider than the screen on mobile. */}
+        <div className="flex min-w-0 flex-1 flex-col">
           {/* Header */}
           <SalonHeader
             onMenuClick={() => setSidebarOpen(true)}

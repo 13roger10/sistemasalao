@@ -11,6 +11,7 @@ import com.belezza.api.integration.WhatsAppService;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.ClienteRepository;
 import com.belezza.api.repository.HorarioTrabalhoRepository;
+import com.belezza.api.security.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -417,6 +418,7 @@ public class AgendamentoService {
     @Transactional
     public AgendamentoResponse confirmar(Long id, boolean restrictSensitiveData) {
         Agendamento agendamento = getAgendamento(id);
+        enforceStaffTenant(agendamento.getSalon().getId());
 
         if (agendamento.getStatus() != StatusAgendamento.PENDENTE) {
             throw new BusinessException("Apenas agendamentos pendentes podem ser confirmados");
@@ -425,6 +427,14 @@ public class AgendamentoService {
         agendamento.setStatus(StatusAgendamento.CONFIRMADO);
         agendamento = agendamentoRepository.save(agendamento);
         log.info("Agendamento confirmado: {}", id);
+
+        // Avisa o cliente que a equipe confirmou o agendamento dele. Faltava essa chamada —
+        // o método já existia em NotificacaoService mas nunca era invocado por este fluxo.
+        try {
+            notificacaoService.notificarAgendamentoConfirmado(agendamento);
+        } catch (Exception e) {
+            log.error("Erro ao notificar cliente sobre confirmação do agendamento: {}", e.getMessage(), e);
+        }
 
         return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
     }
@@ -522,6 +532,7 @@ public class AgendamentoService {
     @Transactional
     public AgendamentoResponse iniciar(Long id, boolean restrictSensitiveData) {
         Agendamento agendamento = getAgendamento(id);
+        enforceStaffTenant(agendamento.getSalon().getId());
 
         if (agendamento.getStatus() != StatusAgendamento.CONFIRMADO) {
             throw new BusinessException("Apenas agendamentos confirmados podem ser iniciados");
@@ -551,6 +562,7 @@ public class AgendamentoService {
     @Auditable(action = "COMPLETE", entityType = "Agendamento", captureOldState = true, captureNewState = true)
     public AgendamentoResponse concluir(Long id, boolean restrictSensitiveData) {
         Agendamento agendamento = getAgendamento(id);
+        enforceStaffTenant(agendamento.getSalon().getId());
 
         if (agendamento.getStatus() != StatusAgendamento.EM_ANDAMENTO) {
             throw new BusinessException("Apenas agendamentos em andamento podem ser concluídos");
@@ -606,7 +618,22 @@ public class AgendamentoService {
             }
             return;
         }
-        tenantIsolationService.assertCurrentTenant(agendamento.getSalon().getId());
+        enforceStaffTenant(agendamento.getSalon().getId());
+    }
+
+    /**
+     * Tenant check for staff-only actions (confirmar/iniciar/concluir/no-show/cancelar/reagendar
+     * by ADMIN/PROFISSIONAL/RECEPCIONISTA). Unlike TenantIsolationService.assertCurrentTenant,
+     * which treats "no tenant in context" as an allow (correct for CLIENTE, who may not carry a
+     * fixed salon claim), a staff account reaching one of these role-gated endpoints must always
+     * resolve to a salon — a staff JWT with no salonId claim means the account was never properly
+     * linked to a salon and must not be allowed to touch any salon's appointments.
+     */
+    private void enforceStaffTenant(Long agendamentoSalonId) {
+        if (TenantContext.getCurrentTenant() == null) {
+            throw new AccessDeniedException("Acesso negado: usuário sem salão vinculado");
+        }
+        tenantIsolationService.assertCurrentTenant(agendamentoSalonId);
     }
 
     @Transactional
@@ -686,6 +713,35 @@ public class AgendamentoService {
             profissional = profissionalService.getProfissionalEntity(request.getNovoProfissionalId());
         }
 
+        Salon salon = agendamento.getSalon();
+        Cliente cliente = agendamento.getCliente();
+
+        // Replace the appointment's services when new ones are provided (e.g. the client
+        // changed their selection while rescheduling). orphanRemoval=true on
+        // Agendamento.servicos means clearing + re-adding correctly deletes the old rows.
+        if (request.getServicoIds() != null && !request.getServicoIds().isEmpty()) {
+            List<Servico> novosServicos = request.getServicoIds().stream()
+                    .map(servicoService::getServicoEntity)
+                    .toList();
+            boolean allFromSameSalon = novosServicos.stream()
+                    .allMatch(s -> s.getSalon().getId().equals(salon.getId()));
+            if (!allFromSameSalon) {
+                throw new BusinessException("Todos os serviços devem pertencer ao mesmo salão");
+            }
+            agendamento.setServico(null);
+            agendamento.getServicos().clear();
+            // Flush the removal before inserting the replacements — otherwise Hibernate can
+            // emit the new AgendamentoServico rows before deleting the orphaned old ones in
+            // the same flush, colliding on the (agendamento_id, ordem) unique constraint.
+            agendamento = agendamentoRepository.saveAndFlush(agendamento);
+            for (Servico s : novosServicos) {
+                agendamento.addServico(s, s.getDuracaoMinutos(), 0);
+            }
+            agendamento.setValorCobrado(novosServicos.stream()
+                    .map(Servico::getPreco)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add));
+        }
+
         // Resolve service: single-service (legacy) or first of multi-service list.
         // getServico() returns null for appointments created with multiple services.
         Servico servico = agendamento.getServico();
@@ -696,13 +752,10 @@ public class AgendamentoService {
             throw new BusinessException("Agendamento sem serviço definido — não é possível reagendar");
         }
 
-        Salon salon = agendamento.getSalon();
-        Cliente cliente = agendamento.getCliente();
-
         // Validate new datetime using the resolved service for salon/hours checks
         validarAgendamento(salon, profissional, servico, cliente, request.getNovaDataHora());
 
-        // Use total duration across all services (single or multi) for the end time
+        // Use total duration across all services (single or multi, possibly just replaced above)
         int duracaoTotal = agendamento.getDuracaoTotalMinutos();
         LocalDateTime novoFim = request.getNovaDataHora().plusMinutes(duracaoTotal);
         validarConflitos(profissional.getId(), request.getNovaDataHora(), novoFim);
@@ -713,12 +766,26 @@ public class AgendamentoService {
         agendamento.setStatus(StatusAgendamento.PENDENTE);
         agendamento.setLembreteEnviado24h(false);
         agendamento.setLembreteEnviado2h(false);
+        if (request.getObservacoes() != null) {
+            agendamento.setObservacoes(request.getObservacoes());
+        }
 
         agendamento = agendamentoRepository.save(agendamento);
         log.info("Agendamento reagendado: {} para {}", id, request.getNovaDataHora());
 
         // Criar notificação no sistema + enviar WhatsApp + email
         enviarNotificacoesReagendamento(agendamento);
+
+        // Cliente reagendando o próprio atendimento: avisar a equipe (profissional,
+        // recepção e admin) — eles não são notificados pelo enviarNotificacoesReagendamento
+        // acima, que só avisa o próprio cliente.
+        if (operador != null && operador.getRole() == Role.CLIENTE) {
+            try {
+                notificacaoService.notificarEquipeAgendamentoReagendadoPeloCliente(agendamento);
+            } catch (Exception e) {
+                log.error("Erro ao notificar equipe sobre reagendamento pelo cliente: {}", e.getMessage(), e);
+            }
+        }
 
         return AgendamentoResponse.fromEntity(agendamento, restrictSensitiveData, hideInternalNotes);
     }
@@ -740,6 +807,7 @@ public class AgendamentoService {
     @Auditable(action = "NO_SHOW", entityType = "Agendamento", captureOldState = true, captureNewState = true)
     public AgendamentoResponse marcarNoShow(Long id, boolean restrictSensitiveData) {
         Agendamento agendamento = getAgendamento(id);
+        enforceStaffTenant(agendamento.getSalon().getId());
 
         if (agendamento.getStatus() != StatusAgendamento.CONFIRMADO) {
             throw new BusinessException("Apenas agendamentos confirmados podem ser marcados como no-show");

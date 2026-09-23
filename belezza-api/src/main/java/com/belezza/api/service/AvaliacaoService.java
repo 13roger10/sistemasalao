@@ -6,17 +6,22 @@ import com.belezza.api.dto.avaliacao.RankingAvaliacaoDTO;
 import com.belezza.api.dto.avaliacao.ResumoAvaliacoesDTO;
 import com.belezza.api.entity.Agendamento;
 import com.belezza.api.entity.Avaliacao;
+import com.belezza.api.entity.Role;
 import com.belezza.api.entity.StatusAgendamento;
+import com.belezza.api.entity.Usuario;
 import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.AvaliacaoRepository;
+import com.belezza.api.repository.UsuarioRepository;
+import com.belezza.api.service.TenantIsolationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,14 +39,29 @@ public class AvaliacaoService {
 
     private final AvaliacaoRepository avaliacaoRepository;
     private final AgendamentoRepository agendamentoRepository;
+    private final UsuarioRepository usuarioRepository;
+    private final TenantIsolationService tenantIsolationService;
     @Lazy
     private final NotificacaoService notificacaoService;
 
+    /**
+     * @param operador The authenticated caller. When it's a CLIENTE, the appointment must be
+     *                  theirs — without this check, any logged-in client could post a review
+     *                  (positive or defamatory) attributed to any professional, on any other
+     *                  client's completed appointment, just by guessing the agendamentoId.
+     */
     @Transactional
     @SuppressWarnings("null")
-    public AvaliacaoResponse criar(AvaliacaoRequest request) {
+    public AvaliacaoResponse criar(AvaliacaoRequest request, Usuario operador) {
         Agendamento agendamento = agendamentoRepository.findById(request.getAgendamentoId())
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento", request.getAgendamentoId()));
+
+        if (operador != null && operador.getRole() == Role.CLIENTE) {
+            if (agendamento.getCliente() == null || agendamento.getCliente().getUsuario() == null
+                    || !agendamento.getCliente().getUsuario().getId().equals(operador.getId())) {
+                throw new AccessDeniedException("Acesso negado: você só pode avaliar os próprios atendimentos");
+            }
+        }
 
         if (agendamento.getStatus() != StatusAgendamento.CONCLUIDO) {
             throw new BusinessException("Apenas agendamentos concluídos podem ser avaliados");
@@ -83,8 +103,22 @@ public class AvaliacaoService {
 
     @Transactional(readOnly = true)
     public Page<AvaliacaoResponse> listarPorSalon(Long salonId, Pageable pageable) {
+        tenantIsolationService.assertRequestedSalon(salonId);
         return avaliacaoRepository.findBySalonId(salonId, pageable)
                 .map(AvaliacaoResponse::fromEntity);
+    }
+
+    /**
+     * Returns the authenticated client's own reviews (self-scoped by their user id).
+     */
+    @Transactional(readOnly = true)
+    public List<AvaliacaoResponse> getMinhasAvaliacoes(String email) {
+        return usuarioRepository.findByEmailAndAtivoTrue(email)
+                .map(u -> avaliacaoRepository.findByAgendamento_Cliente_Usuario_IdOrderByCriadoEmDesc(u.getId()))
+                .orElse(List.of())
+                .stream()
+                .map(AvaliacaoResponse::fromEntity)
+                .toList();
     }
 
     @Transactional(readOnly = true)
