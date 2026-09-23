@@ -181,8 +181,8 @@ public class NotificacaoService {
     }
 
     /**
-     * Notifica a recepção e o administrador do salão que o cliente confirmou
-     * o agendamento (via link de confirmação por token).
+     * Notifica o profissional, a recepção e o administrador do salão que o cliente confirmou
+     * o agendamento (via link de confirmação por token, ou pelo próprio app).
      */
     @Transactional
     public void notificarEquipeAgendamentoConfirmadoPeloCliente(Agendamento agendamento) {
@@ -197,6 +197,10 @@ public class NotificacaoService {
         String titulo = "Cliente confirmou agendamento";
         String mensagem = String.format("%s confirmou o agendamento de %s às %s.", nomeCliente, data, hora);
         String link = "/salon/appointments";
+
+        if (agendamento.getProfissional() != null && agendamento.getProfissional().getUsuario() != null) {
+            criarNotificacao(agendamento.getProfissional().getUsuario(), TipoNotificacao.AGENDAMENTO_CONFIRMADO_CLIENTE, titulo, mensagem, link, agendamento.getId());
+        }
 
         if (salon.getAdmin() != null) {
             criarNotificacao(salon.getAdmin(), TipoNotificacao.AGENDAMENTO_CONFIRMADO_CLIENTE, titulo, mensagem, link, agendamento.getId());
@@ -240,6 +244,42 @@ public class NotificacaoService {
         }
     }
 
+    /**
+     * Notifica a equipe do salão (profissional do atendimento, administrador e recepção)
+     * sobre qualquer mudança de status de um agendamento — confirmação, início, conclusão,
+     * cancelamento, reagendamento ou no-show. Usada para que a equipe toda saiba imediatamente
+     * quando o status muda, e não só o cliente.
+     *
+     * @param autor Quem executou a ação (pode ser null para fluxos automáticos/por token).
+     *              Se informado, essa pessoa é excluída dos destinatários — ela não precisa
+     *              ser notificada de uma ação que ela mesma acabou de realizar.
+     */
+    @Transactional
+    public void notificarEquipeMudancaStatusAgendamento(Agendamento agendamento, Usuario autor,
+                                                          TipoNotificacao tipo, String titulo, String mensagem) {
+        Salon salon = agendamento.getSalon();
+        String link = "/salon/appointments";
+        Long autorId = autor != null ? autor.getId() : null;
+
+        if (agendamento.getProfissional() != null && agendamento.getProfissional().getUsuario() != null) {
+            Usuario profUsuario = agendamento.getProfissional().getUsuario();
+            if (autorId == null || !profUsuario.getId().equals(autorId)) {
+                criarNotificacao(profUsuario, tipo, titulo, mensagem, link, agendamento.getId());
+            }
+        }
+
+        if (salon.getAdmin() != null && (autorId == null || !salon.getAdmin().getId().equals(autorId))) {
+            criarNotificacao(salon.getAdmin(), tipo, titulo, mensagem, link, agendamento.getId());
+        }
+
+        List<Usuario> recepcionistas = usuarioRepository.findByRoleAndSalonIdAndAtivoTrue(Role.RECEPCIONISTA, salon.getId());
+        for (Usuario recepcionista : recepcionistas) {
+            if (autorId == null || !recepcionista.getId().equals(autorId)) {
+                criarNotificacao(recepcionista, tipo, titulo, mensagem, link, agendamento.getId());
+            }
+        }
+    }
+
     @Transactional
     public void notificarAgendamentoConfirmado(Agendamento agendamento) {
         Usuario usuario = agendamento.getCliente().getUsuario();
@@ -274,28 +314,6 @@ public class NotificacaoService {
         String link = "/salon/client/appointments";
 
         criarNotificacao(usuario, TipoNotificacao.AGENDAMENTO_CANCELADO, titulo, mensagem, link, agendamento.getId());
-    }
-
-    @Transactional
-    public void notificarProfissionalCancelamento(Agendamento agendamento) {
-        if (agendamento.getProfissional() == null || agendamento.getProfissional().getUsuario() == null) return;
-
-        Usuario profissional = agendamento.getProfissional().getUsuario();
-        String nomeCliente = agendamento.getCliente() != null && agendamento.getCliente().getUsuario() != null
-                ? agendamento.getCliente().getUsuario().getNome() : "Cliente";
-        String data = agendamento.getDataHora().toLocalDate()
-                .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM"));
-        String hora = agendamento.getDataHora().toLocalTime()
-                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-        String servico = agendamento.getServicos() != null && !agendamento.getServicos().isEmpty()
-                ? agendamento.getServicos().get(0).getServico().getNome() : "Serviço";
-
-        String titulo = "Agendamento Cancelado pelo Cliente";
-        String mensagem = String.format("%s cancelou o agendamento de %s no dia %s às %s.",
-                nomeCliente, servico, data, hora);
-        String link = "/salon/appointments";
-
-        criarNotificacao(profissional, TipoNotificacao.AGENDAMENTO_CANCELADO, titulo, mensagem, link, agendamento.getId());
     }
 
     @Transactional

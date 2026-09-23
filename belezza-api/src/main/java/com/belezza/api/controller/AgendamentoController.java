@@ -186,9 +186,9 @@ public class AgendamentoController {
     @Operation(summary = "Confirmar agendamento", description = "Confirma um agendamento pendente")
     public ResponseEntity<AgendamentoResponse> confirmar(
             @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        boolean restrictData = shouldRestrictSensitiveData(userDetails);
-        AgendamentoResponse response = agendamentoService.confirmar(id, restrictData);
+            @AuthenticationPrincipal Usuario operador) {
+        boolean restrictData = shouldRestrictSensitiveData(operador);
+        AgendamentoResponse response = agendamentoService.confirmar(id, restrictData, operador);
         return ResponseEntity.ok(response);
     }
 
@@ -197,9 +197,9 @@ public class AgendamentoController {
     @Operation(summary = "Iniciar atendimento", description = "Marca agendamento como em andamento")
     public ResponseEntity<AgendamentoResponse> iniciar(
             @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        boolean restrictData = shouldRestrictSensitiveData(userDetails);
-        AgendamentoResponse response = agendamentoService.iniciar(id, restrictData);
+            @AuthenticationPrincipal Usuario operador) {
+        boolean restrictData = shouldRestrictSensitiveData(operador);
+        AgendamentoResponse response = agendamentoService.iniciar(id, restrictData, operador);
         return ResponseEntity.ok(response);
     }
 
@@ -208,9 +208,9 @@ public class AgendamentoController {
     @Operation(summary = "Concluir atendimento", description = "Marca agendamento como concluído")
     public ResponseEntity<AgendamentoResponse> concluir(
             @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        boolean restrictData = shouldRestrictSensitiveData(userDetails);
-        AgendamentoResponse response = agendamentoService.concluir(id, restrictData);
+            @AuthenticationPrincipal Usuario operador) {
+        boolean restrictData = shouldRestrictSensitiveData(operador);
+        AgendamentoResponse response = agendamentoService.concluir(id, restrictData, operador);
         return ResponseEntity.ok(response);
     }
 
@@ -245,9 +245,9 @@ public class AgendamentoController {
     @Operation(summary = "Marcar no-show", description = "Marca cliente como não compareceu")
     public ResponseEntity<AgendamentoResponse> marcarNoShow(
             @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        boolean restrictData = shouldRestrictSensitiveData(userDetails);
-        AgendamentoResponse response = agendamentoService.marcarNoShow(id, restrictData);
+            @AuthenticationPrincipal Usuario operador) {
+        boolean restrictData = shouldRestrictSensitiveData(operador);
+        AgendamentoResponse response = agendamentoService.marcarNoShow(id, restrictData, operador);
         return ResponseEntity.ok(response);
     }
 

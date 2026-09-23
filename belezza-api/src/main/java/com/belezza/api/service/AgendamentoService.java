@@ -405,7 +405,12 @@ public class AgendamentoService {
 
     @Transactional
     public AgendamentoResponse confirmar(Long id) {
-        return confirmar(id, false);
+        return confirmar(id, false, null);
+    }
+
+    @Transactional
+    public AgendamentoResponse confirmar(Long id, boolean restrictSensitiveData) {
+        return confirmar(id, restrictSensitiveData, null);
     }
 
     /**
@@ -413,10 +418,12 @@ public class AgendamentoService {
      *
      * @param id The appointment ID
      * @param restrictSensitiveData If true, excludes client phone and appointment notes
+     * @param operador The authenticated staff member performing the action (excluded from the
+     *                 team notification below so they don't get notified of their own action)
      * @return AgendamentoResponse
      */
     @Transactional
-    public AgendamentoResponse confirmar(Long id, boolean restrictSensitiveData) {
+    public AgendamentoResponse confirmar(Long id, boolean restrictSensitiveData, Usuario operador) {
         Agendamento agendamento = getAgendamento(id);
         enforceStaffTenant(agendamento.getSalon().getId());
 
@@ -434,6 +441,17 @@ public class AgendamentoService {
             notificacaoService.notificarAgendamentoConfirmado(agendamento);
         } catch (Exception e) {
             log.error("Erro ao notificar cliente sobre confirmação do agendamento: {}", e.getMessage(), e);
+        }
+
+        // Avisa o resto da equipe (profissional, admin, recepção) — quem confirmou não
+        // recebe a própria notificação.
+        try {
+            notificacaoService.notificarEquipeMudancaStatusAgendamento(
+                    agendamento, operador, TipoNotificacao.AGENDAMENTO_CONFIRMADO,
+                    "Agendamento Confirmado",
+                    mensagemEquipe(agendamento, "foi confirmado"));
+        } catch (Exception e) {
+            log.error("Erro ao notificar equipe sobre confirmação do agendamento {}: {}", id, e.getMessage(), e);
         }
 
         return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
@@ -511,7 +529,7 @@ public class AgendamentoService {
         agendamento = agendamentoRepository.save(agendamento);
         log.info("Agendamento cancelado por token: {} - Motivo: {}", agendamento.getId(), motivo);
 
-        enviarNotificacoesSistemaCancelamento(agendamento, agendamento.getMotivoCancelamento());
+        enviarNotificacoesSistemaCancelamento(agendamento, agendamento.getMotivoCancelamento(), null);
 
         // Token flow: caller is the client via an emailed link, not staff — never expose sensitive data.
         return AgendamentoResponse.fromEntityForClient(agendamento);
@@ -519,7 +537,12 @@ public class AgendamentoService {
 
     @Transactional
     public AgendamentoResponse iniciar(Long id) {
-        return iniciar(id, false);
+        return iniciar(id, false, null);
+    }
+
+    @Transactional
+    public AgendamentoResponse iniciar(Long id, boolean restrictSensitiveData) {
+        return iniciar(id, restrictSensitiveData, null);
     }
 
     /**
@@ -527,10 +550,12 @@ public class AgendamentoService {
      *
      * @param id The appointment ID
      * @param restrictSensitiveData If true, excludes client phone and appointment notes
+     * @param operador The authenticated staff member performing the action (excluded from the
+     *                 team notification below so they don't get notified of their own action)
      * @return AgendamentoResponse
      */
     @Transactional
-    public AgendamentoResponse iniciar(Long id, boolean restrictSensitiveData) {
+    public AgendamentoResponse iniciar(Long id, boolean restrictSensitiveData, Usuario operador) {
         Agendamento agendamento = getAgendamento(id);
         enforceStaffTenant(agendamento.getSalon().getId());
 
@@ -542,13 +567,28 @@ public class AgendamentoService {
         agendamento = agendamentoRepository.save(agendamento);
         log.info("Agendamento iniciado: {}", id);
 
+        try {
+            notificacaoService.notificarEquipeMudancaStatusAgendamento(
+                    agendamento, operador, TipoNotificacao.SISTEMA,
+                    "Atendimento Iniciado",
+                    mensagemEquipe(agendamento, "foi iniciado"));
+        } catch (Exception e) {
+            log.error("Erro ao notificar equipe sobre início do agendamento {}: {}", id, e.getMessage(), e);
+        }
+
         return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
     }
 
     @Transactional
     @Auditable(action = "COMPLETE", entityType = "Agendamento", captureOldState = true, captureNewState = true)
     public AgendamentoResponse concluir(Long id) {
-        return concluir(id, false);
+        return concluir(id, false, null);
+    }
+
+    @Transactional
+    @Auditable(action = "COMPLETE", entityType = "Agendamento", captureOldState = true, captureNewState = true)
+    public AgendamentoResponse concluir(Long id, boolean restrictSensitiveData) {
+        return concluir(id, restrictSensitiveData, null);
     }
 
     /**
@@ -556,11 +596,13 @@ public class AgendamentoService {
      *
      * @param id The appointment ID
      * @param restrictSensitiveData If true, excludes client phone and appointment notes
+     * @param operador The authenticated staff member performing the action (excluded from the
+     *                 team notification below so they don't get notified of their own action)
      * @return AgendamentoResponse
      */
     @Transactional
     @Auditable(action = "COMPLETE", entityType = "Agendamento", captureOldState = true, captureNewState = true)
-    public AgendamentoResponse concluir(Long id, boolean restrictSensitiveData) {
+    public AgendamentoResponse concluir(Long id, boolean restrictSensitiveData, Usuario operador) {
         Agendamento agendamento = getAgendamento(id);
         enforceStaffTenant(agendamento.getSalon().getId());
 
@@ -590,6 +632,15 @@ public class AgendamentoService {
 
         // Enviar mensagem de pós-atendimento via WhatsApp
         enviarNotificacaoPosAtendimento(agendamento);
+
+        try {
+            notificacaoService.notificarEquipeMudancaStatusAgendamento(
+                    agendamento, operador, TipoNotificacao.SISTEMA,
+                    "Atendimento Concluído",
+                    mensagemEquipe(agendamento, "foi concluído"));
+        } catch (Exception e) {
+            log.error("Erro ao notificar equipe sobre conclusão do agendamento {}: {}", id, e.getMessage(), e);
+        }
 
         return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
     }
@@ -674,7 +725,7 @@ public class AgendamentoService {
         enviarNotificacaoCancelamento(agendamento, request.getMotivo());
 
         // Criar notificação no sistema + enviar email
-        enviarNotificacoesSistemaCancelamento(agendamento, request.getMotivo());
+        enviarNotificacoesSistemaCancelamento(agendamento, request.getMotivo(), operador);
 
         return AgendamentoResponse.fromEntity(agendamento, restrictSensitiveData, hideInternalNotes);
     }
@@ -776,14 +827,23 @@ public class AgendamentoService {
         // Criar notificação no sistema + enviar WhatsApp + email
         enviarNotificacoesReagendamento(agendamento);
 
-        // Cliente reagendando o próprio atendimento: avisar a equipe (profissional,
-        // recepção e admin) — eles não são notificados pelo enviarNotificacoesReagendamento
-        // acima, que só avisa o próprio cliente.
+        // Avisar a equipe (profissional, recepção e admin) — eles não são notificados pelo
+        // enviarNotificacoesReagendamento acima, que só avisa o próprio cliente. Quem reagendou
+        // (se foi um membro da equipe) não recebe a própria notificação.
         if (operador != null && operador.getRole() == Role.CLIENTE) {
             try {
                 notificacaoService.notificarEquipeAgendamentoReagendadoPeloCliente(agendamento);
             } catch (Exception e) {
                 log.error("Erro ao notificar equipe sobre reagendamento pelo cliente: {}", e.getMessage(), e);
+            }
+        } else {
+            try {
+                notificacaoService.notificarEquipeMudancaStatusAgendamento(
+                        agendamento, operador, TipoNotificacao.AGENDAMENTO_REAGENDADO,
+                        "Agendamento Reagendado",
+                        mensagemEquipe(agendamento, "foi reagendado"));
+            } catch (Exception e) {
+                log.error("Erro ao notificar equipe sobre reagendamento: {}", e.getMessage(), e);
             }
         }
 
@@ -793,7 +853,13 @@ public class AgendamentoService {
     @Transactional
     @Auditable(action = "NO_SHOW", entityType = "Agendamento", captureOldState = true, captureNewState = true)
     public AgendamentoResponse marcarNoShow(Long id) {
-        return marcarNoShow(id, false);
+        return marcarNoShow(id, false, null);
+    }
+
+    @Transactional
+    @Auditable(action = "NO_SHOW", entityType = "Agendamento", captureOldState = true, captureNewState = true)
+    public AgendamentoResponse marcarNoShow(Long id, boolean restrictSensitiveData) {
+        return marcarNoShow(id, restrictSensitiveData, null);
     }
 
     /**
@@ -801,11 +867,13 @@ public class AgendamentoService {
      *
      * @param id The appointment ID
      * @param restrictSensitiveData If true, excludes client phone and appointment notes
+     * @param operador The authenticated staff member performing the action (excluded from the
+     *                 team notification below so they don't get notified of their own action)
      * @return AgendamentoResponse
      */
     @Transactional
     @Auditable(action = "NO_SHOW", entityType = "Agendamento", captureOldState = true, captureNewState = true)
-    public AgendamentoResponse marcarNoShow(Long id, boolean restrictSensitiveData) {
+    public AgendamentoResponse marcarNoShow(Long id, boolean restrictSensitiveData, Usuario operador) {
         Agendamento agendamento = getAgendamento(id);
         enforceStaffTenant(agendamento.getSalon().getId());
 
@@ -829,6 +897,15 @@ public class AgendamentoService {
         }
 
         log.info("Agendamento marcado como no-show: {}", id);
+
+        try {
+            notificacaoService.notificarEquipeMudancaStatusAgendamento(
+                    agendamento, operador, TipoNotificacao.AGENDAMENTO_CANCELADO,
+                    "Cliente Não Compareceu",
+                    mensagemEquipe(agendamento, "foi marcado como não comparecimento (no-show)"));
+        } catch (Exception e) {
+            log.error("Erro ao notificar equipe sobre no-show do agendamento {}: {}", id, e.getMessage(), e);
+        }
 
         return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
     }
@@ -963,8 +1040,13 @@ public class AgendamentoService {
 
     /**
      * Create system notification + send email after appointment cancellation.
+     *
+     * @param operador Who cancelled it (null for the public token/link flow). Excluded from the
+     *                 team notification below, and used to word it correctly — "cliente cancelou"
+     *                 vs. "equipe cancelou" — instead of always blaming the client regardless of
+     *                 who actually cancelled.
      */
-    private void enviarNotificacoesSistemaCancelamento(Agendamento agendamento, String motivo) {
+    private void enviarNotificacoesSistemaCancelamento(Agendamento agendamento, String motivo, Usuario operador) {
         try {
             notificacaoService.notificarAgendamentoCancelado(agendamento);
         } catch (Exception e) {
@@ -972,9 +1054,14 @@ public class AgendamentoService {
         }
 
         try {
-            notificacaoService.notificarProfissionalCancelamento(agendamento);
+            boolean canceladoPeloCliente = operador == null || operador.getRole() == Role.CLIENTE;
+            String acao = canceladoPeloCliente ? "foi cancelado pelo cliente" : "foi cancelado";
+            notificacaoService.notificarEquipeMudancaStatusAgendamento(
+                    agendamento, operador, TipoNotificacao.AGENDAMENTO_CANCELADO,
+                    "Agendamento Cancelado",
+                    mensagemEquipe(agendamento, acao));
         } catch (Exception e) {
-            log.error("Erro ao notificar profissional sobre cancelamento: {}", e.getMessage(), e);
+            log.error("Erro ao notificar equipe sobre cancelamento: {}", e.getMessage(), e);
         }
 
         try {
@@ -1051,6 +1138,21 @@ public class AgendamentoService {
                     .orElse("Serviço");
         }
         return "Serviço";
+    }
+
+    /**
+     * Builds the standard team-facing message for a status-change notification:
+     * "O agendamento de {cliente} ({serviço}) para {data} às {hora} {acaoPassiva}."
+     */
+    private String mensagemEquipe(Agendamento agendamento, String acaoPassiva) {
+        String nomeCliente = agendamento.getCliente() != null && agendamento.getCliente().getUsuario() != null
+                ? agendamento.getCliente().getUsuario().getNome() : "Cliente";
+        String data = agendamento.getDataHora().toLocalDate()
+                .format(DateTimeFormatter.ofPattern("dd/MM"));
+        String hora = agendamento.getDataHora().toLocalTime()
+                .format(DateTimeFormatter.ofPattern("HH:mm"));
+        return String.format("O agendamento de %s (%s) para %s às %s %s.",
+                nomeCliente, resolverNomeServico(agendamento), data, hora, acaoPassiva);
     }
 
     /**
