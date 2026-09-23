@@ -8,6 +8,7 @@ import com.belezza.api.entity.CategoriaProfissional;
 import com.belezza.api.entity.NivelProfissional;
 import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.service.ProfissionalService;
+import com.belezza.api.service.TenantIsolationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -22,6 +23,12 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * All endpoints here require authentication (removed from SecurityConfig's permitAll —
+ * see BUG #002). Salon-scoped listings stay readable by CLIENTE (needed to pick a
+ * professional while booking) but are still tenant-checked via TenantIsolationService,
+ * which is a no-op for CLIENTE tokens (no fixed salon claim) and enforced for staff.
+ */
 @RestController
 @RequestMapping("/api/profissionais")
 @RequiredArgsConstructor
@@ -30,6 +37,7 @@ import java.util.List;
 public class ProfissionalController {
 
     private final ProfissionalService profissionalService;
+    private final TenantIsolationService tenantIsolationService;
 
     @GetMapping("/categorias")
     @Operation(summary = "Listar categorias", description = "Lista todas as categorias de profissionais disponíveis")
@@ -52,6 +60,7 @@ public class ProfissionalController {
     @GetMapping("/salon/{salonId}/categorias")
     @Operation(summary = "Listar categorias do salão", description = "Lista categorias de profissionais ativos no salão")
     public ResponseEntity<List<CategoriaResponse>> listarCategoriasPorSalon(@PathVariable Long salonId) {
+        tenantIsolationService.assertRequestedSalon(salonId);
         List<CategoriaResponse> categorias = profissionalService.listarCategoriasPorSalon(salonId);
         return ResponseEntity.ok(categorias);
     }
@@ -62,6 +71,7 @@ public class ProfissionalController {
             @PathVariable Long salonId,
             @PathVariable CategoriaProfissional categoria,
             @RequestParam(required = false, defaultValue = "true") Boolean ativo) {
+        tenantIsolationService.assertRequestedSalon(salonId);
         List<ProfissionalResponse> response = profissionalService.listarPorCategoria(salonId, categoria, ativo);
         return ResponseEntity.ok(response);
     }
@@ -88,6 +98,7 @@ public class ProfissionalController {
     public ResponseEntity<List<ProfissionalResponse>> listarPorSalon(
             @PathVariable Long salonId,
             @RequestParam(required = false) Boolean ativo) {
+        tenantIsolationService.assertRequestedSalon(salonId);
         List<ProfissionalResponse> response = profissionalService.listarPorSalon(salonId, ativo);
         return ResponseEntity.ok(response);
     }
@@ -102,6 +113,7 @@ public class ProfissionalController {
     @GetMapping("/salon/{salonId}/disponiveis")
     @Operation(summary = "Listar disponíveis online", description = "Lista profissionais que aceitam agendamento online")
     public ResponseEntity<List<ProfissionalResponse>> listarDisponiveisOnline(@PathVariable Long salonId) {
+        tenantIsolationService.assertRequestedSalon(salonId);
         List<ProfissionalResponse> response = profissionalService.listarDisponiveisOnline(salonId);
         return ResponseEntity.ok(response);
     }

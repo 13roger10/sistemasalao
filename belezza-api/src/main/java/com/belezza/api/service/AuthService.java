@@ -17,6 +17,7 @@ import com.belezza.api.repository.UsuarioRepository;
 import com.belezza.api.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
@@ -56,15 +57,16 @@ public class AuthService {
     public AuthResponse register(RegisterRequest request) {
         log.info("Registering new user with email: {}", request.getEmail());
 
-        // Validate salonId is required for CLIENTE role
-        if (request.getRole() == Role.CLIENTE && request.getSalonId() == null) {
-            throw new BusinessException("salonId é obrigatório para registro de clientes");
+        // Public self-registration must never grant staff/admin access — only CLIENTE
+        // accounts may be created here. ADMIN/RECEPCIONISTA/PROFISSIONAL are provisioned
+        // exclusively by an already-authenticated ADMIN via POST /api/usuarios.
+        if (request.getRole() != Role.CLIENTE) {
+            throw new AccessDeniedException("Auto-cadastro só é permitido para clientes");
         }
 
-        // RECEPCIONISTA também precisa estar vinculada a um salão para poder
-        // ser localizada nas notificações e listagens de equipe do salão
-        if (request.getRole() == Role.RECEPCIONISTA && request.getSalonId() == null) {
-            throw new BusinessException("salonId é obrigatório para registro de recepcionistas");
+        // Validate salonId is required for CLIENTE role
+        if (request.getSalonId() == null) {
+            throw new BusinessException("salonId é obrigatório para registro de clientes");
         }
 
         // Check if email already exists
@@ -88,9 +90,6 @@ public class AuthService {
                 .ativo(true)
                 .emailVerificado(false)
                 .emailVerificationToken(UUID.randomUUID().toString())
-                .salon(request.getRole() == Role.RECEPCIONISTA && request.getSalonId() != null
-                        ? salonService.getSalonEntity(request.getSalonId())
-                        : null)
                 .build();
 
         usuario = usuarioRepository.save(usuario);

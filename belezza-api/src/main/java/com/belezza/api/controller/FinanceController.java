@@ -10,6 +10,7 @@ import com.belezza.api.entity.StatusAgendamento;
 import com.belezza.api.entity.Usuario;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.PagamentoRepository;
+import com.belezza.api.service.TenantIsolationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -29,15 +31,23 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.*;
 
+/**
+ * Financial data for a salon (cash register, transactions, reports) is a receptionist/admin
+ * function — never PROFISSIONAL or CLIENTE — and must never cross into another salon's data.
+ * See BUG #002/#005: this controller previously had no role or tenant restriction at all and
+ * was also reachable with zero authentication via SecurityConfig's permitAll.
+ */
 @RestController
 @RequestMapping("/api/salon/finance")
 @RequiredArgsConstructor
 @Slf4j
+@PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
 @Tag(name = "Finanças", description = "Gerenciamento financeiro do salão")
 public class FinanceController {
 
     private final PagamentoRepository pagamentoRepository;
     private final AgendamentoRepository agendamentoRepository;
+    private final TenantIsolationService tenantIsolationService;
 
     /**
      * Sums approved payments for a salon/period grouped by payment method.
@@ -72,6 +82,7 @@ public class FinanceController {
             @RequestParam(required = false, defaultValue = "50") int limit,
             @AuthenticationPrincipal Usuario operador) {
         log.debug("Listing finance transactions for unitId: {}", unitId);
+        tenantIsolationService.assertRequestedSalon(unitId);
 
         // Frontend pagination is 1-based; Spring's Pageable is 0-based.
         Pageable pageable = PageRequest.of(Math.max(0, page - 1), limit, Sort.by(Sort.Direction.DESC, "criadoEm"));
@@ -144,6 +155,7 @@ public class FinanceController {
             @RequestParam(required = false) String unitId) {
         Long salonId = unitId != null ? Long.valueOf(unitId) : 1L;
         log.debug("Getting current cash register for salonId: {}", salonId);
+        tenantIsolationService.assertRequestedSalon(salonId);
 
         LocalDate today = LocalDate.now();
         LocalDateTime inicio = today.atStartOfDay();
@@ -420,6 +432,7 @@ public class FinanceController {
             @RequestParam(required = false) String unitId) {
         Long salonId = unitId != null ? Long.valueOf(unitId) : 1L;
         log.debug("Getting daily report for {} salonId: {}", date, salonId);
+        tenantIsolationService.assertRequestedSalon(salonId);
 
         LocalDate targetDate = parseDateFlexible(date);
         LocalDateTime inicio = targetDate.atStartOfDay();

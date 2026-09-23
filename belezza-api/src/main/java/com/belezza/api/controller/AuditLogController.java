@@ -2,7 +2,6 @@ package com.belezza.api.controller;
 
 import com.belezza.api.entity.AuditLog;
 import com.belezza.api.repository.AuditLogRepository;
-import com.belezza.api.security.annotation.Authenticated;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -39,7 +38,6 @@ public class AuditLogController {
      * Admin only.
      */
     @GetMapping
-    @Authenticated
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
         summary = "Listar logs de auditoria",
@@ -59,7 +57,6 @@ public class AuditLogController {
      * Admin only.
      */
     @GetMapping("/{id}")
-    @Authenticated
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
         summary = "Obter log de auditoria por ID",
@@ -80,7 +77,6 @@ public class AuditLogController {
      * Admin only.
      */
     @GetMapping("/entity/{entityType}/{entityId}")
-    @Authenticated
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
         summary = "Listar logs por entidade",
@@ -101,7 +97,6 @@ public class AuditLogController {
      * Admin only.
      */
     @GetMapping("/user/{userId}")
-    @Authenticated
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
         summary = "Listar logs por usuário",
@@ -121,7 +116,6 @@ public class AuditLogController {
      * Admin only.
      */
     @GetMapping("/action/{action}")
-    @Authenticated
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
         summary = "Listar logs por tipo de ação",
@@ -141,7 +135,6 @@ public class AuditLogController {
      * Admin only.
      */
     @GetMapping("/date-range")
-    @Authenticated
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
         summary = "Listar logs por período",
@@ -168,7 +161,6 @@ public class AuditLogController {
      * Admin only.
      */
     @GetMapping("/failed")
-    @Authenticated
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
         summary = "Listar operações falhadas",
@@ -187,7 +179,6 @@ public class AuditLogController {
      * Admin only.
      */
     @GetMapping("/search")
-    @Authenticated
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
         summary = "Buscar logs com filtros",

@@ -6,6 +6,7 @@ import com.belezza.api.dto.agendamento.CancelamentoRequest;
 import com.belezza.api.dto.agendamento.ReagendamentoRequest;
 import com.belezza.api.dto.disponibilidade.DisponibilidadeRequest;
 import com.belezza.api.dto.disponibilidade.DisponibilidadeResponse;
+import com.belezza.api.entity.Usuario;
 import com.belezza.api.repository.ProfissionalRepository;
 import com.belezza.api.repository.UsuarioRepository;
 import com.belezza.api.security.annotation.ProfissionalOrAdmin;
@@ -214,26 +215,28 @@ public class AgendamentoController {
     }
 
     @PostMapping("/{id}/cancelar")
-    @Operation(summary = "Cancelar agendamento", description = "Cancela um agendamento com motivo")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Cancelar agendamento", description = "Cancela um agendamento com motivo. Restrito ao próprio cliente ou à equipe do salão.")
     public ResponseEntity<AgendamentoResponse> cancelar(
             @PathVariable Long id,
             @Valid @RequestBody CancelamentoRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        boolean restrictData = shouldRestrictSensitiveData(userDetails);
-        boolean hideInternalNotes = shouldHideInternalNotes(userDetails);
-        AgendamentoResponse response = agendamentoService.cancelar(id, request, restrictData, hideInternalNotes);
+            @AuthenticationPrincipal Usuario operador) {
+        boolean restrictData = shouldRestrictSensitiveData(operador);
+        boolean hideInternalNotes = shouldHideInternalNotes(operador);
+        AgendamentoResponse response = agendamentoService.cancelar(id, request, restrictData, hideInternalNotes, operador);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{id}/reagendar")
-    @Operation(summary = "Reagendar", description = "Reagenda um agendamento para nova data/hora")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Reagendar", description = "Reagenda um agendamento para nova data/hora. Restrito ao próprio cliente ou à equipe do salão.")
     public ResponseEntity<AgendamentoResponse> reagendar(
             @PathVariable Long id,
             @Valid @RequestBody ReagendamentoRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        boolean restrictData = shouldRestrictSensitiveData(userDetails);
-        boolean hideInternalNotes = shouldHideInternalNotes(userDetails);
-        AgendamentoResponse response = agendamentoService.reagendar(id, request, restrictData, hideInternalNotes);
+            @AuthenticationPrincipal Usuario operador) {
+        boolean restrictData = shouldRestrictSensitiveData(operador);
+        boolean hideInternalNotes = shouldHideInternalNotes(operador);
+        AgendamentoResponse response = agendamentoService.reagendar(id, request, restrictData, hideInternalNotes, operador);
         return ResponseEntity.ok(response);
     }
 

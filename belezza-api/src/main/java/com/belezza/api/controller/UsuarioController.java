@@ -38,7 +38,8 @@ public class UsuarioController {
     private final UsuarioService usuarioService;
 
     @GetMapping
-    @Operation(summary = "Listar usuários", description = "Lista usuários com paginação e filtros. Profissionais veem apenas sua unidade.")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA', 'PROFISSIONAL')")
+    @Operation(summary = "Listar usuários", description = "Lista usuários com paginação e filtros. Recepcionistas e profissionais veem apenas sua unidade.")
     public ResponseEntity<UsuarioPageResponse> listar(
             @Parameter(description = "Filtrar por role") @RequestParam(required = false) Role role,
             @Parameter(description = "Buscar por nome ou email") @RequestParam(required = false) String search,
@@ -52,6 +53,7 @@ public class UsuarioController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA', 'PROFISSIONAL')")
     @Operation(summary = "Buscar usuário por ID", description = "Retorna detalhes de um usuário específico")
     public ResponseEntity<UsuarioListResponse> buscarPorId(
             @PathVariable Long id,

@@ -11,7 +11,6 @@ import com.belezza.api.integration.WhatsAppService;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.ClienteRepository;
 import com.belezza.api.repository.HorarioTrabalhoRepository;
-import com.belezza.api.service.TenantIsolationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -583,6 +582,33 @@ public class AgendamentoService {
         return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
     }
 
+    /**
+     * Verifies the authenticated caller is allowed to cancel/reschedule this appointment:
+     * a CLIENTE may only touch their own appointment, and staff (ADMIN/PROFISSIONAL/
+     * RECEPCIONISTA) may only touch appointments in their own salon. Without this check,
+     * any authenticated client could cancel or reschedule any other client's appointment
+     * in any salon just by guessing the numeric ID (see audit BUG #003).
+     *
+     * @param operador The authenticated caller, or null for legacy/internal callers that
+     *                  have already established authorization another way (e.g. token-based
+     *                  public links, which resolve the appointment from a secret token rather
+     *                  than a guessable ID).
+     */
+    private void enforceModificationOwnership(Agendamento agendamento, Usuario operador) {
+        if (operador == null) {
+            return;
+        }
+        if (operador.getRole() == Role.CLIENTE) {
+            Cliente cliente = agendamento.getCliente();
+            if (cliente == null || cliente.getUsuario() == null
+                    || !cliente.getUsuario().getId().equals(operador.getId())) {
+                throw new AccessDeniedException("Acesso negado: este agendamento não pertence a este cliente");
+            }
+            return;
+        }
+        tenantIsolationService.assertCurrentTenant(agendamento.getSalon().getId());
+    }
+
     @Transactional
     @Auditable(action = "CANCEL", entityType = "Agendamento", captureOldState = true, captureNewState = true)
     public AgendamentoResponse cancelar(Long id, CancelamentoRequest request) {
@@ -592,17 +618,19 @@ public class AgendamentoService {
     @Transactional
     @Auditable(action = "CANCEL", entityType = "Agendamento", captureOldState = true, captureNewState = true)
     public AgendamentoResponse cancelar(Long id, CancelamentoRequest request, boolean restrictSensitiveData) {
-        return cancelar(id, request, restrictSensitiveData, restrictSensitiveData);
+        return cancelar(id, request, restrictSensitiveData, restrictSensitiveData, null);
     }
 
     /**
      * @param hideInternalNotes If true, excludes notasInternas — must be true for CLIENTE/anonymous callers,
      *                          false for staff (ADMIN/PROFISSIONAL/RECEPCIONISTA).
+     * @param operador          The authenticated caller; enforces ownership (see enforceModificationOwnership).
      */
     @Transactional
     @Auditable(action = "CANCEL", entityType = "Agendamento", captureOldState = true, captureNewState = true)
-    public AgendamentoResponse cancelar(Long id, CancelamentoRequest request, boolean restrictSensitiveData, boolean hideInternalNotes) {
+    public AgendamentoResponse cancelar(Long id, CancelamentoRequest request, boolean restrictSensitiveData, boolean hideInternalNotes, Usuario operador) {
         Agendamento agendamento = getAgendamento(id);
+        enforceModificationOwnership(agendamento, operador);
 
         if (agendamento.getStatus() == StatusAgendamento.CONCLUIDO ||
             agendamento.getStatus() == StatusAgendamento.CANCELADO ||
@@ -633,17 +661,19 @@ public class AgendamentoService {
     @Transactional
     @Auditable(action = "RESCHEDULE", entityType = "Agendamento", captureOldState = true, captureNewState = true)
     public AgendamentoResponse reagendar(Long id, ReagendamentoRequest request, boolean restrictSensitiveData) {
-        return reagendar(id, request, restrictSensitiveData, restrictSensitiveData);
+        return reagendar(id, request, restrictSensitiveData, restrictSensitiveData, null);
     }
 
     /**
      * @param hideInternalNotes If true, excludes notasInternas — must be true for CLIENTE/anonymous callers,
      *                          false for staff (ADMIN/PROFISSIONAL/RECEPCIONISTA).
+     * @param operador          The authenticated caller; enforces ownership (see enforceModificationOwnership).
      */
     @Transactional
     @Auditable(action = "RESCHEDULE", entityType = "Agendamento", captureOldState = true, captureNewState = true)
-    public AgendamentoResponse reagendar(Long id, ReagendamentoRequest request, boolean restrictSensitiveData, boolean hideInternalNotes) {
+    public AgendamentoResponse reagendar(Long id, ReagendamentoRequest request, boolean restrictSensitiveData, boolean hideInternalNotes, Usuario operador) {
         Agendamento agendamento = getAgendamento(id);
+        enforceModificationOwnership(agendamento, operador);
 
         if (agendamento.getStatus() == StatusAgendamento.CONCLUIDO ||
             agendamento.getStatus() == StatusAgendamento.CANCELADO ||

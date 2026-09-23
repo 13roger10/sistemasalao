@@ -34,7 +34,9 @@ public class UsuarioService {
 
     /**
      * List users with pagination and filters.
-     * ADMINs see all users, PROFISSIONAIs see only users from their salon.
+     * ADMINs see all users. PROFISSIONAL and RECEPCIONISTA see only users from their own
+     * salon — access to this method at all is already restricted to those three roles plus
+     * ADMIN at the controller (@PreAuthorize); CLIENTE can never reach it.
      */
     @Transactional(readOnly = true)
     public UsuarioPageResponse listar(String emailUsuario, Role roleFilter, String search,
@@ -52,6 +54,18 @@ public class UsuarioService {
                 throw new BusinessException("Profissional não encontrado para este usuário");
             }
             Long salonId = profissional.get().getSalon().getId();
+
+            if (roleFilter != null) {
+                usuarios = usuarioRepository.findBySalonIdAndRole(salonId, roleFilter, pageable);
+            } else {
+                usuarios = usuarioRepository.findBySalonId(salonId, pageable);
+            }
+        } else if (usuarioLogado.getRole() == Role.RECEPCIONISTA) {
+            // Multi-unidade: RECEPCIONISTA vê apenas sua unidade
+            if (usuarioLogado.getSalon() == null) {
+                throw new BusinessException("Recepcionista sem salão vinculado");
+            }
+            Long salonId = usuarioLogado.getSalon().getId();
 
             if (roleFilter != null) {
                 usuarios = usuarioRepository.findBySalonIdAndRole(salonId, roleFilter, pageable);

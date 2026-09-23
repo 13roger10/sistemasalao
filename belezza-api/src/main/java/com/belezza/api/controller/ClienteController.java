@@ -7,6 +7,7 @@ import com.belezza.api.entity.Role;
 import com.belezza.api.entity.Usuario;
 import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.service.ClienteService;
+import com.belezza.api.service.TenantIsolationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -14,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -29,6 +31,7 @@ import java.util.Map;
 public class ClienteController {
 
     private final ClienteService clienteService;
+    private final TenantIsolationService tenantIsolationService;
 
     private boolean shouldRestrictSensitiveData(UserDetails userDetails) {
         if (userDetails == null) return true;
@@ -57,12 +60,14 @@ public class ClienteController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Buscar cliente", description = "Busca um cliente por ID")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA', 'PROFISSIONAL')")
+    @Operation(summary = "Buscar cliente", description = "Busca um cliente por ID. Restrito à equipe do salão.")
     public ResponseEntity<ClienteResponse> buscarPorId(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails userDetails) {
         boolean restrictData = shouldRestrictSensitiveData(userDetails);
         ClienteResponse response = clienteService.buscarPorId(id, restrictData);
+        tenantIsolationService.assertCurrentTenant(response.getSalonId());
         return ResponseEntity.ok(response);
     }
 
@@ -75,20 +80,23 @@ public class ClienteController {
     }
 
     @GetMapping("/{id}/history")
-    @Operation(summary = "Histórico do cliente", description = "Retorna o histórico de atendimentos e gastos reais do cliente")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA', 'PROFISSIONAL')")
+    @Operation(summary = "Histórico do cliente", description = "Retorna o histórico de atendimentos e gastos reais do cliente. Restrito à equipe do salão.")
     public ResponseEntity<ClienteHistoryResponse> buscarHistorico(@PathVariable Long id) {
         ClienteHistoryResponse response = clienteService.buscarHistorico(id);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/salon/{salonId}")
-    @Operation(summary = "Listar clientes do salão", description = "Lista todos os clientes ativos de um salão")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA', 'PROFISSIONAL')")
+    @Operation(summary = "Listar clientes do salão", description = "Lista todos os clientes ativos de um salão. Restrito à equipe do salão.")
     public ResponseEntity<List<ClienteResponse>> listarPorSalon(
             @PathVariable Long salonId,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String loyaltyLevel,
             @AuthenticationPrincipal UserDetails userDetails) {
+        tenantIsolationService.assertRequestedSalon(salonId);
         boolean restrictData = shouldRestrictSensitiveData(userDetails);
         List<ClienteResponse> response = clienteService.listarPorSalon(salonId, search, status, loyaltyLevel, restrictData);
         return ResponseEntity.ok(response);

@@ -50,19 +50,20 @@ public class SecurityConfig {
      */
     private static final String[] PUBLIC_ENDPOINTS = {
         "/api/auth/**",
-        "/api/public/**",
+        "/api/public/**",  // Token-based confirm/cancel links, public v1 booking surface
         "/api/v1/**",      // Public API v1 — authenticated by ApiKeyAuthFilter via X-API-Key
         "/ws/**",          // WebSocket handshake (auth happens inside STOMP CONNECT)
         "/api/usuarios/roles",
-        "/api/agendamentos/**",
-        "/api/profissionais/**",
-        "/api/servicos/**",
-        "/api/clientes/**",
-        "/api/salon/**",
+        "/api/agendamentos/**", // Booking creation/lookup/availability; write actions below are still
+                                // individually @PreAuthorize'd or ownership-checked in the service layer
+        "/api/servicos/**",     // Service menu — no PII, admin writes are still @AdminOnly
         "/actuator/health",
         "/actuator/health/**",
         "/actuator/info"
     };
+    // /api/clientes/**, /api/profissionais/**, and /api/salon/** (client rosters, staff PII,
+    // financial data) were removed from this list: they require authentication and, within
+    // each controller, a role + tenant (salon) check — see BUG #002/#004/#005 in the audit.
 
     /**
      * Swagger/OpenAPI endpoints.
