@@ -39,6 +39,8 @@ const notificationIcons: Record<NotificationType, React.ReactNode> = {
   stock_low: <AlertCircle className="h-5 w-5" />,
   comissao_disponivel: <Wallet className="h-5 w-5" />,
   pagamento_realizado: <CreditCard className="h-5 w-5" />,
+  appointment_pending_confirmation: <Calendar className="h-5 w-5" />,
+  appointment_confirmed_by_client: <Check className="h-5 w-5" />,
   general: <Bell className="h-5 w-5" />,
 };
 
@@ -56,6 +58,8 @@ const notificationColors: Record<NotificationType, string> = {
   stock_low: 'bg-amber-100 text-amber-600',
   comissao_disponivel: 'bg-emerald-100 text-emerald-600',
   pagamento_realizado: 'bg-green-100 text-green-700',
+  appointment_pending_confirmation: 'bg-yellow-100 text-yellow-600',
+  appointment_confirmed_by_client: 'bg-green-100 text-green-600',
   general: 'bg-gray-100 text-gray-600',
 };
 

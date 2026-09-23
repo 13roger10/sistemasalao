@@ -73,6 +73,8 @@ export default function ClientAppointmentsPage() {
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [appointmentToCancel, setAppointmentToCancel] = useState<Appointment | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
   // Load appointments
   useEffect(() => {
@@ -84,30 +86,14 @@ export default function ClientAppointmentsPage() {
       setError(null);
 
       try {
-        // Use the list endpoint and filter by client
-        const response = await appointmentService.list({
+        // Usa a rota exclusiva do cliente autenticado — nunca traz dados de
+        // outros clientes nem notas internas da equipe.
+        const response = await appointmentService.getMyAppointments({
           page: 1,
           limit: 100,
-          salonId: "1",
         });
 
-        // Filter appointments for the current client
-        const clientName = user.name?.toLowerCase();
-        const clientEmail = user.email?.toLowerCase();
-
-        const myAppointments = response.data.filter((apt) => {
-          const aptClientName = apt.client?.name?.toLowerCase();
-          const aptClientEmail = apt.client?.email?.toLowerCase();
-
-          return (
-            (clientName && aptClientName && aptClientName.includes(clientName)) ||
-            (clientEmail && aptClientEmail && aptClientEmail === clientEmail) ||
-            apt.clientId === String(user.id)
-          );
-        });
-
-        // Sort by date (most recent first for past, soonest first for upcoming)
-        myAppointments.sort((a, b) => {
+        const myAppointments = [...response.data].sort((a, b) => {
           const dateA = new Date(a.date);
           const dateB = new Date(b.date);
           return dateB.getTime() - dateA.getTime();
@@ -188,6 +174,28 @@ export default function ClientAppointmentsPage() {
     }
   };
 
+  // Confirma o agendamento pendente via API
+  const handleConfirmAppointment = async (appointment: Appointment) => {
+    setConfirmingId(appointment.id);
+    setConfirmError(null);
+    try {
+      await appointmentService.confirmMyAppointment(appointment.id);
+      setAppointments((prev) =>
+        prev.map((apt) =>
+          apt.id === appointment.id ? { ...apt, status: "confirmed" as AppointmentStatus } : apt
+        )
+      );
+    } catch (err) {
+      console.error("Erro ao confirmar agendamento:", err);
+      const msg = err instanceof Error
+        ? err.message.replace(/^\[HTTP \d+\] /, "")
+        : "Não foi possível confirmar o agendamento. Tente novamente.";
+      setConfirmError(msg);
+    } finally {
+      setConfirmingId(null);
+    }
+  };
+
   // Format date for display
   const formatAppointmentDate = (date: Date | string) => {
     const dateObj = typeof date === "string" ? parseISO(date) : date;
@@ -245,6 +253,21 @@ export default function ClientAppointmentsPage() {
             <p className="flex-1 text-sm text-red-800 dark:text-red-300">{cancelError}</p>
             <button
               onClick={() => setCancelError(null)}
+              className="text-red-500 hover:text-red-700 dark:text-red-400"
+              aria-label="Fechar"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {/* Erro de confirmação */}
+        {confirmError && (
+          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-900/20">
+            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600 dark:text-red-400" />
+            <p className="flex-1 text-sm text-red-800 dark:text-red-300">{confirmError}</p>
+            <button
+              onClick={() => setConfirmError(null)}
               className="text-red-500 hover:text-red-700 dark:text-red-400"
               aria-label="Fechar"
             >
@@ -475,15 +498,34 @@ export default function ClientAppointmentsPage() {
                   </div>
 
                   {/* Appointment code */}
-                  <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 dark:border-gray-700">
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
                     <span className="text-xs text-gray-500 dark:text-gray-400">
                       Codigo: #{appointment.id.slice(-8).toUpperCase()}
                     </span>
-                    {appointment.internalNotes && (
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        Obs: {appointment.internalNotes}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {appointment.clientNotes && (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          Obs: {appointment.clientNotes}
+                        </span>
+                      )}
+                      {/* Confirm button - only for pending appointments */}
+                      {activeTab === "upcoming" && appointment.status === "pending" && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => handleConfirmAppointment(appointment)}
+                          disabled={confirmingId === appointment.id}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          {confirmingId === appointment.id ? (
+                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                          ) : (
+                            <CheckCircle className="mr-1 h-3 w-3" />
+                          )}
+                          Confirmar Agendamento
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

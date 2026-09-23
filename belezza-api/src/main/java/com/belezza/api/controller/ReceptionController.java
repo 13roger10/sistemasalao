@@ -66,7 +66,7 @@ public class ReceptionController {
 
         // Fetch all appointments for the salon (large page to get full day)
         List<AgendamentoResponse> allAppts = agendamentoService
-                .listarPorSalon(salonId, PageRequest.of(0, 500))
+                .listarPorSalon(salonId, PageRequest.of(0, 500), false)
                 .getContent()
                 .stream()
                 .filter(a -> !a.getDataHora().isBefore(dayStart) && a.getDataHora().isBefore(dayEnd))

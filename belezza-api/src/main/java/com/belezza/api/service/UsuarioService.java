@@ -138,6 +138,25 @@ public class UsuarioService {
             }
         }
 
+        // Se for RECEPCIONISTA, vincular ao salão (direto no Usuario, sem entidade própria)
+        if (request.getRole() == Role.RECEPCIONISTA) {
+            Long salonId = request.getSalonId();
+            if (salonId == null) {
+                Usuario admin = getUsuarioByEmail(emailAdmin);
+                salonId = salonRepository.findByAdminIdAndAtivoTrue(admin.getId())
+                        .map(Salon::getId)
+                        .orElse(null);
+            }
+            if (salonId != null) {
+                final Long salonIdFinal = salonId;
+                Salon salon = salonRepository.findById(salonId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Salão", salonIdFinal));
+                usuario.setSalon(salon);
+                usuario = usuarioRepository.save(usuario);
+                log.info("Recepcionista {} vinculada ao salão {}", usuario.getId(), salonId);
+            }
+        }
+
         return UsuarioListResponse.fromEntityWithProfissional(usuario, profissional);
     }
 

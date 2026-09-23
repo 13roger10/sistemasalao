@@ -61,6 +61,12 @@ public class AuthService {
             throw new BusinessException("salonId é obrigatório para registro de clientes");
         }
 
+        // RECEPCIONISTA também precisa estar vinculada a um salão para poder
+        // ser localizada nas notificações e listagens de equipe do salão
+        if (request.getRole() == Role.RECEPCIONISTA && request.getSalonId() == null) {
+            throw new BusinessException("salonId é obrigatório para registro de recepcionistas");
+        }
+
         // Check if email already exists
         if (usuarioRepository.existsByEmail(request.getEmail())) {
             throw DuplicateResourceException.email(request.getEmail());
@@ -82,6 +88,9 @@ public class AuthService {
                 .ativo(true)
                 .emailVerificado(false)
                 .emailVerificationToken(UUID.randomUUID().toString())
+                .salon(request.getRole() == Role.RECEPCIONISTA && request.getSalonId() != null
+                        ? salonService.getSalonEntity(request.getSalonId())
+                        : null)
                 .build();
 
         usuario = usuarioRepository.save(usuario);
@@ -343,6 +352,7 @@ public class AuthService {
      * Resolves the salonId for the given user based on their role.
      * ADMIN → salon where they are the admin owner.
      * PROFISSIONAL → salon they are registered in.
+     * RECEPCIONISTA → salon they are linked to (Usuario.salon).
      * CLIENTE → null (clients can belong to multiple salons).
      */
     private Long resolveSalonId(Usuario usuario) {
@@ -353,6 +363,7 @@ public class AuthService {
             case PROFISSIONAL -> profissionalRepository.findByUsuarioId(usuario.getId())
                     .map(p -> p.getSalon().getId())
                     .orElse(null);
+            case RECEPCIONISTA -> usuario.getSalon() != null ? usuario.getSalon().getId() : null;
             default -> null;
         };
     }

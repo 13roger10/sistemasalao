@@ -61,6 +61,19 @@ public class AgendamentoController {
     }
 
     /**
+     * Internal notes (notasInternas) must be visible to staff (ADMIN, PROFISSIONAL, RECEPCIONISTA)
+     * and NEVER to a CLIENTE or an unauthenticated caller. This is intentionally independent from
+     * shouldRestrictSensitiveData, which also governs clienteTelefone/observacoes and hides those
+     * from PROFISSIONAL — internal notes must stay visible to PROFISSIONAL regardless.
+     */
+    private boolean shouldHideInternalNotes(UserDetails userDetails) {
+        if (userDetails == null) return true;
+        return userDetails.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .noneMatch(auth -> auth.equals("ROLE_ADMIN") || auth.equals("ROLE_PROFISSIONAL") || auth.equals("ROLE_RECEPCIONISTA"));
+    }
+
+    /**
      * Enforces that a PROFISSIONAL can only access their own data.
      * Throws AuthorizationException if the authenticated user is a PROFISSIONAL
      * trying to access a different professional's resource.
@@ -112,25 +125,32 @@ public class AgendamentoController {
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails userDetails) {
         boolean restrictData = shouldRestrictSensitiveData(userDetails);
-        AgendamentoResponse response = agendamentoService.buscarPorId(id, restrictData);
+        boolean hideInternalNotes = shouldHideInternalNotes(userDetails);
+        AgendamentoResponse response = agendamentoService.buscarPorId(id, restrictData, hideInternalNotes);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/salon/{salonId}")
-    @Operation(summary = "Listar por salão", description = "Lista agendamentos de um salão com paginação")
+    @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
+    @Operation(summary = "Listar por salão", description = "Lista agendamentos de um salão com paginação. Restrito à equipe do salão.")
     public ResponseEntity<Page<AgendamentoResponse>> listarPorSalon(
             @PathVariable Long salonId,
-            @PageableDefault(size = 100, sort = "dataHora") Pageable pageable) {
-        Page<AgendamentoResponse> response = agendamentoService.listarPorSalon(salonId, pageable);
+            @PageableDefault(size = 100, sort = "dataHora") Pageable pageable,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        boolean restrictData = shouldRestrictSensitiveData(userDetails);
+        Page<AgendamentoResponse> response = agendamentoService.listarPorSalon(salonId, pageable, restrictData);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/cliente/{clienteId}")
-    @Operation(summary = "Listar por cliente", description = "Lista agendamentos de um cliente")
+    @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
+    @Operation(summary = "Listar por cliente", description = "Lista agendamentos de um cliente. Restrito à equipe do salão — o próprio cliente usa /api/salon/appointments/my.")
     public ResponseEntity<Page<AgendamentoResponse>> listarPorCliente(
             @PathVariable Long clienteId,
-            @PageableDefault(size = 20, sort = "dataHora") Pageable pageable) {
-        Page<AgendamentoResponse> response = agendamentoService.listarPorCliente(clienteId, pageable);
+            @PageableDefault(size = 20, sort = "dataHora") Pageable pageable,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        boolean restrictData = shouldRestrictSensitiveData(userDetails);
+        Page<AgendamentoResponse> response = agendamentoService.listarPorCliente(clienteId, pageable, restrictData);
         return ResponseEntity.ok(response);
     }
 
@@ -200,7 +220,8 @@ public class AgendamentoController {
             @Valid @RequestBody CancelamentoRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
         boolean restrictData = shouldRestrictSensitiveData(userDetails);
-        AgendamentoResponse response = agendamentoService.cancelar(id, request, restrictData);
+        boolean hideInternalNotes = shouldHideInternalNotes(userDetails);
+        AgendamentoResponse response = agendamentoService.cancelar(id, request, restrictData, hideInternalNotes);
         return ResponseEntity.ok(response);
     }
 
@@ -211,7 +232,8 @@ public class AgendamentoController {
             @Valid @RequestBody ReagendamentoRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
         boolean restrictData = shouldRestrictSensitiveData(userDetails);
-        AgendamentoResponse response = agendamentoService.reagendar(id, request, restrictData);
+        boolean hideInternalNotes = shouldHideInternalNotes(userDetails);
+        AgendamentoResponse response = agendamentoService.reagendar(id, request, restrictData, hideInternalNotes);
         return ResponseEntity.ok(response);
     }
 

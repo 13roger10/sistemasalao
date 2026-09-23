@@ -78,8 +78,19 @@ public class Agendamento {
     @Builder.Default
     private StatusAgendamento status = StatusAgendamento.PENDENTE;
 
+    /**
+     * Observação do cliente sobre o agendamento (ex: pedidos especiais).
+     * Visível para o próprio cliente e para a equipe do salão.
+     */
     @Column(length = 500)
     private String observacoes;
+
+    /**
+     * Nota interna da equipe sobre o agendamento (ex: "cliente costuma atrasar").
+     * NUNCA deve ser exposta ao cliente — apenas admin, profissional e recepcionista.
+     */
+    @Column(length = 500)
+    private String notasInternas;
 
     @Column(length = 300)
     private String motivoCancelamento;

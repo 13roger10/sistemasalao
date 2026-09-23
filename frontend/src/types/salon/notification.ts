@@ -15,6 +15,8 @@ export type NotificationType =
   | 'stock_low'
   | 'comissao_disponivel'
   | 'pagamento_realizado'
+  | 'appointment_pending_confirmation'
+  | 'appointment_confirmed_by_client'
   | 'general';
 
 // ===== Push Subscription =====

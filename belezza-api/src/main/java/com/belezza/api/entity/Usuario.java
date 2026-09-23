@@ -52,6 +52,16 @@ public class Usuario implements UserDetails {
     @Column(nullable = false, length = 20)
     private Role role;
 
+    /**
+     * Salão ao qual este usuário pertence. Usado para RECEPCIONISTA (que não tem
+     * uma entidade própria como Profissional/Cliente) para saber a quem notificar
+     * e escopar dados por salão. Nulo para ADMIN (dono, via Salon.admin) e para
+     * PROFISSIONAL/CLIENTE (que já têm o vínculo pelas suas próprias entidades).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "salon_id")
+    private Salon salon;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default

@@ -71,16 +71,19 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
            "AND u.role = :role ORDER BY u.criadoEm DESC")
     Page<Usuario> searchByNomeOrEmailAndRole(@Param("search") String search, @Param("role") Role role, Pageable pageable);
 
-    // Query para buscar usuários por salon (via profissional)
+    // Query para buscar usuários por salon (via profissional, vínculo direto para recepcionista, ou admin dono)
     @Query("SELECT DISTINCT u FROM Usuario u " +
            "LEFT JOIN Profissional p ON p.usuario = u " +
-           "WHERE p.salon.id = :salonId OR u.role = 'ADMIN'")
+           "WHERE p.salon.id = :salonId OR u.salon.id = :salonId OR u.role = 'ADMIN'")
     Page<Usuario> findBySalonId(@Param("salonId") Long salonId, Pageable pageable);
 
     @Query("SELECT DISTINCT u FROM Usuario u " +
            "LEFT JOIN Profissional p ON p.usuario = u " +
-           "WHERE (p.salon.id = :salonId OR u.role = 'ADMIN') AND u.role = :role")
+           "WHERE (p.salon.id = :salonId OR u.salon.id = :salonId OR u.role = 'ADMIN') AND u.role = :role")
     Page<Usuario> findBySalonIdAndRole(@Param("salonId") Long salonId, @Param("role") Role role, Pageable pageable);
+
+    // Recepcionistas ativos vinculados diretamente a um salão (para notificações da equipe)
+    List<Usuario> findByRoleAndSalonIdAndAtivoTrue(Role role, Long salonId);
 
     // Buscar usuários CLIENTE que ainda não estão vinculados a um salão específico
     @Query("SELECT u FROM Usuario u WHERE u.role = 'CLIENTE' AND u.ativo = true " +

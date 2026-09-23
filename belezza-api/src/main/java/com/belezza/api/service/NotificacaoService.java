@@ -164,6 +164,50 @@ public class NotificacaoService {
 
     // ==================== NOTIFICAÇÕES DE AGENDAMENTO ====================
 
+    /**
+     * Notifica o cliente que um agendamento foi criado para ele (por um profissional
+     * ou administrador) e está aguardando a confirmação dele.
+     */
+    @Transactional
+    public void notificarClienteAgendamentoPendente(Agendamento agendamento) {
+        Usuario usuario = agendamento.getCliente().getUsuario();
+        String titulo = "Confirme seu agendamento";
+        String mensagem = String.format("Você tem um novo agendamento para %s às %s, aguardando sua confirmação.",
+                agendamento.getDataHora().toLocalDate().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM")),
+                agendamento.getDataHora().toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")));
+        String link = "/salon/client/appointments";
+
+        criarNotificacao(usuario, TipoNotificacao.AGENDAMENTO_PENDENTE, titulo, mensagem, link, agendamento.getId());
+    }
+
+    /**
+     * Notifica a recepção e o administrador do salão que o cliente confirmou
+     * o agendamento (via link de confirmação por token).
+     */
+    @Transactional
+    public void notificarEquipeAgendamentoConfirmadoPeloCliente(Agendamento agendamento) {
+        Salon salon = agendamento.getSalon();
+        String nomeCliente = agendamento.getCliente() != null && agendamento.getCliente().getUsuario() != null
+                ? agendamento.getCliente().getUsuario().getNome() : "Cliente";
+        String data = agendamento.getDataHora().toLocalDate()
+                .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM"));
+        String hora = agendamento.getDataHora().toLocalTime()
+                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+
+        String titulo = "Cliente confirmou agendamento";
+        String mensagem = String.format("%s confirmou o agendamento de %s às %s.", nomeCliente, data, hora);
+        String link = "/salon/appointments";
+
+        if (salon.getAdmin() != null) {
+            criarNotificacao(salon.getAdmin(), TipoNotificacao.AGENDAMENTO_CONFIRMADO_CLIENTE, titulo, mensagem, link, agendamento.getId());
+        }
+
+        List<Usuario> recepcionistas = usuarioRepository.findByRoleAndSalonIdAndAtivoTrue(Role.RECEPCIONISTA, salon.getId());
+        for (Usuario recepcionista : recepcionistas) {
+            criarNotificacao(recepcionista, TipoNotificacao.AGENDAMENTO_CONFIRMADO_CLIENTE, titulo, mensagem, link, agendamento.getId());
+        }
+    }
+
     @Transactional
     public void notificarAgendamentoConfirmado(Agendamento agendamento) {
         Usuario usuario = agendamento.getCliente().getUsuario();

@@ -6,7 +6,9 @@ import com.belezza.api.entity.FormaPagamento;
 import com.belezza.api.entity.Pagamento;
 import com.belezza.api.entity.Role;
 import com.belezza.api.entity.Servico;
+import com.belezza.api.entity.StatusAgendamento;
 import com.belezza.api.entity.Usuario;
+import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.PagamentoRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -21,6 +23,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
@@ -34,6 +37,29 @@ import java.util.*;
 public class FinanceController {
 
     private final PagamentoRepository pagamentoRepository;
+    private final AgendamentoRepository agendamentoRepository;
+
+    /**
+     * Sums approved payments for a salon/period grouped by payment method.
+     * Backs both the current cash register summary and the daily report —
+     * both must reflect real Pagamento rows, never fixed placeholder totals.
+     */
+    private Map<FormaPagamento, BigDecimal> sumByForma(Long salonId, LocalDateTime inicio, LocalDateTime fim) {
+        Map<FormaPagamento, BigDecimal> totals = new EnumMap<>(FormaPagamento.class);
+        for (Object[] row : pagamentoRepository.sumByFormaPagamentoAndPeriod(salonId, inicio, fim)) {
+            totals.put((FormaPagamento) row[0], (BigDecimal) row[2]);
+        }
+        return totals;
+    }
+
+    private double formaTotal(Map<FormaPagamento, BigDecimal> totals, FormaPagamento forma) {
+        return totals.getOrDefault(forma, BigDecimal.ZERO).doubleValue();
+    }
+
+    private LocalDate parseDateFlexible(String date) {
+        // Accepts a plain "yyyy-MM-dd" or a full ISO datetime string (e.g. from Date.toISOString()).
+        return LocalDate.parse(date.length() > 10 ? date.substring(0, 10) : date);
+    }
 
     // ===== TRANSACTIONS =====
 
@@ -112,32 +138,45 @@ public class FinanceController {
     // ===== CASH REGISTER =====
 
     @GetMapping("/cash-register/current")
-    @Operation(summary = "Caixa atual", description = "Retorna o caixa aberto atual")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Caixa atual", description = "Retorna o caixa aberto atual, com totais somados a partir dos pagamentos reais de hoje")
     public ResponseEntity<CashRegisterResponse> getCurrentCashRegister(
             @RequestParam(required = false) String unitId) {
-        log.debug("Getting current cash register for unitId: {}", unitId);
+        Long salonId = unitId != null ? Long.valueOf(unitId) : 1L;
+        log.debug("Getting current cash register for salonId: {}", salonId);
 
-        // Mock data - returns an open cash register
+        LocalDate today = LocalDate.now();
+        LocalDateTime inicio = today.atStartOfDay();
+        LocalDateTime fim = today.plusDays(1).atStartOfDay();
+
+        Map<FormaPagamento, BigDecimal> totals = sumByForma(salonId, inicio, fim);
+        double cashTotal = formaTotal(totals, FormaPagamento.DINHEIRO);
+        double pixTotal = formaTotal(totals, FormaPagamento.PIX);
+        double creditCardTotal = formaTotal(totals, FormaPagamento.CARTAO_CREDITO);
+        double debitCardTotal = formaTotal(totals, FormaPagamento.CARTAO_DEBITO) + formaTotal(totals, FormaPagamento.TRANSFERENCIA);
+        double voucherTotal = formaTotal(totals, FormaPagamento.VALE);
+        double totalIncome = cashTotal + pixTotal + creditCardTotal + debitCardTotal + voucherTotal;
+
         CashRegisterResponse cashRegister = new CashRegisterResponse(
+            String.valueOf(salonId),
+            String.valueOf(salonId),
             "1",
-            unitId != null ? unitId : "1",
-            "1",
-            "Admin",
+            "Sistema",
             "open",
-            LocalDateTime.now().minusHours(8),
+            inicio,
             null,
             null,
             null,
-            200.0,
-            1850.0,
-            150.0,
-            100.0,
-            800.0,
-            650.0,
-            300.0,
-            100.0,
             0.0,
-            LocalDateTime.now().minusHours(8),
+            totalIncome,
+            0.0,
+            0.0,
+            cashTotal,
+            pixTotal,
+            creditCardTotal,
+            debitCardTotal,
+            voucherTotal,
+            inicio,
             LocalDateTime.now()
         );
 
@@ -374,57 +413,64 @@ public class FinanceController {
     }
 
     @GetMapping("/reports/daily")
-    @Operation(summary = "Relatório diário", description = "Retorna relatório financeiro do dia")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Relatório diário", description = "Retorna relatório financeiro do dia, calculado a partir dos pagamentos e agendamentos reais")
     public ResponseEntity<DailyReportResponse> getDailyReport(
             @RequestParam String date,
             @RequestParam(required = false) String unitId) {
-        log.debug("Getting daily report for {} unitId: {}", date, unitId);
+        Long salonId = unitId != null ? Long.valueOf(unitId) : 1L;
+        log.debug("Getting daily report for {} salonId: {}", date, salonId);
 
-        // Revenue breakdown
-        DailyRevenueSummary revenue = new DailyRevenueSummary(
-            1500.0,  // services
-            250.0,   // products
-            100.0,   // packages
-            50.0,    // tips
-            0.0,     // other
-            1900.0   // total
-        );
+        LocalDate targetDate = parseDateFlexible(date);
+        LocalDateTime inicio = targetDate.atStartOfDay();
+        LocalDateTime fim = targetDate.plusDays(1).atStartOfDay();
 
-        // Expenses breakdown
-        List<ExpenseByCategory> expenseCategories = Arrays.asList(
-            new ExpenseByCategory("1", "Produtos", 150.0, 50.0),
-            new ExpenseByCategory("2", "Alimentação", 80.0, 26.7),
-            new ExpenseByCategory("3", "Outros", 70.0, 23.3)
-        );
-        DailyExpensesSummary expenses = new DailyExpensesSummary(300.0, expenseCategories);
+        Map<FormaPagamento, BigDecimal> totals = sumByForma(salonId, inicio, fim);
+        double cashTotal = formaTotal(totals, FormaPagamento.DINHEIRO);
+        double pixTotal = formaTotal(totals, FormaPagamento.PIX);
+        double creditCardTotal = formaTotal(totals, FormaPagamento.CARTAO_CREDITO);
+        double debitCardTotal = formaTotal(totals, FormaPagamento.CARTAO_DEBITO) + formaTotal(totals, FormaPagamento.TRANSFERENCIA);
+        double voucherTotal = formaTotal(totals, FormaPagamento.VALE);
+        double totalRevenue = cashTotal + pixTotal + creditCardTotal + debitCardTotal + voucherTotal;
 
-        // Payment methods
+        // Revenue breakdown — every real payment is currently for a service; there is no
+        // product/package/tip tracking yet, so those stay at 0 rather than showing fake numbers.
+        DailyRevenueSummary revenue = new DailyRevenueSummary(totalRevenue, 0.0, 0.0, 0.0, 0.0, totalRevenue);
+
+        // No expense-tracking entity exists yet, so expenses are genuinely 0 (not fabricated).
+        DailyExpensesSummary expenses = new DailyExpensesSummary(0.0, List.of());
+
         DailyPaymentMethods paymentMethods = new DailyPaymentMethods(
-            400.0,   // cash
-            800.0,   // pix
-            450.0,   // creditCard
-            200.0,   // debitCard
-            50.0     // voucher
+            cashTotal, pixTotal, creditCardTotal, debitCardTotal, voucherTotal
         );
 
-        // Appointments
-        DailyAppointmentsSummary appointments = new DailyAppointmentsSummary(
-            15,  // total
-            12,  // completed
-            2,   // canceled
-            1    // noShow
-        );
+        int total = 0;
+        int completed = 0;
+        int canceled = 0;
+        int noShow = 0;
+        for (Object[] row : agendamentoRepository.countByStatusAndPeriod(salonId, inicio, fim)) {
+            StatusAgendamento status = (StatusAgendamento) row[0];
+            long count = (Long) row[1];
+            total += count;
+            if (status == StatusAgendamento.CONCLUIDO) completed += count;
+            else if (status == StatusAgendamento.CANCELADO) canceled += count;
+            else if (status == StatusAgendamento.NO_SHOW) noShow += count;
+        }
+        DailyAppointmentsSummary appointments = new DailyAppointmentsSummary(total, completed, canceled, noShow);
+
+        BigDecimal avgTicket = pagamentoRepository.avgTicketMedioBySalonIdAndPeriod(salonId, inicio, fim);
+        double averageTicket = avgTicket != null ? avgTicket.doubleValue() : 0.0;
 
         DailyReportResponse report = new DailyReportResponse(
             date,
-            "1",      // cashRegisterId
-            "open",   // status
+            String.valueOf(salonId),
+            "open",
             revenue,
             expenses,
             paymentMethods,
             appointments,
-            158.33,   // averageTicket
-            1600.0    // profit
+            averageTicket,
+            totalRevenue // profit == revenue until real expenses are tracked
         );
 
         return ResponseEntity.ok(report);

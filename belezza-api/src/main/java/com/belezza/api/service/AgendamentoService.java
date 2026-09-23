@@ -15,6 +15,7 @@ import com.belezza.api.service.TenantIsolationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -125,6 +126,7 @@ public class AgendamentoService {
                 .fimPrevisto(fimPrevisto)
                 .status(StatusAgendamento.PENDENTE)
                 .observacoes(request.getObservacoes())
+                .notasInternas(request.getNotasInternas())
                 .valorCobrado(servico.getPreco())
                 .tokenConfirmacao(UUID.randomUUID().toString())
                 .build();
@@ -201,6 +203,7 @@ public class AgendamentoService {
                 .fimPrevisto(fimPrevisto)
                 .status(StatusAgendamento.PENDENTE)
                 .observacoes(request.getObservacoes())
+                .notasInternas(request.getNotasInternas())
                 .valorCobrado(valorTotal)
                 .tokenConfirmacao(UUID.randomUUID().toString())
                 .build();
@@ -239,25 +242,32 @@ public class AgendamentoService {
 
     @Transactional(readOnly = true)
     public AgendamentoResponse buscarPorId(Long id, boolean restrictSensitiveData) {
+        return buscarPorId(id, restrictSensitiveData, restrictSensitiveData);
+    }
+
+    /**
+     * @param hideInternalNotes If true, excludes notasInternas — must be true for CLIENTE/anonymous callers,
+     *                          false for staff (ADMIN/PROFISSIONAL/RECEPCIONISTA).
+     */
+    @Transactional(readOnly = true)
+    public AgendamentoResponse buscarPorId(Long id, boolean restrictSensitiveData, boolean hideInternalNotes) {
         Agendamento agendamento = agendamentoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento", id));
         tenantIsolationService.assertCurrentTenant(agendamento.getSalon().getId());
-        return restrictSensitiveData
-                ? AgendamentoResponse.fromEntityForProfessional(agendamento)
-                : AgendamentoResponse.fromEntity(agendamento);
+        return AgendamentoResponse.fromEntity(agendamento, restrictSensitiveData, hideInternalNotes);
     }
 
     @Transactional(readOnly = true)
-    public Page<AgendamentoResponse> listarPorSalon(Long salonId, Pageable pageable) {
+    public Page<AgendamentoResponse> listarPorSalon(Long salonId, Pageable pageable, boolean restrictSensitiveData) {
         tenantIsolationService.assertRequestedSalon(salonId);
         return agendamentoRepository.findBySalonId(salonId, pageable)
-                .map(AgendamentoResponse::fromEntity);
+                .map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
     }
 
     @Transactional(readOnly = true)
-    public Page<AgendamentoResponse> listarPorCliente(Long clienteId, Pageable pageable) {
+    public Page<AgendamentoResponse> listarPorCliente(Long clienteId, Pageable pageable, boolean restrictSensitiveData) {
         return agendamentoRepository.findByClienteId(clienteId, pageable)
-                .map(AgendamentoResponse::fromEntity);
+                .map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
     }
 
     @Transactional(readOnly = true)
@@ -433,7 +443,47 @@ public class AgendamentoService {
         agendamento = agendamentoRepository.save(agendamento);
         log.info("Agendamento confirmado por token: {}", agendamento.getId());
 
-        return AgendamentoResponse.fromEntity(agendamento);
+        try {
+            notificacaoService.notificarEquipeAgendamentoConfirmadoPeloCliente(agendamento);
+        } catch (Exception e) {
+            log.error("Erro ao notificar equipe sobre confirmação do cliente: {}", e.getMessage(), e);
+        }
+
+        // Token flow: caller is the client via an emailed link, not staff — never expose sensitive data.
+        return AgendamentoResponse.fromEntityForClient(agendamento);
+    }
+
+    /**
+     * Confirms a PENDENTE appointment on behalf of the authenticated client, from within the app
+     * (as opposed to the emailed token link). Notifies admin + receptionists on success.
+     *
+     * @param agendamentoId The appointment ID
+     * @param usuarioId     The authenticated client's user ID (must own the appointment)
+     * @return The client-safe DTO of the updated appointment
+     */
+    @Transactional
+    public MeuAgendamentoDTO confirmarComoCliente(Long agendamentoId, Long usuarioId) {
+        Agendamento agendamento = getAgendamento(agendamentoId);
+
+        if (!agendamento.getCliente().getUsuario().getId().equals(usuarioId)) {
+            throw new AccessDeniedException("Acesso negado: este agendamento não pertence a este cliente");
+        }
+
+        if (agendamento.getStatus() != StatusAgendamento.PENDENTE) {
+            throw new BusinessException("Apenas agendamentos pendentes podem ser confirmados");
+        }
+
+        agendamento.setStatus(StatusAgendamento.CONFIRMADO);
+        agendamento = agendamentoRepository.save(agendamento);
+        log.info("Agendamento confirmado pelo cliente via app: {}", agendamentoId);
+
+        try {
+            notificacaoService.notificarEquipeAgendamentoConfirmadoPeloCliente(agendamento);
+        } catch (Exception e) {
+            log.error("Erro ao notificar equipe sobre confirmação do cliente: {}", e.getMessage(), e);
+        }
+
+        return MeuAgendamentoDTO.fromEntity(agendamento);
     }
 
     @Transactional
@@ -454,7 +504,8 @@ public class AgendamentoService {
 
         enviarNotificacoesSistemaCancelamento(agendamento, agendamento.getMotivoCancelamento());
 
-        return AgendamentoResponse.fromEntity(agendamento);
+        // Token flow: caller is the client via an emailed link, not staff — never expose sensitive data.
+        return AgendamentoResponse.fromEntityForClient(agendamento);
     }
 
     @Transactional
@@ -541,6 +592,16 @@ public class AgendamentoService {
     @Transactional
     @Auditable(action = "CANCEL", entityType = "Agendamento", captureOldState = true, captureNewState = true)
     public AgendamentoResponse cancelar(Long id, CancelamentoRequest request, boolean restrictSensitiveData) {
+        return cancelar(id, request, restrictSensitiveData, restrictSensitiveData);
+    }
+
+    /**
+     * @param hideInternalNotes If true, excludes notasInternas — must be true for CLIENTE/anonymous callers,
+     *                          false for staff (ADMIN/PROFISSIONAL/RECEPCIONISTA).
+     */
+    @Transactional
+    @Auditable(action = "CANCEL", entityType = "Agendamento", captureOldState = true, captureNewState = true)
+    public AgendamentoResponse cancelar(Long id, CancelamentoRequest request, boolean restrictSensitiveData, boolean hideInternalNotes) {
         Agendamento agendamento = getAgendamento(id);
 
         if (agendamento.getStatus() == StatusAgendamento.CONCLUIDO ||
@@ -560,7 +621,7 @@ public class AgendamentoService {
         // Criar notificação no sistema + enviar email
         enviarNotificacoesSistemaCancelamento(agendamento, request.getMotivo());
 
-        return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
+        return AgendamentoResponse.fromEntity(agendamento, restrictSensitiveData, hideInternalNotes);
     }
 
     @Transactional
@@ -571,8 +632,17 @@ public class AgendamentoService {
 
     @Transactional
     @Auditable(action = "RESCHEDULE", entityType = "Agendamento", captureOldState = true, captureNewState = true)
-    @SuppressWarnings("deprecation")
     public AgendamentoResponse reagendar(Long id, ReagendamentoRequest request, boolean restrictSensitiveData) {
+        return reagendar(id, request, restrictSensitiveData, restrictSensitiveData);
+    }
+
+    /**
+     * @param hideInternalNotes If true, excludes notasInternas — must be true for CLIENTE/anonymous callers,
+     *                          false for staff (ADMIN/PROFISSIONAL/RECEPCIONISTA).
+     */
+    @Transactional
+    @Auditable(action = "RESCHEDULE", entityType = "Agendamento", captureOldState = true, captureNewState = true)
+    public AgendamentoResponse reagendar(Long id, ReagendamentoRequest request, boolean restrictSensitiveData, boolean hideInternalNotes) {
         Agendamento agendamento = getAgendamento(id);
 
         if (agendamento.getStatus() == StatusAgendamento.CONCLUIDO ||
@@ -620,7 +690,7 @@ public class AgendamentoService {
         // Criar notificação no sistema + enviar WhatsApp + email
         enviarNotificacoesReagendamento(agendamento);
 
-        return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
+        return AgendamentoResponse.fromEntity(agendamento, restrictSensitiveData, hideInternalNotes);
     }
 
     @Transactional
@@ -764,7 +834,9 @@ public class AgendamentoService {
      */
     private void enviarNotificacoesSistemaConfirmacao(Agendamento agendamento) {
         try {
-            notificacaoService.notificarAgendamentoConfirmado(agendamento);
+            // O agendamento acabou de ser criado com status PENDENTE: notifica o
+            // cliente pedindo confirmação, e não que já está confirmado.
+            notificacaoService.notificarClienteAgendamentoPendente(agendamento);
         } catch (Exception e) {
             log.error("Erro ao criar notificação de confirmação: {}", e.getMessage(), e);
         }

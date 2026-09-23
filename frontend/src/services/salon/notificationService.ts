@@ -3,6 +3,7 @@
 import { api } from './api';
 import type {
   Notification,
+  NotificationType,
   NotificationCreateInput,
   NotificationStats,
   NotificationPreferences,
@@ -16,7 +17,7 @@ import type {
 } from '@/types/salon/notification';
 import type { PaginatedResponse, PaginationParams } from '@/types/salon/common';
 
-const BASE_PATH = '/api/notificacoes';
+const BASE_PATH = '/notificacoes';
 
 // ===== VAPID Public Key (should come from environment) =====
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
@@ -159,7 +160,9 @@ export const notificationService = {
       try {
         const response = await api.get<{ content: Record<string, unknown>[]; totalElements: number; totalPages: number; number: number; size: number }>(BASE_PATH, params);
         const tipoMap: Record<string, NotificationType> = {
+          AGENDAMENTO_PENDENTE: 'appointment_pending_confirmation',
           AGENDAMENTO_CONFIRMADO: 'appointment_confirmed',
+          AGENDAMENTO_CONFIRMADO_CLIENTE: 'appointment_confirmed_by_client',
           AGENDAMENTO_CANCELADO: 'appointment_cancelled',
           AGENDAMENTO_REAGENDADO: 'appointment_rescheduled',
           LEMBRETE_24H: 'appointment_reminder',
@@ -232,7 +235,7 @@ export const notificationService = {
 
     // Get stats (usa resumo do backend)
     getStats: async (): Promise<NotificationStats> => {
-      const emptyByType = {
+      const emptyByType: Record<NotificationType, number> = {
         appointment_reminder: 0,
         appointment_confirmed: 0,
         appointment_cancelled: 0,
@@ -244,6 +247,10 @@ export const notificationService = {
         birthday: 0,
         loyalty_reward: 0,
         stock_low: 0,
+        comissao_disponivel: 0,
+        pagamento_realizado: 0,
+        appointment_pending_confirmation: 0,
+        appointment_confirmed_by_client: 0,
         general: 0,
       };
       try {

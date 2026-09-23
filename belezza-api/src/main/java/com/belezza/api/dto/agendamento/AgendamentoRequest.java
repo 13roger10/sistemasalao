@@ -52,6 +52,12 @@ public class AgendamentoRequest {
     private String observacoes;
 
     /**
+     * Nota interna da equipe — nunca deve ser exposta ao cliente.
+     */
+    @Size(max = 500)
+    private String notasInternas;
+
+    /**
      * Check if request has multiple services.
      */
     public boolean hasMultipleServices() {

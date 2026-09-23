@@ -1,5 +1,6 @@
 package com.belezza.api.controller;
 
+import com.belezza.api.dto.agendamento.MeuAgendamentoDTO;
 import com.belezza.api.dto.agendamento.MeusAgendamentosResponse;
 import com.belezza.api.entity.Usuario;
 import com.belezza.api.service.AgendamentoService;
@@ -94,6 +95,28 @@ public class MeusAgendamentosController {
             sortOrder
         );
 
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Confirms one of the authenticated client's own PENDENTE appointments.
+     * Notifies admin + receptionists once confirmed.
+     */
+    @PostMapping("/{id}/confirm")
+    @Operation(
+        summary = "Confirmar meu agendamento",
+        description = "Confirma um agendamento pendente pertencente ao cliente autenticado"
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Agendamento confirmado com sucesso"),
+        @ApiResponse(responseCode = "403", description = "Agendamento não pertence ao cliente autenticado", content = @Content),
+        @ApiResponse(responseCode = "404", description = "Agendamento não encontrado", content = @Content)
+    })
+    public ResponseEntity<MeuAgendamentoDTO> confirmarMeuAgendamento(
+            @PathVariable Long id,
+            @AuthenticationPrincipal Usuario userDetails) {
+        log.info("POST /api/salon/appointments/{}/confirm - userId: {}", id, userDetails.getId());
+        MeuAgendamentoDTO response = agendamentoService.confirmarComoCliente(id, userDetails.getId());
         return ResponseEntity.ok(response);
     }
 }

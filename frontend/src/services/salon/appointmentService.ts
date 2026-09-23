@@ -52,10 +52,39 @@ interface AgendamentoBackendResponse {
   status: string;
   statusDescricao?: string;
   observacoes?: string;
+  notasInternas?: string;
   motivoCancelamento?: string;
   valorCobrado?: number;
   criadoEm?: string;
   atualizadoEm?: string;
+}
+
+// Formato retornado por GET /salon/appointments/my (MeusAgendamentosController) —
+// já vem sem nenhum campo de nota, propositalmente: essa rota é a única que o
+// cliente pode chamar, então nunca deve trafegar notasInternas.
+interface MeuAgendamentoBackendItem {
+  id: string;
+  clientId: string;
+  professionalId: string;
+  unitId: string;
+  date: string;
+  startTime: string;
+  endTime?: string | null;
+  status: string;
+  source?: string;
+  isPaid?: boolean;
+  totalPrice?: number;
+  finalPrice?: number;
+  totalDurationMinutes?: number;
+  services?: {
+    serviceId: string;
+    price: number;
+    durationMinutes: number;
+    service?: { id: string; name: string; price: number; durationMinutes: number };
+  }[];
+  professional?: { id: string; name: string; avatar?: string } | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // Mapear status do backend para frontend
@@ -191,11 +220,90 @@ const mapAgendamentoToFrontend = (agendamento: AgendamentoBackendResponse): Appo
     isPaid: false,
     commissionTotal: 0,
     commissionPaid: false,
-    internalNotes: agendamento.observacoes,
+    clientNotes: agendamento.observacoes,
+    internalNotes: agendamento.notasInternas,
     cancellationReason: agendamento.motivoCancelamento,
     unitId: '1',
     createdAt: agendamento.criadoEm ? new Date(agendamento.criadoEm) : new Date(),
     updatedAt: agendamento.atualizadoEm ? new Date(agendamento.atualizadoEm) : new Date(),
+  };
+};
+
+// Mapeia a resposta de /salon/appointments/my (rota exclusiva do cliente) para o
+// tipo Appointment do frontend. Não inclui internalNotes de propósito: essa nota
+// é interna da equipe e essa rota nunca a retorna.
+const mapMeuAgendamentoToFrontend = (item: MeuAgendamentoBackendItem): Appointment => {
+  const dateObj = item.date ? new Date(`${item.date}T${item.startTime || '00:00'}:00`) : new Date();
+
+  const services: AppointmentService[] = (item.services || []).map((s) => ({
+    serviceId: s.serviceId,
+    service: {
+      id: s.service?.id || s.serviceId,
+      name: s.service?.name || 'Serviço',
+      categoryId: '',
+      price: s.service?.price ?? s.price,
+      durationMinutes: s.service?.durationMinutes ?? s.durationMinutes,
+      status: 'active' as const,
+      usesStock: false,
+      loyaltyPointsEarned: 0,
+      showInOnlineBooking: true,
+      requiresConfirmation: false,
+      unitIds: ['1'],
+      totalBookings: 0,
+      averageRating: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    price: s.price,
+    durationMinutes: s.durationMinutes,
+  }));
+
+  return {
+    id: item.id,
+    clientId: item.clientId,
+    client: undefined,
+    professionalId: item.professionalId,
+    professional: item.professional ? {
+      id: item.professional.id,
+      userId: item.professional.id,
+      name: item.professional.name,
+      email: '',
+      phone: '',
+      status: 'active',
+      serviceIds: [],
+      specialties: [],
+      commissionType: 'percentage',
+      commissionValue: 0,
+      schedule: { days: [] },
+      averageRating: 0,
+      totalReviews: 0,
+      totalAppointments: 0,
+      totalRevenue: 0,
+      unitIds: ['1'],
+      primaryUnitId: '1',
+      acceptsOnlineBooking: true,
+      showInPublicProfile: true,
+      color: '#8B5CF6',
+      avatar: item.professional.avatar,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } : undefined,
+    services,
+    date: dateObj,
+    startTime: item.startTime,
+    endTime: item.endTime || '',
+    totalDurationMinutes: item.totalDurationMinutes || 30,
+    status: (item.status as AppointmentStatus) || 'pending',
+    source: 'online',
+    totalPrice: item.totalPrice || 0,
+    finalPrice: item.finalPrice || 0,
+    isPaid: item.isPaid || false,
+    commissionTotal: 0,
+    commissionPaid: false,
+    // Propositalmente sem clientNotes/internalNotes: a rota /my nunca as envia.
+    unitId: item.unitId || '1',
+    createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
+    updatedAt: item.updatedAt ? new Date(item.updatedAt) : new Date(),
   };
 };
 
@@ -305,11 +413,32 @@ export const appointmentService = {
   },
 
   // List appointments for the authenticated client
-  // IMPORTANTE: Usa /salon/appointments/my (MeusAgendamentosController)
-  getMyAppointments: (
+  // IMPORTANTE: Usa /salon/appointments/my (MeusAgendamentosController) — a única
+  // rota que retorna somente os agendamentos do próprio cliente, sem notas internas.
+  getMyAppointments: async (
     params?: PaginationParams & { status?: string }
   ): Promise<PaginatedResponse<Appointment>> => {
-    return api.get<PaginatedResponse<Appointment>>('/salon/appointments/my', params);
+    const response = await api.get<{
+      items?: MeuAgendamentoBackendItem[];
+      data?: MeuAgendamentoBackendItem[];
+      meta?: PaginatedResponse<Appointment>['meta'];
+    }>('/salon/appointments/my', params);
+
+    const rawItems = response.items || response.data || [];
+    const items = rawItems.map(mapMeuAgendamentoToFrontend);
+
+    return {
+      data: items,
+      items,
+      meta: response.meta || {
+        total: items.length,
+        page: 1,
+        limit: items.length,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false,
+      },
+    };
   },
 
   // Get single appointment for the authenticated client
@@ -331,7 +460,8 @@ export const appointmentService = {
 
   // Confirm appointment for the authenticated client
   confirmMyAppointment: (id: string): Promise<Appointment> => {
-    return api.post<Appointment>(`/salon/appointments/my/${id}/confirm`);
+    return api.post<MeuAgendamentoBackendItem>(`/salon/appointments/${id}/confirm`)
+      .then(mapMeuAgendamentoToFrontend);
   },
 
   // Cancel appointment for the authenticated client
@@ -374,17 +504,14 @@ export const appointmentService = {
     const minute = String(minutes).padStart(2, '0');
     const dataHora = `${year}-${monthStr}-${dayStr}T${hour}:${minute}:00`;
 
-    // Combinar notas
-    const observacoes = [data.clientNotes, data.internalNotes]
-      .filter(Boolean)
-      .join(' | ');
-
     const backendData = {
       clienteId: data.clientId ? Number(data.clientId) : undefined,
       profissionalId: Number(data.professionalId),
       servicoIds: data.serviceIds?.map(id => Number(id)),
       dataHora,
-      observacoes: observacoes || undefined,
+      // Campos separados: observacoes é visível para o cliente, notasInternas nunca é.
+      observacoes: data.clientNotes || undefined,
+      notasInternas: data.internalNotes || undefined,
     };
 
     console.log('Enviando agendamento:', backendData);

@@ -65,6 +65,11 @@ public class AgendamentoResponse {
     private StatusAgendamento status;
     private String statusDescricao;
     private String observacoes;
+    /**
+     * Nota interna da equipe. Visível para ADMIN, PROFISSIONAL e RECEPCIONISTA;
+     * NUNCA populada quando hideInternalNotes=true (CLIENTE ou chamada anônima/via token).
+     */
+    private String notasInternas;
     private String motivoCancelamento;
     private BigDecimal valorCobrado;
     private LocalDateTime criadoEm;
@@ -72,19 +77,33 @@ public class AgendamentoResponse {
 
     @SuppressWarnings("deprecation")
     public static AgendamentoResponse fromEntity(Agendamento a) {
-        return fromEntity(a, false);
+        return fromEntity(a, false, false);
     }
 
     /**
      * Creates an AgendamentoResponse with restricted data for professionals.
      * Excludes: clienteTelefone, observacoes (sensitive client data).
+     * Still includes notasInternas — professionals are staff and must see it.
      *
      * @param a The appointment entity
-     * @return AgendamentoResponse without sensitive client data
+     * @return AgendamentoResponse without client contact data, but with internal notes
      */
     @SuppressWarnings("deprecation")
     public static AgendamentoResponse fromEntityForProfessional(Agendamento a) {
-        return fromEntity(a, true);
+        return fromEntity(a, true, false);
+    }
+
+    /**
+     * Creates an AgendamentoResponse safe to return to a CLIENTE or an unauthenticated
+     * caller (e.g. token-based confirm/cancel links). Excludes clienteTelefone, observacoes
+     * AND notasInternas — internal notes must never reach the client.
+     *
+     * @param a The appointment entity
+     * @return AgendamentoResponse safe for client-facing contexts
+     */
+    @SuppressWarnings("deprecation")
+    public static AgendamentoResponse fromEntityForClient(Agendamento a) {
+        return fromEntity(a, true, true);
     }
 
     /**
@@ -92,10 +111,11 @@ public class AgendamentoResponse {
      *
      * @param a The appointment entity
      * @param restrictSensitiveData If true, excludes telefone and observacoes
+     * @param hideInternalNotes If true, excludes notasInternas (must be true for CLIENTE/anonymous callers)
      * @return AgendamentoResponse
      */
     @SuppressWarnings("deprecation")
-    private static AgendamentoResponse fromEntity(Agendamento a, boolean restrictSensitiveData) {
+    public static AgendamentoResponse fromEntity(Agendamento a, boolean restrictSensitiveData, boolean hideInternalNotes) {
         // Map services list
         List<ServicoAgendadoDTO> servicosList = new ArrayList<>();
         if (a.getServicos() != null && !a.getServicos().isEmpty()) {
@@ -142,6 +162,8 @@ public class AgendamentoResponse {
                 .statusDescricao(a.getStatus().getDescription())
                 // Restrict sensitive data for professionals
                 .observacoes(restrictSensitiveData ? null : a.getObservacoes())
+                // Nota interna: nunca vai para o cliente, independente de restrictSensitiveData
+                .notasInternas(hideInternalNotes ? null : a.getNotasInternas())
                 .motivoCancelamento(a.getMotivoCancelamento())
                 .valorCobrado(a.getValorCobrado())
                 .criadoEm(a.getCriadoEm())
