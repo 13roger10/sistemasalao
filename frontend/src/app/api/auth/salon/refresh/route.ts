@@ -104,7 +104,10 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: backendData.expiresIn,
+      // Cookie maxAge is in SECONDS; backendData.expiresIn comes from the backend in
+      // MILLISECONDS (900000 = 15 min). Without the conversion this cookie would live
+      // ~250 hours instead of 15 minutes.
+      maxAge: Math.floor(backendData.expiresIn / 1000),
       path: "/",
     });
 

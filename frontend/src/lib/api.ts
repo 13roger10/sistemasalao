@@ -31,15 +31,23 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expirado ou inválido
+      // Token expirado ou inválido — limpa só o token que foi de fato usado nesta
+      // chamada (o request interceptor acima prioriza salon_auth_token sobre
+      // auth_token). Limpar os dois incondicionalmente derruba a sessão do salon
+      // mesmo quando o 401 veio de uma chamada usando o token legado auth_token,
+      // enquanto o salon_auth_token continuava perfeitamente válido.
       if (typeof window !== "undefined") {
-        // Limpa tokens de ambos os contextos
-        localStorage.removeItem("auth_token");
-        localStorage.removeItem("auth_user");
-        localStorage.removeItem("salon_auth_token");
-        localStorage.removeItem("salon_auth_user");
-        localStorage.removeItem("salon_refresh_token");
-        localStorage.removeItem("salon_token_expiry");
+        const usedSalonToken = !!localStorage.getItem("salon_auth_token");
+
+        if (usedSalonToken) {
+          localStorage.removeItem("salon_auth_token");
+          localStorage.removeItem("salon_auth_user");
+          localStorage.removeItem("salon_refresh_token");
+          localStorage.removeItem("salon_token_expiry");
+        } else {
+          localStorage.removeItem("auth_token");
+          localStorage.removeItem("auth_user");
+        }
 
         // Redirecionar para login apropriado
         if (!window.location.pathname.includes("/login")) {

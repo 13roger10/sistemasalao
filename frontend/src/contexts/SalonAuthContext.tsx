@@ -141,11 +141,28 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
     });
 
     // Configura refresh automático (5 minutos antes de expirar; expiresIn ja vem em ms)
+    // Cancela qualquer timer de refresh pendente de uma chamada anterior a setAuth
+    // (login/refresh anterior) antes de agendar o novo — sem isso, o timer antigo
+    // continua pendente e dispara mais tarde um refreshAuth() órfão e redundante,
+    // que pode acabar derrubando a sessão que acabou de ser renovada com sucesso.
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+      refreshTimeoutRef.current = null;
+    }
+
     if (expiresIn && refreshToken) {
       const refreshTime = expiresIn - 5 * 60 * 1000; // 5 minutos antes, em ms
       if (refreshTime > 0) {
         refreshTimeoutRef.current = setTimeout(() => {
-          refreshAuth();
+          // Se falhar por motivo transitório (rede, 5xx), refreshAuth() não desloga
+          // o usuário, mas também não reagenda sozinho — tenta de novo em 30s em vez
+          // de deixar o refresh automático simplesmente parar de funcionar pro resto
+          // da sessão.
+          refreshAuth().then((ok) => {
+            if (!ok) {
+              refreshTimeoutRef.current = setTimeout(() => refreshAuth(), 30 * 1000);
+            }
+          });
         }, refreshTime);
       }
     }
@@ -223,7 +240,15 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
       });
 
       if (!response.ok) {
-        clearAuth();
+        // Só derruba a sessão quando o backend explicitamente rejeita o refresh
+        // token (401/403 — token inválido/expirado). Qualquer outra falha (erro
+        // 5xx, proxy fora do ar por um instante, etc.) é tratada como transitória:
+        // mantemos a sessão atual (o access token ainda não expirou de fato) e
+        // deixamos a próxima tentativa — automática ou no próximo checkAuth —
+        // renovar normalmente, em vez de deslogar o usuário no meio do uso.
+        if (response.status === 401 || response.status === 403) {
+          clearAuth();
+        }
         return false;
       }
 
@@ -256,7 +281,7 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
       setAuth(user, backendData.accessToken, backendData.refreshToken, backendData.expiresIn);
       return true;
     } catch {
-      clearAuth();
+      // Erro de rede (fetch nem completou) — transitório, não desloga o usuário.
       return false;
     }
   }, [setAuth, clearAuth]);
