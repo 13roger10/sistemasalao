@@ -105,9 +105,13 @@ belezza:
     allowed-origins: ${CORS_ALLOWED_ORIGINS}
 
   # Rate limiting enabled
+  # SEC-015: limite restrito para autenticação e confiança no X-Forwarded-For apenas
+  # aqui (produção fica atrás do nginx/ingress, que define o header de forma confiável).
   rate-limit:
     enabled: true
     requests-per-minute: 60
+    auth-requests-per-minute: 10
+    trust-forward-header: true
 
 # Swagger disabled in production (or protected)
 springdoc:
