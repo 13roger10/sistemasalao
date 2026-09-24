@@ -290,6 +290,32 @@ public class UsuarioService {
     }
 
     /**
+     * SEC-002: atualização de AUTO-SERVIÇO do próprio perfil.
+     * O usuário autenticado só pode alterar os campos da allowlist do
+     * {@link UpdateMeuPerfilRequest} (nome, telefone, avatar e a própria senha).
+     * Nenhum campo administrativo (role, plano, ativo, emailVerificado, salonId,
+     * email) é aceito por este caminho, eliminando a possibilidade de mass
+     * assignment / auto-elevação de privilégios.
+     */
+    @Transactional
+    public UsuarioListResponse atualizarMeuPerfil(String email, UpdateMeuPerfilRequest request) {
+        Usuario usuario = getUsuarioByEmail(email);
+
+        if (request.getNome() != null) usuario.setNome(request.getNome().trim());
+        if (request.getTelefone() != null) usuario.setTelefone(request.getTelefone());
+        if (request.getAvatarUrl() != null) usuario.setAvatarUrl(request.getAvatarUrl());
+        if (request.getPassword() != null && !request.getPassword().isBlank()) {
+            usuario.setPassword(passwordEncoder.encode(request.getPassword()));
+        }
+
+        usuario = usuarioRepository.save(usuario);
+        log.info("Perfil próprio atualizado pelo usuário: {}", usuario.getId());
+
+        Optional<Profissional> profissional = profissionalRepository.findByUsuarioId(usuario.getId());
+        return UsuarioListResponse.fromEntityWithProfissional(usuario, profissional.orElse(null));
+    }
+
+    /**
      * Deactivate (soft delete) a user.
      */
     @Transactional
