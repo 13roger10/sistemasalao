@@ -61,6 +61,8 @@ public class SecurityConfig {
         "/api/auth/**",
         "/api/public/**",  // Token-based confirm/cancel links, public v1 booking surface
         "/api/v1/**",      // Public API v1 — authenticated by ApiKeyAuthFilter via X-API-Key
+        "/api/webhooks/**", // SEC-017: chamados pela Meta sem JWT — GET valida verify-token,
+                            // POST valida assinatura HMAC (X-Hub-Signature-256) no controller
         "/ws/**",          // WebSocket handshake (auth happens inside STOMP CONNECT)
         "/api/usuarios/roles",
         // SEC-003: /api/agendamentos/** NÃO é mais público. Ele expunha

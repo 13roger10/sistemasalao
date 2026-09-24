@@ -3,6 +3,9 @@ package com.belezza.api.controller;
 import com.belezza.api.entity.WhatsAppMessage;
 import com.belezza.api.entity.WhatsAppMessageStatus;
 import com.belezza.api.repository.WhatsAppMessageRepository;
+import com.belezza.api.security.WebhookSignatureVerifier;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -27,8 +30,12 @@ import java.util.Map;
 public class WhatsAppWebhookController {
 
     private final WhatsAppMessageRepository messageRepository;
+    private final WebhookSignatureVerifier signatureVerifier;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${whatsapp.webhook-verify-token:belezza_whatsapp_verify}")
+    // SEC-017: caminho de propriedade corrigido (antes era "whatsapp.webhook-verify-token",
+    // que não existia e sempre caía no default público). Sem default inseguro.
+    @Value("${belezza.whatsapp.webhook-verify-token:}")
     private String verifyToken;
 
     /**
@@ -70,8 +77,23 @@ public class WhatsAppWebhookController {
                      "Updates message status in the database."
     )
     @SuppressWarnings({"unchecked", "null"})
-    public ResponseEntity<String> handleWebhook(@RequestBody Map<String, Object> payload) {
-        log.info("WhatsApp webhook event received: {}", payload);
+    public ResponseEntity<String> handleWebhook(
+            @RequestBody(required = false) String rawBody,
+            @RequestHeader(value = "X-Hub-Signature-256", required = false) String signature) {
+        // SEC-017: valida a assinatura HMAC sobre o corpo BRUTO antes de processar.
+        if (!signatureVerifier.isValid(rawBody, signature)) {
+            return ResponseEntity.status(401).body("invalid signature");
+        }
+
+        Map<String, Object> payload;
+        try {
+            payload = (rawBody == null || rawBody.isBlank())
+                    ? Map.of()
+                    : objectMapper.readValue(rawBody, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            log.error("Falha ao parsear payload do webhook WhatsApp: {}", e.getMessage());
+            return ResponseEntity.ok("EVENT_RECEIVED");
+        }
 
         try {
             // Parse webhook payload
