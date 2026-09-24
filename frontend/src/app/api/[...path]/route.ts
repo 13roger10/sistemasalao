@@ -33,8 +33,10 @@ async function proxyRequest(request: NextRequest, path: string[]) {
       ? await request.text()
       : undefined;
 
+    // SEC-014: NÃO logar o corpo da requisição — ele contém credenciais (login),
+    // tokens e PII. Apenas o tamanho é registrado, sem conteúdo.
     if (body) {
-      console.log(`[Proxy] Request body:`, body.substring(0, 500));
+      console.log(`[Proxy] Request body length: ${body.length}`);
     }
 
     const response = await fetch(targetUrl, {
@@ -46,9 +48,8 @@ async function proxyRequest(request: NextRequest, path: string[]) {
     const contentType = response.headers.get("content-type");
     console.log(`[Proxy] Response status: ${response.status}, content-type: ${contentType}`);
 
-    // Read response body as text first for logging
+    // SEC-014: NÃO logar o corpo da resposta — pode conter accessToken/refreshToken e PII.
     const responseText = await response.text();
-    console.log(`[Proxy] Response body (${responseText.length} chars):`, responseText.substring(0, 500));
 
     if (contentType?.includes("application/json")) {
       // Parse the text as JSON
