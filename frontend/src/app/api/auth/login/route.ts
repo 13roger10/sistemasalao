@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       value: data.accessToken,
       httpOnly: false, // Precisa ser false para o frontend acessar
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: "strict",
       maxAge: 24 * 60 * 60, // 24 horas
       path: "/",
     });

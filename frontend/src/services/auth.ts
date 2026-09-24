@@ -98,7 +98,9 @@ const setAuthCookie = (token: string) => {
   if (typeof document !== "undefined") {
     // Cookie expira em 24 horas
     const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toUTCString();
-    document.cookie = `auth_token=${token}; path=/; expires=${expires}; SameSite=Lax`;
+    // SEC-013: SameSite=Strict + Secure em HTTPS.
+    const secureFlag = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `auth_token=${token}; path=/; expires=${expires}; SameSite=Strict${secureFlag}`;
   }
 };
 

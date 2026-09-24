@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     nextResponse.cookies.set("salon_auth_token", backendData.accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: "strict",
       maxAge: backendData.expiresIn,
       path: "/",
     });
