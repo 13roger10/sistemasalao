@@ -54,8 +54,12 @@ public class SecurityConfig {
         "/api/v1/**",      // Public API v1 — authenticated by ApiKeyAuthFilter via X-API-Key
         "/ws/**",          // WebSocket handshake (auth happens inside STOMP CONNECT)
         "/api/usuarios/roles",
-        "/api/agendamentos/**", // Booking creation/lookup/availability; write actions below are still
-                                // individually @PreAuthorize'd or ownership-checked in the service layer
+        // SEC-003: /api/agendamentos/** NÃO é mais público. Ele expunha
+        // GET /api/agendamentos/{id} sem autenticação (IDOR — qualquer pessoa lia o
+        // agendamento de qualquer cliente/salão iterando o ID). Agora todo o recurso
+        // exige autenticação; apenas a consulta de disponibilidade (sem PII) permanece
+        // pública, declarada abaixo via requestMatchers(GET, .../disponibilidade).
+        // O confirmar/cancelar público continua por token secreto em /api/public/**.
         "/api/servicos/**",     // Service menu — no PII, admin writes are still @AdminOnly
         "/actuator/health",
         "/actuator/health/**",
@@ -106,6 +110,10 @@ public class SecurityConfig {
 
                 // Allow OPTIONS requests (CORS preflight)
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                // SEC-003: única rota pública de agendamentos — consulta de horários
+                // disponíveis (sem dados pessoais), usada pelo calendário de reserva.
+                .requestMatchers(HttpMethod.GET, "/api/agendamentos/disponibilidade").permitAll()
 
                 // Admin-only endpoints
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
