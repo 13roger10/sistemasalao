@@ -37,9 +37,10 @@ public class EquipeStudioController {
     @Authenticated
     @Operation(summary = "List team members", description = "Returns all members and their studio roles for the salon")
     public ResponseEntity<List<MembroStudioResponse>> listar(
-            @PathVariable Long salonId
+            @PathVariable Long salonId,
+            @AuthenticationPrincipal UserDetails userDetails
     ) {
-        return ResponseEntity.ok(equipeStudioService.listarMembros(salonId));
+        return ResponseEntity.ok(equipeStudioService.listarMembros(salonId, userDetails.getUsername()));
     }
 
     @PostMapping

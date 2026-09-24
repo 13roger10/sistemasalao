@@ -8,8 +8,10 @@ import com.belezza.api.entity.Salon;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.ApiKeyRepository;
 import com.belezza.api.repository.SalonRepository;
+import com.belezza.api.security.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,8 +50,22 @@ public class ApiKeyService {
 
     // ── Admin CRUD ────────────────────────────────────────────────────────────
 
+    /**
+     * SEC-005: garante que o ADMIN autenticado só gerencia API Keys do PRÓPRIO
+     * estabelecimento. O salonId do JWT (TenantContext) precisa existir e coincidir
+     * com o salonId do path. Sem isto, qualquer usuário autenticado listava/criava/
+     * revogava chaves de qualquer salão apenas trocando o ID na URL.
+     */
+    private void assertTenant(Long salonId) {
+        Long tenant = TenantContext.getCurrentTenant();
+        if (tenant == null || !tenant.equals(salonId)) {
+            throw new AccessDeniedException("Acesso negado: recurso pertence a outro estabelecimento");
+        }
+    }
+
     @Transactional(readOnly = true)
     public List<ApiKeyResponse> listar(Long salonId) {
+        assertTenant(salonId);
         return apiKeyRepository.findBySalonIdOrderByCriadoEmDesc(salonId)
             .stream()
             .map(ApiKeyResponse::from)
@@ -59,6 +75,7 @@ public class ApiKeyService {
     @Transactional
     @SuppressWarnings("null")
     public ApiKeyCreatedResponse criar(Long salonId, ApiKeyRequest req) {
+        assertTenant(salonId);
         Salon salon = salonRepository.findById(salonId)
             .orElseThrow(() -> new ResourceNotFoundException("Salão não encontrado: " + salonId));
 
@@ -92,6 +109,7 @@ public class ApiKeyService {
     @Transactional
     @SuppressWarnings("null")
     public void revogar(Long salonId, Long keyId) {
+        assertTenant(salonId);
         ApiKey key = apiKeyRepository.findById(keyId)
             .filter(k -> k.getSalon().getId().equals(salonId))
             .orElseThrow(() -> new ResourceNotFoundException("API Key não encontrada: " + keyId));
@@ -103,6 +121,7 @@ public class ApiKeyService {
     @Transactional
     @SuppressWarnings("null")
     public void excluir(Long salonId, Long keyId) {
+        assertTenant(salonId);
         ApiKey key = apiKeyRepository.findById(keyId)
             .filter(k -> k.getSalon().getId().equals(salonId))
             .orElseThrow(() -> new ResourceNotFoundException("API Key não encontrada: " + keyId));
