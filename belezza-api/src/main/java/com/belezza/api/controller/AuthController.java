@@ -91,6 +91,12 @@ public class AuthController {
     })
     public ResponseEntity<UserResponse> getCurrentUser(@AuthenticationPrincipal UserDetails userDetails) {
         log.debug("Get current user request");
+        // SEC-009: /api/auth/me é permitAll (o filtro JWT popula o principal). Quando o
+        // token está ausente, é inválido ou foi revogado no logout (blacklist), o principal
+        // fica nulo — respondemos 401 limpo em vez de estourar NPE (HTTP 500).
+        if (userDetails == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         UserResponse response = authService.getCurrentUser(userDetails.getUsername());
         return ResponseEntity.ok(response);
     }
