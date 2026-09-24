@@ -87,9 +87,14 @@ logging:
 
 # Production security settings
 belezza:
-  # JWT must use strong secret in production
+  # SEC-012: segredos obrigatórios em produção — SEM default. O boot falha se ausentes,
+  # e o SecretsValidator recusa valores default/fracos.
   jwt:
     secret: ${JWT_SECRET}
+
+  # AES-256-GCM (criptografia de tokens OAuth em repouso) — obrigatório em produção.
+  encryption:
+    aes-key: ${AES_SECRET_KEY}
 
   # RabbitMQ enabled in production
   rabbitmq:
