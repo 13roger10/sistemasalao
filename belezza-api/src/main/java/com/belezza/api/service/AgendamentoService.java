@@ -60,9 +60,9 @@ public class AgendamentoService {
 
     @Transactional
     @Auditable(action = "CREATE", entityType = "Agendamento", captureNewState = true)
-    public AgendamentoResponse criar(AgendamentoRequest request, String emailUsuarioAutenticado) {
-        log.info("Criando agendamento - usuário autenticado: {}, clienteId fornecido: {}",
-                emailUsuarioAutenticado, request.getClienteId());
+    public AgendamentoResponse criar(AgendamentoRequest request, Usuario operador) {
+        log.info("Criando agendamento - operador: {}, clienteId fornecido: {}",
+                operador != null ? operador.getId() : "ANONIMO", request.getClienteId());
 
         // Validate request
         if (!request.isValid()) {
@@ -72,23 +72,29 @@ public class AgendamentoService {
         Profissional profissional = profissionalService.getProfissionalEntity(request.getProfissionalId());
         Salon salon = profissional.getSalon();
 
-        // Get client: use clienteId from request if provided, otherwise use authenticated user
+        // SEC-008 (Broken Access Control / Business Logic): a resolução do cliente do
+        // agendamento não pode confiar cegamente no clienteId do corpo.
+        //  - Um CLIENTE só agenda para si mesmo: qualquer clienteId enviado é IGNORADO e
+        //    usamos sempre o cliente vinculado ao próprio usuário autenticado.
+        //  - Equipe (ADMIN/RECEPCIONISTA/PROFISSIONAL) ou a superfície pública /api/v1
+        //    (autenticada por API Key, operador = admin do salão) pode informar clienteId,
+        //    mas o cliente PRECISA pertencer ao salão do profissional — impedindo vínculo
+        //    entre estabelecimentos e o vazamento de PII de clientes de outro salão.
         Cliente cliente;
-        if (request.getClienteId() != null) {
-            // Admin/receptionist creating appointment for a specific client
+        boolean isCliente = operador != null && operador.getRole() == Role.CLIENTE;
+
+        if (isCliente) {
+            cliente = clienteService.getOrCreateCliente(salon.getId(), operador.getUsername());
+            log.info("Cliente agendando para si: usuarioId={} clienteId={}", operador.getId(), cliente.getId());
+        } else if (request.getClienteId() != null) {
             cliente = clienteRepository.findById(request.getClienteId())
                     .orElseThrow(() -> new ResourceNotFoundException("Cliente", request.getClienteId()));
-            log.info("Usando cliente fornecido: {} (ID: {})",
-                    cliente.getUsuario() != null ? cliente.getUsuario().getNome() : "N/A",
-                    cliente.getId());
-        } else if (emailUsuarioAutenticado != null && !emailUsuarioAutenticado.isBlank()) {
-            // Client booking their own appointment
-            cliente = clienteService.getOrCreateCliente(salon.getId(), emailUsuarioAutenticado);
-            log.info("Usando cliente autenticado: {} (ID: {})",
-                    cliente.getUsuario() != null ? cliente.getUsuario().getNome() : "N/A",
-                    cliente.getId());
+            if (cliente.getSalon() == null || !cliente.getSalon().getId().equals(salon.getId())) {
+                throw new BusinessException("Cliente não pertence a este estabelecimento");
+            }
+            log.info("Equipe/API criando agendamento para cliente {} no salão {}", cliente.getId(), salon.getId());
         } else {
-            throw new BusinessException("É necessário fornecer o clienteId ou estar autenticado para criar um agendamento");
+            throw new BusinessException("É necessário estar autenticado como cliente ou informar um clienteId válido do estabelecimento");
         }
 
         // Check if multiple services or single service

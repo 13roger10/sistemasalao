@@ -90,10 +90,9 @@ public class ReceptionController {
     @Operation(summary = "Criar agendamento", description = "Cria um agendamento pela recepcionista")
     public ResponseEntity<AgendamentoResponse> criarAgendamento(
             @Valid @RequestBody AgendamentoRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @AuthenticationPrincipal Usuario operador) {
 
-        String email = userDetails != null ? userDetails.getUsername() : null;
-        AgendamentoResponse response = agendamentoService.criar(request, email);
+        AgendamentoResponse response = agendamentoService.criar(request, operador);
         log.info("POST /recepcao/appointments → id={}", response.getId());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
