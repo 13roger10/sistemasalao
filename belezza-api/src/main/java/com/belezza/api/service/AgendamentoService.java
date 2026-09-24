@@ -301,6 +301,12 @@ public class AgendamentoService {
 
     @Transactional(readOnly = true)
     public Page<AgendamentoResponse> listarPorCliente(Long clienteId, Pageable pageable, boolean restrictSensitiveData) {
+        // SEC-004: valida que o cliente consultado pertence ao estabelecimento do
+        // solicitante. Sem isto, a equipe de um salão listava os agendamentos (com
+        // telefone e observações) de clientes de outro salão apenas trocando o ID.
+        Cliente cliente = clienteRepository.findById(clienteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cliente", clienteId));
+        enforceStaffTenant(cliente.getSalon().getId());
         return agendamentoRepository.findByClienteId(clienteId, pageable)
                 .map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
     }
@@ -320,6 +326,10 @@ public class AgendamentoService {
      */
     @Transactional(readOnly = true)
     public Page<AgendamentoResponse> listarPorProfissional(Long profissionalId, Pageable pageable, boolean restrictSensitiveData) {
+        // SEC-004: valida que o profissional consultado pertence ao estabelecimento do
+        // solicitante (a checagem de "profissional só vê a própria agenda" fica no
+        // controller; aqui garantimos o isolamento entre salões também para ADMIN).
+        enforceStaffTenant(profissionalService.getProfissionalEntity(profissionalId).getSalon().getId());
         return agendamentoRepository.findByProfissionalId(profissionalId, pageable)
                 .map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
     }
@@ -339,6 +349,9 @@ public class AgendamentoService {
      */
     @Transactional(readOnly = true)
     public List<AgendamentoResponse> listarAgendaDiaria(Long profissionalId, LocalDateTime data, boolean restrictSensitiveData) {
+        // SEC-004: isolamento de tenant — a agenda diária de um profissional só pode ser
+        // consultada por alguém do mesmo estabelecimento.
+        enforceStaffTenant(profissionalService.getProfissionalEntity(profissionalId).getSalon().getId());
         LocalDateTime dayStart = data.toLocalDate().atStartOfDay();
         LocalDateTime dayEnd = dayStart.plusDays(1);
 
