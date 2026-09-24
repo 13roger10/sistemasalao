@@ -2,6 +2,11 @@
 # Active with: --spring.profiles.active=prod
 
 spring:
+  # SEC-010: console H2 SEMPRE desabilitado em produção (defense-in-depth).
+  h2:
+    console:
+      enabled: false
+
   # Database Configuration
   datasource:
     url: ${DATABASE_URL}
