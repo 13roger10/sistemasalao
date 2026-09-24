@@ -257,6 +257,41 @@ public class AgendamentoService {
         return AgendamentoResponse.fromEntity(agendamento, restrictSensitiveData, hideInternalNotes);
     }
 
+    /**
+     * SEC-003: leitura de agendamento por ID com verificação de acesso do chamador.
+     * Diferente da sobrecarga legada (que só valida tenant e trata contexto ausente como
+     * "permitir", adequado a fluxos internos/token), esta versão exige um usuário
+     * autenticado e impede IDOR: um CLIENTE só lê os próprios agendamentos e a equipe
+     * (ADMIN/PROFISSIONAL/RECEPCIONISTA) só lê agendamentos do próprio estabelecimento.
+     */
+    @Transactional(readOnly = true)
+    public AgendamentoResponse buscarPorId(Long id, boolean restrictSensitiveData,
+                                           boolean hideInternalNotes, Usuario operador) {
+        Agendamento agendamento = agendamentoRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Agendamento", id));
+        enforceReadAccess(agendamento, operador);
+        return AgendamentoResponse.fromEntity(agendamento, restrictSensitiveData, hideInternalNotes);
+    }
+
+    /**
+     * SEC-003: garante que o chamador autenticado pode LER o agendamento.
+     * CLIENTE → apenas os próprios; equipe → apenas dentro do próprio tenant (salão).
+     */
+    private void enforceReadAccess(Agendamento agendamento, Usuario operador) {
+        if (operador == null) {
+            throw new AccessDeniedException("Autenticação necessária");
+        }
+        if (operador.getRole() == Role.CLIENTE) {
+            Cliente cliente = agendamento.getCliente();
+            if (cliente == null || cliente.getUsuario() == null
+                    || !cliente.getUsuario().getId().equals(operador.getId())) {
+                throw new AccessDeniedException("Acesso negado: este agendamento não pertence a este cliente");
+            }
+            return;
+        }
+        enforceStaffTenant(agendamento.getSalon().getId());
+    }
+
     @Transactional(readOnly = true)
     public Page<AgendamentoResponse> listarPorSalon(Long salonId, Pageable pageable, boolean restrictSensitiveData) {
         tenantIsolationService.assertRequestedSalon(salonId);

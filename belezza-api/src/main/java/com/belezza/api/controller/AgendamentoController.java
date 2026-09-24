@@ -121,13 +121,16 @@ public class AgendamentoController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Buscar agendamento", description = "Busca um agendamento por ID")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Buscar agendamento",
+            description = "Busca um agendamento por ID. Requer autenticação: o CLIENTE só acessa os próprios "
+                    + "agendamentos e a equipe apenas os do seu estabelecimento (SEC-003).")
     public ResponseEntity<AgendamentoResponse> buscarPorId(
             @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        boolean restrictData = shouldRestrictSensitiveData(userDetails);
-        boolean hideInternalNotes = shouldHideInternalNotes(userDetails);
-        AgendamentoResponse response = agendamentoService.buscarPorId(id, restrictData, hideInternalNotes);
+            @AuthenticationPrincipal Usuario operador) {
+        boolean restrictData = shouldRestrictSensitiveData(operador);
+        boolean hideInternalNotes = shouldHideInternalNotes(operador);
+        AgendamentoResponse response = agendamentoService.buscarPorId(id, restrictData, hideInternalNotes, operador);
         return ResponseEntity.ok(response);
     }
 
