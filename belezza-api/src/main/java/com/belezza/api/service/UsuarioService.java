@@ -11,6 +11,7 @@ import com.belezza.api.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -185,27 +186,70 @@ public class UsuarioService {
         Usuario usuario = usuarioRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", id));
 
-        // Verificar acesso
-        verificarAcessoUsuario(usuarioLogado, usuario);
+        final boolean isSelf = usuario.getId().equals(usuarioLogado.getId());
+        final boolean isAdmin = usuarioLogado.getRole() == Role.ADMIN;
 
-        // Verificar email duplicado
+        // SEC-001 (Broken Access Control / Account Takeover):
+        // Apenas um ADMIN pode editar outro usuário. Qualquer outro perfil (CLIENTE,
+        // RECEPCIONISTA, PROFISSIONAL) só pode editar a própria conta. Sem esta barreira,
+        // qualquer usuário autenticado conseguia alterar dados — inclusive a SENHA — de
+        // qualquer outra conta (inclusive de ADMIN de outro estabelecimento) apenas
+        // informando o ID no path.
+        if (!isSelf && !isAdmin) {
+            log.warn("Bloqueado: usuário {} (role={}) tentou editar a conta {}",
+                    usuarioLogado.getId(), usuarioLogado.getRole(), usuario.getId());
+            throw new AccessDeniedException("Você não tem permissão para editar outro usuário");
+        }
+
+        // SEC-001: ADMIN editando terceiros não pode alterar outro ADMIN e fica restrito
+        // ao seu próprio estabelecimento (isolamento de tenant).
+        if (isAdmin && !isSelf) {
+            if (usuario.getRole() == Role.ADMIN) {
+                throw new AccessDeniedException("Não é permitido editar outro administrador");
+            }
+            assertAlvoNoMesmoSalon(usuarioLogado, usuario);
+        }
+
+        // SEC-001: auto-serviço (não-admin editando a si mesmo) só pode alterar um
+        // subconjunto seguro de campos (nome, telefone, avatar e a própria senha).
+        // Campos administrativos (role, plano, ativo, emailVerificado, salonId) são
+        // recusados para evitar auto-elevação de privilégios / mass assignment.
+        if (!isAdmin) {
+            if (request.getRole() != null || request.getPlano() != null
+                    || request.getAtivo() != null || request.getEmailVerificado() != null
+                    || request.getSalonId() != null) {
+                log.warn("Bloqueado: usuário {} tentou alterar campos administrativos do próprio perfil",
+                        usuarioLogado.getId());
+                throw new AccessDeniedException("Você não pode alterar campos administrativos do seu perfil");
+            }
+        }
+
+        // Verificar email duplicado (troca de email só é permitida a ADMIN; o auto-serviço
+        // altera apenas nome/telefone/avatar/senha)
         if (request.getEmail() != null && !request.getEmail().equals(usuario.getEmail())) {
+            if (!isAdmin) {
+                throw new AccessDeniedException("Você não pode alterar o email do seu perfil");
+            }
             if (usuarioRepository.existsByEmail(request.getEmail())) {
                 throw new DuplicateResourceException("Usuário", "email", request.getEmail());
             }
             usuario.setEmail(request.getEmail().toLowerCase().trim());
         }
 
-        // Atualizar campos
+        // Atualizar campos seguros (auto-serviço e admin)
         if (request.getNome() != null) usuario.setNome(request.getNome().trim());
         if (request.getTelefone() != null) usuario.setTelefone(request.getTelefone());
         if (request.getAvatarUrl() != null) usuario.setAvatarUrl(request.getAvatarUrl());
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
             usuario.setPassword(passwordEncoder.encode(request.getPassword()));
         }
-        if (request.getPlano() != null) usuario.setPlano(request.getPlano());
-        if (request.getAtivo() != null) usuario.setAtivo(request.getAtivo());
-        if (request.getEmailVerificado() != null) usuario.setEmailVerificado(request.getEmailVerificado());
+
+        // Campos administrativos — somente ADMIN
+        if (isAdmin) {
+            if (request.getPlano() != null) usuario.setPlano(request.getPlano());
+            if (request.getAtivo() != null) usuario.setAtivo(request.getAtivo());
+            if (request.getEmailVerificado() != null) usuario.setEmailVerificado(request.getEmailVerificado());
+        }
 
         // Atualizar role (apenas ADMIN pode mudar roles)
         if (request.getRole() != null && usuarioLogado.getRole() == Role.ADMIN) {
@@ -345,6 +389,36 @@ public class UsuarioService {
                 !profLogado.get().getSalon().getId().equals(profAlvo.get().getSalon().getId())) {
                 throw new BusinessException("Você não tem permissão para acessar usuários de outras unidades");
             }
+        }
+    }
+
+    /**
+     * SEC-001: valida que um ADMIN só edita usuários do seu próprio estabelecimento.
+     * Resolve o salão do usuário-alvo quando ele é PROFISSIONAL (via entidade Profissional)
+     * ou RECEPCIONISTA (via Usuario.salon) e compara com o salão do admin autenticado.
+     * Para CLIENTE — que pode pertencer a múltiplos salões e não tem vínculo fixo — a
+     * verificação estrita de tenant não se aplica aqui.
+     */
+    private void assertAlvoNoMesmoSalon(Usuario admin, Usuario alvo) {
+        Long adminSalonId = salonRepository.findByAdminIdAndAtivoTrue(admin.getId())
+                .map(Salon::getId)
+                .orElse(null);
+        if (adminSalonId == null) {
+            throw new AccessDeniedException("Administrador sem estabelecimento vinculado");
+        }
+
+        Long alvoSalonId = null;
+        Optional<Profissional> profAlvo = profissionalRepository.findByUsuarioId(alvo.getId());
+        if (profAlvo.isPresent()) {
+            alvoSalonId = profAlvo.get().getSalon().getId();
+        } else if (alvo.getRole() == Role.RECEPCIONISTA && alvo.getSalon() != null) {
+            alvoSalonId = alvo.getSalon().getId();
+        }
+
+        if (alvoSalonId != null && !alvoSalonId.equals(adminSalonId)) {
+            log.warn("Bloqueado (tenant): admin do salão {} tentou editar usuário {} do salão {}",
+                    adminSalonId, alvo.getId(), alvoSalonId);
+            throw new AccessDeniedException("Acesso negado: usuário pertence a outro estabelecimento");
         }
     }
 

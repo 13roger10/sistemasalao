@@ -86,7 +86,9 @@ public class UsuarioController {
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Atualizar usuário", description = "Atualiza dados de um usuário existente")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Atualizar usuário",
+            description = "Atualiza dados de um usuário. O próprio usuário pode alterar apenas nome, telefone, avatar e a própria senha; alterações administrativas (role, plano, status, email, tenant) exigem ADMIN e ficam restritas ao seu estabelecimento.")
     public ResponseEntity<UsuarioListResponse> atualizar(
             @PathVariable Long id,
             @Valid @RequestBody UpdateUsuarioRequest request,
