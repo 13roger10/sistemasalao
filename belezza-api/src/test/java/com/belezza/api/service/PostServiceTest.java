@@ -7,6 +7,7 @@ import com.belezza.api.integration.MetaGraphAPIService;
 import com.belezza.api.repository.PostRepository;
 import com.belezza.api.repository.SalonRepository;
 import com.belezza.api.repository.UsuarioRepository;
+import com.belezza.api.security.AesEncryptionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -48,6 +49,9 @@ class PostServiceTest {
     @Mock
     private MetaGraphAPIService metaGraphAPIService;
 
+    @Mock
+    private AesEncryptionService aesEncryptionService;
+
     @InjectMocks
     private PostService postService;
 
@@ -58,6 +62,9 @@ class PostServiceTest {
 
     @BeforeEach
     void setUp() {
+        // Social tokens are AES-encrypted at rest; PostService decrypts before calling the Graph API
+        lenient().when(aesEncryptionService.decrypt(any())).thenReturn("plain-token");
+
         usuario = Usuario.builder()
                 .id(1L)
                 .email("admin@test.com")
@@ -480,17 +487,17 @@ class PostServiceTest {
         @Test
         @DisplayName("Should not retry posts at max attempts")
         void shouldNotRetryPostsAtMaxAttempts() {
-            // Given
-            post.setStatus(StatusPost.FALHOU);
-            post.setTentativasPublicacao(3); // MAX_RETRY_ATTEMPTS
-            when(postRepository.findRetryable(anyInt(), any())).thenReturn(List.of(post));
+            // Given — the max-attempts cutoff is applied by the query (findRetryable(MAX_RETRY_ATTEMPTS, now)),
+            // so posts that already hit the limit are never returned
+            when(postRepository.findRetryable(eq(3), any())).thenReturn(List.of());
 
             // When
             postService.retryFailedPosts();
 
             // Then
-            verify(postRepository).findRetryable(anyInt(), any());
+            verify(postRepository).findRetryable(eq(3), any());
             verify(salonRepository, never()).findById(anyLong());
+            verifyNoInteractions(metaGraphAPIService);
         }
     }
 }

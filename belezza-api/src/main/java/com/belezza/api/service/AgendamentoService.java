@@ -99,9 +99,9 @@ public class AgendamentoService {
 
         // Check if multiple services or single service
         if (request.hasMultipleServices()) {
-            return criarComMultiplosServicos(request, profissional, salon, cliente);
+            return criarComMultiplosServicos(request, profissional, salon, cliente, operador);
         } else {
-            return criarComServicoUnico(request, profissional, salon, cliente);
+            return criarComServicoUnico(request, profissional, salon, cliente, operador);
         }
     }
 
@@ -110,7 +110,8 @@ public class AgendamentoService {
      */
     @SuppressWarnings("deprecation")
     private AgendamentoResponse criarComServicoUnico(AgendamentoRequest request,
-                                                      Profissional profissional, Salon salon, Cliente cliente) {
+                                                      Profissional profissional, Salon salon, Cliente cliente,
+                                                      Usuario operador) {
         Servico servico = servicoService.getServicoEntity(request.getServicoId());
 
         // Validate everything
@@ -149,7 +150,7 @@ public class AgendamentoService {
         enviarNotificacaoConfirmacao(agendamento);
 
         // Criar notificação no sistema + enviar email
-        enviarNotificacoesSistemaConfirmacao(agendamento);
+        enviarNotificacoesSistemaConfirmacao(agendamento, operador);
 
         return AgendamentoResponse.fromEntity(agendamento);
     }
@@ -159,7 +160,8 @@ public class AgendamentoService {
      */
     @SuppressWarnings("deprecation")
     private AgendamentoResponse criarComMultiplosServicos(AgendamentoRequest request,
-                                                           Profissional profissional, Salon salon, Cliente cliente) {
+                                                           Profissional profissional, Salon salon, Cliente cliente,
+                                                           Usuario operador) {
         log.info("Criando agendamento com {} serviços", request.getServicoIds().size());
 
         // Load all services
@@ -236,7 +238,7 @@ public class AgendamentoService {
         enviarNotificacaoConfirmacao(agendamento);
 
         // Criar notificação no sistema + enviar email
-        enviarNotificacoesSistemaConfirmacao(agendamento);
+        enviarNotificacoesSistemaConfirmacao(agendamento, operador);
 
         return AgendamentoResponse.fromEntity(agendamento);
     }
@@ -524,11 +526,7 @@ public class AgendamentoService {
         agendamento = agendamentoRepository.save(agendamento);
         log.info("Agendamento confirmado por token: {}", agendamento.getId());
 
-        try {
-            notificacaoService.notificarEquipeAgendamentoConfirmadoPeloCliente(agendamento);
-        } catch (Exception e) {
-            log.error("Erro ao notificar equipe sobre confirmação do cliente: {}", e.getMessage(), e);
-        }
+        enviarNotificacoesConfirmacaoPeloCliente(agendamento);
 
         // Token flow: caller is the client via an emailed link, not staff — never expose sensitive data.
         return AgendamentoResponse.fromEntityForClient(agendamento);
@@ -558,11 +556,7 @@ public class AgendamentoService {
         agendamento = agendamentoRepository.save(agendamento);
         log.info("Agendamento confirmado pelo cliente via app: {}", agendamentoId);
 
-        try {
-            notificacaoService.notificarEquipeAgendamentoConfirmadoPeloCliente(agendamento);
-        } catch (Exception e) {
-            log.error("Erro ao notificar equipe sobre confirmação do cliente: {}", e.getMessage(), e);
-        }
+        enviarNotificacoesConfirmacaoPeloCliente(agendamento);
 
         return MeuAgendamentoDTO.fromEntity(agendamento);
     }
@@ -938,16 +932,14 @@ public class AgendamentoService {
         agendamento.setStatus(StatusAgendamento.NO_SHOW);
         agendamento = agendamentoRepository.save(agendamento);
 
-        // Increment client no-show counter
-        clienteRepository.incrementNoShows(agendamento.getCliente().getId());
-
-        // Check if client should be blocked
+        // Increment client no-show counter and block once the salon limit is reached
         Salon salon = agendamento.getSalon();
         Cliente cliente = agendamento.getCliente();
-        if (cliente.getNoShows() + 1 >= salon.getMaxNoShowsPermitidos()) {
-            cliente.setBloqueado(true);
-            clienteRepository.save(cliente);
-            log.warn("Cliente {} bloqueado por excesso de no-shows", cliente.getId());
+        boolean bloqueadoAgora = cliente.registrarNoShow(salon.getMaxNoShowsPermitidos());
+        clienteRepository.save(cliente);
+        if (bloqueadoAgora) {
+            log.warn("Cliente {} bloqueado por excesso de no-shows ({}/{})",
+                    cliente.getId(), cliente.getNoShows(), salon.getMaxNoShowsPermitidos());
         }
 
         log.info("Agendamento marcado como no-show: {}", id);
@@ -1061,13 +1053,29 @@ public class AgendamentoService {
     /**
      * Create system notification + send email after appointment creation.
      */
-    private void enviarNotificacoesSistemaConfirmacao(Agendamento agendamento) {
+    private void enviarNotificacoesSistemaConfirmacao(Agendamento agendamento, Usuario operador) {
         try {
             // O agendamento acabou de ser criado com status PENDENTE: notifica o
             // cliente pedindo confirmação, e não que já está confirmado.
             notificacaoService.notificarClienteAgendamentoPendente(agendamento);
         } catch (Exception e) {
             log.error("Erro ao criar notificação de confirmação: {}", e.getMessage(), e);
+        }
+
+        try {
+            // Avisa a equipe (profissional agendado, administrador e recepção) do novo
+            // agendamento — exceto quem o criou, que não precisa ser notificado da própria ação.
+            String nomeCliente = agendamento.getCliente() != null && agendamento.getCliente().getUsuario() != null
+                    ? agendamento.getCliente().getUsuario().getNome() : "Cliente";
+            String mensagem = String.format("%s agendou %s para %s às %s.",
+                    nomeCliente,
+                    resolverNomeServico(agendamento),
+                    agendamento.getDataHora().format(DateTimeFormatter.ofPattern("dd/MM")),
+                    agendamento.getDataHora().format(DateTimeFormatter.ofPattern("HH:mm")));
+            notificacaoService.notificarEquipeMudancaStatusAgendamento(
+                    agendamento, operador, TipoNotificacao.AGENDAMENTO_PENDENTE, "Novo Agendamento", mensagem);
+        } catch (Exception e) {
+            log.error("Erro ao notificar equipe sobre novo agendamento: {}", e.getMessage(), e);
         }
 
         try {
@@ -1089,6 +1097,28 @@ public class AgendamentoService {
                     cliente.getUsuario().getEmail(), nomeCliente, data, hora, servico, profissional, link);
         } catch (Exception e) {
             log.error("Erro ao enviar email de confirmação: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Notificações quando o próprio cliente confirma (pelo app ou pelo link do e-mail): o cliente
+     * recebe o comprovante "Agendamento Confirmado" e a equipe (profissional, administrador e
+     * recepção) é avisada — mesmo padrão da confirmação feita pela equipe.
+     */
+    private void enviarNotificacoesConfirmacaoPeloCliente(Agendamento agendamento) {
+        try {
+            notificacaoService.notificarAgendamentoConfirmado(agendamento);
+        } catch (Exception e) {
+            log.error("Erro ao notificar cliente sobre confirmação do agendamento: {}", e.getMessage(), e);
+        }
+
+        try {
+            notificacaoService.notificarEquipeMudancaStatusAgendamento(
+                    agendamento, null, TipoNotificacao.AGENDAMENTO_CONFIRMADO_CLIENTE,
+                    "Agendamento Confirmado",
+                    mensagemEquipe(agendamento, "foi confirmado pelo cliente"));
+        } catch (Exception e) {
+            log.error("Erro ao notificar equipe sobre confirmação do cliente: {}", e.getMessage(), e);
         }
     }
 

@@ -80,7 +80,7 @@ public class AuthController {
     @PostMapping("/logout")
     @Operation(summary = "User logout", description = "Invalidates JWT token by adding to blacklist")
     @ApiResponse(responseCode = "200", description = "Logout successful")
-    public ResponseEntity<Map<String, String>> logout(@RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<Map<String, String>> logout(@RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("Logout request");
         authService.logout(authHeader);
         return ResponseEntity.ok(Map.of("message", "Logout realizado com sucesso"));

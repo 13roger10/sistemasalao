@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   Plus,
   Search,
@@ -807,7 +808,7 @@ const DayTimelineView = ({
 };
 
 // ===== COMPONENTE PRINCIPAL =====
-export default function AppointmentsPage() {
+function AppointmentsPageContent() {
   const { user } = useSalonAuth();
   const { selectedUnitId } = useUnit();
 
@@ -1145,6 +1146,40 @@ export default function AppointmentsPage() {
   useEffect(() => {
     loadAppointments();
   }, [loadAppointments]);
+
+  // Deep link das notificações: /salon/appointments?agendamento={id} leva o calendário
+  // para a data do agendamento e abre o modal de detalhes.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const agendamentoParam = searchParams.get("agendamento");
+
+  useEffect(() => {
+    if (!agendamentoParam) return;
+    let cancelled = false;
+
+    appointmentService
+      .getById(agendamentoParam)
+      .then((appointment) => {
+        if (cancelled) return;
+        const date = new Date(appointment.date);
+        setActiveTab("agenda");
+        setCurrentDate(date);
+        setSelectedDay(date);
+        setSelectedAppointment(appointment);
+        setIsViewModalOpen(true);
+      })
+      .catch((error) => {
+        console.error("Erro ao abrir agendamento da notificação:", error);
+      })
+      .finally(() => {
+        // Limpa o parâmetro para que fechar o modal/recarregar não reabra o agendamento
+        if (!cancelled) router.replace("/salon/appointments", { scroll: false });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [agendamentoParam, router]);
 
   useEffect(() => {
     if (activeTab === "waitlist") {
@@ -2834,5 +2869,14 @@ export default function AppointmentsPage() {
         </div>
       </Modal>
     </SalonLayout>
+  );
+}
+
+// useSearchParams (deep link ?agendamento={id} vindo das notificações) exige Suspense
+export default function AppointmentsPage() {
+  return (
+    <Suspense fallback={null}>
+      <AppointmentsPageContent />
+    </Suspense>
   );
 }
