@@ -70,8 +70,11 @@ public class BloqueioHorarioService {
 
     @Transactional
     @SuppressWarnings("null")
-    public void remover(Long bloqueioId) {
+    public void remover(Long profissionalId, Long bloqueioId) {
+        // O bloqueio precisa ser do profissional informado na rota — a permissão é verificada
+        // sobre esse profissional, então um bloqueio de outro profissional é tratado como inexistente.
         BloqueioHorario bloqueio = bloqueioHorarioRepository.findById(bloqueioId)
+                .filter(b -> b.getProfissional().getId().equals(profissionalId))
                 .orElseThrow(() -> new ResourceNotFoundException("Bloqueio", bloqueioId));
 
         bloqueioHorarioRepository.delete(bloqueio);
