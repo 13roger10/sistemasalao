@@ -43,6 +43,10 @@ public class PagamentoService {
         Agendamento agendamento = agendamentoRepository.findById(request.getAgendamentoId())
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento", request.getAgendamentoId()));
 
+        // SEC-011: só registra pagamento de atendimento do próprio estabelecimento — sem isto,
+        // qualquer membro da equipe lançava pagamento no caixa de outro salão pelo agendamentoId.
+        assertTenant(agendamento.getSalon() != null ? agendamento.getSalon().getId() : null);
+
         if (agendamento.getStatus() != StatusAgendamento.CONCLUIDO &&
             agendamento.getStatus() != StatusAgendamento.EM_ANDAMENTO) {
             throw new BusinessException("Pagamento só pode ser registrado para agendamentos concluídos ou em andamento");
@@ -136,6 +140,9 @@ public class PagamentoService {
     public PagamentoResponse estornar(Long pagamentoId) {
         Pagamento pagamento = pagamentoRepository.findById(pagamentoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pagamento", pagamentoId));
+
+        // SEC-011: bloqueia estorno de pagamento de outro estabelecimento por IDOR no pagamentoId.
+        assertTenant(pagamento.getSalon() != null ? pagamento.getSalon().getId() : null);
 
         if (pagamento.getStatus() != StatusPagamento.APROVADO) {
             throw new BusinessException("Apenas pagamentos aprovados podem ser estornados");
