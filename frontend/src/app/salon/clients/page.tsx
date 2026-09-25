@@ -24,6 +24,8 @@ import {
   Filter,
   UserPlus,
   Lock,
+  Ban,
+  LockOpen,
 } from "lucide-react";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { DataTable, ActionMenuItem, Column } from "@/components/ui/DataTable";
@@ -56,6 +58,7 @@ import type {
   ClientCreateInput,
   ClientUpdateInput,
   ClientFilters,
+  ClientStatus,
   ClientHistory,
   LoyaltyLevel,
 } from "@/types/salon";
@@ -95,7 +98,19 @@ const LoyaltyBadge = ({ level }: { level: LoyaltyLevel }) => {
 };
 
 // Badge de Status
-const StatusBadge = ({ status }: { status: "active" | "inactive" }) => {
+const StatusBadge = ({ status, noShows }: { status: ClientStatus; noShows?: number }) => {
+  if (status === "blocked") {
+    // Bloqueado para agendar (ex.: excesso de no-shows) — o login do usuário continua ativo
+    return (
+      <span
+        title={noShows ? `${noShows} não comparecimento(s)` : undefined}
+        className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+      >
+        <Ban className="h-3 w-3" />
+        Bloqueado{noShows ? ` · ${noShows} no-show${noShows > 1 ? "s" : ""}` : ""}
+      </span>
+    );
+  }
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -172,13 +187,14 @@ export default function ClientsPage() {
 
   // Estados de filtros
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"" | "active" | "inactive">("");
+  const [statusFilter, setStatusFilter] = useState<"" | ClientStatus>("");
   const [loyaltyFilter, setLoyaltyFilter] = useState<"" | LoyaltyLevel>("");
 
   // Estados de modais
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isUnblockModalOpen, setIsUnblockModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [clientHistory, setClientHistory] = useState<ClientHistory | null>(null);
@@ -488,6 +504,23 @@ export default function ClientsPage() {
     }
   };
 
+  // Desbloquear cliente (bloqueado por excesso de no-shows ou manualmente)
+  const handleUnblock = async () => {
+    if (!selectedClient) return;
+
+    setIsSubmitting(true);
+    try {
+      await clientService.unblock(selectedClient.id);
+      setIsUnblockModalOpen(false);
+      setSelectedClient(null);
+      loadClients();
+    } catch (error) {
+      console.error("Erro ao desbloquear cliente:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Carregar histórico do cliente
   const loadClientHistory = async (client: Client) => {
     setSelectedClient(client);
@@ -652,7 +685,15 @@ export default function ClientsPage() {
     } catch (error: unknown) {
       const err = error as { response?: { status?: number; data?: { message?: string } } };
       if (err?.response?.status === 409) {
-        setNewClientFormErrors({ email: "Este email já está cadastrado no sistema" });
+        // O backend informa o campo em conflito ("Usuário já existe com telefone: ...")
+        const message = err.response?.data?.message?.toLowerCase() ?? "";
+        if (message.includes("telefone")) {
+          setNewClientFormErrors({ telefone: "Este telefone já está cadastrado no sistema" });
+        } else if (message.includes("email")) {
+          setNewClientFormErrors({ email: "Este email já está cadastrado no sistema" });
+        } else {
+          setNewClientFormErrors({ submit: err.response?.data?.message || "Cliente já cadastrado" });
+        }
       } else {
         setNewClientFormErrors({
           submit: err.response?.data?.message || "Erro ao criar cliente",
@@ -828,7 +869,7 @@ export default function ClientsPage() {
     {
       key: "status",
       header: "Status",
-      render: (item) => <StatusBadge status={item.status} />,
+      render: (item) => <StatusBadge status={item.status} noShows={item.noShows} />,
     },
   ];
 
@@ -912,13 +953,14 @@ export default function ClientsPage() {
           <select
             value={statusFilter}
             onChange={(e) => {
-              setStatusFilter(e.target.value as "" | "active" | "inactive");
+              setStatusFilter(e.target.value as "" | ClientStatus);
               setPage(1);
             }}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
           >
             <option value="">Todos os status</option>
             <option value="active">Ativos</option>
+            <option value="blocked">Bloqueados</option>
             <option value="inactive">Inativos</option>
           </select>
 
@@ -970,6 +1012,17 @@ export default function ClientsPage() {
                     icon={<Edit2 className="h-4 w-4" />}
                   >
                     Editar
+                  </ActionMenuItem>
+                )}
+                {user?.role === "ADMIN" && item.status === "blocked" && (
+                  <ActionMenuItem
+                    onClick={() => {
+                      setSelectedClient(item);
+                      setIsUnblockModalOpen(true);
+                    }}
+                    icon={<LockOpen className="h-4 w-4" />}
+                  >
+                    Desbloquear
                   </ActionMenuItem>
                 )}
                 {!isProfessional && (
@@ -1834,6 +1887,24 @@ export default function ClientsPage() {
         confirmText="Excluir"
         cancelText="Cancelar"
         variant="danger"
+        isLoading={isSubmitting}
+      />
+
+      {/* Modal de Confirmação de Desbloqueio */}
+      <ConfirmModal
+        isOpen={isUnblockModalOpen}
+        onClose={() => {
+          setIsUnblockModalOpen(false);
+          setSelectedClient(null);
+        }}
+        onConfirm={handleUnblock}
+        title="Desbloquear Cliente"
+        message={`Desbloquear "${selectedClient?.name}"? O cliente voltará a poder agendar${
+          selectedClient?.noShows ? ` (${selectedClient.noShows} não comparecimento(s) registrado(s))` : ""
+        }.`}
+        confirmText="Desbloquear"
+        cancelText="Cancelar"
+        variant="primary"
         isLoading={isSubmitting}
       />
     </SalonLayout>

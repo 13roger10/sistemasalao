@@ -452,9 +452,28 @@ class AgendamentoServiceTest {
             // When
             AgendamentoResponse response = agendamentoService.marcarNoShow(1L);
 
-            // Then
+            // Then — counter persisted on the entity, client not blocked yet (1 of 3)
             assertThat(response).isNotNull();
-            verify(clienteRepository).incrementNoShows(cliente.getId());
+            assertThat(cliente.getNoShows()).isEqualTo(1);
+            assertThat(cliente.isBloqueado()).isFalse();
+            verify(clienteRepository).save(cliente);
+        }
+
+        @Test
+        @DisplayName("Should not block client before reaching max no-shows")
+        void shouldNotBlockClientBeforeMaxNoShows() {
+            // Given — salon allows 3; this is the 2nd no-show
+            agendamento.setStatus(StatusAgendamento.CONFIRMADO);
+            cliente.setNoShows(1);
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+            when(agendamentoRepository.save(any(Agendamento.class))).thenReturn(agendamento);
+
+            // When
+            agendamentoService.marcarNoShow(1L);
+
+            // Then
+            assertThat(cliente.getNoShows()).isEqualTo(2);
+            assertThat(cliente.isBloqueado()).isFalse();
         }
 
         @Test
@@ -470,6 +489,7 @@ class AgendamentoServiceTest {
             agendamentoService.marcarNoShow(1L);
 
             // Then
+            assertThat(cliente.getNoShows()).isEqualTo(3);
             verify(clienteRepository).save(cliente);
             assertThat(cliente.isBloqueado()).isTrue();
         }

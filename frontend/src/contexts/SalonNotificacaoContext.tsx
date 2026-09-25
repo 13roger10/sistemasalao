@@ -21,6 +21,8 @@ export interface SalonNotificacaoWs {
   mensagem: string;
   link?: string;
   icone?: string;
+  /** Agendamento ao qual a notificação se refere (usado para navegar até ele). */
+  agendamentoId?: number | null;
   lida: boolean;
   criadoEm: string;
   tempoRelativo: string;

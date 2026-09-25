@@ -123,6 +123,19 @@ public class UsuarioController {
         return ResponseEntity.noContent().build();
     }
 
+    @DeleteMapping("/{id}/permanente")
+    @AdminOnly
+    @Operation(summary = "Excluir usuário definitivamente",
+            description = "Remove o usuário do sistema. Só é permitido para usuários sem histórico "
+                    + "(agendamentos, administração de salão etc.); caso contrário retorna 400 e o usuário deve ser desativado.")
+    public ResponseEntity<Void> excluirPermanentemente(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        usuarioService.excluirPermanentemente(id, userDetails.getUsername());
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{id}/reativar")
     @AdminOnly
     @Operation(summary = "Reativar usuário", description = "Reativa um usuário desativado")

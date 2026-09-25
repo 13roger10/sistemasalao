@@ -5,11 +5,18 @@ import com.belezza.api.entity.*;
 import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.DuplicateResourceException;
 import com.belezza.api.exception.ResourceNotFoundException;
+import com.belezza.api.repository.AgendamentoRepository;
+import com.belezza.api.repository.BackupCodeRepository;
+import com.belezza.api.repository.ClienteRepository;
+import com.belezza.api.repository.FidelidadeClienteRepository;
+import com.belezza.api.repository.NotificacaoRepository;
 import com.belezza.api.repository.ProfissionalRepository;
+import com.belezza.api.repository.PushSubscriptionRepository;
 import com.belezza.api.repository.SalonRepository;
 import com.belezza.api.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.data.domain.PageRequest;
@@ -32,6 +39,12 @@ public class UsuarioService {
     private final ProfissionalRepository profissionalRepository;
     private final SalonRepository salonRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AgendamentoRepository agendamentoRepository;
+    private final ClienteRepository clienteRepository;
+    private final FidelidadeClienteRepository fidelidadeClienteRepository;
+    private final NotificacaoRepository notificacaoRepository;
+    private final PushSubscriptionRepository pushSubscriptionRepository;
+    private final BackupCodeRepository backupCodeRepository;
 
     /**
      * List users with pagination and filters.
@@ -345,6 +358,87 @@ public class UsuarioService {
                 });
 
         log.info("Usuário desativado: {}", id);
+    }
+
+    /**
+     * Exclui definitivamente um usuário que não possui histórico no sistema.
+     *
+     * <p>Usuários com agendamentos (como cliente ou profissional) ou que administram um salão
+     * não podem ser excluídos — o histórico de atendimentos/financeiro precisa ser preservado;
+     * para esses, use {@link #desativar}. Dados acessórios do próprio usuário (notificações,
+     * inscrições de push, códigos 2FA, cadastro de cliente/profissional sem histórico) são
+     * removidos junto. Qualquer outro vínculo remanescente é barrado pelas FKs do banco e
+     * devolvido como a mesma mensagem de negócio.</p>
+     */
+    @Transactional
+    public void excluirPermanentemente(Long id, String emailAdmin) {
+        log.info("Exclusão definitiva do usuário id: {} solicitada por {}", id, emailAdmin);
+
+        Usuario usuarioLogado = getUsuarioByEmail(emailAdmin);
+        Usuario usuario = usuarioRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário", id));
+
+        if (usuario.getId().equals(usuarioLogado.getId())) {
+            throw new BusinessException("Você não pode excluir sua própria conta");
+        }
+
+        verificarAcessoUsuario(usuarioLogado, usuario);
+        verificarMesmoSalao(usuarioLogado, usuario);
+
+        if (salonRepository.findByAdminId(usuario.getId()).isPresent()) {
+            throw new BusinessException("Este usuário é administrador de um salão e não pode ser excluído. Desative-o.");
+        }
+
+        long agendamentos = agendamentoRepository.countEnvolvendoUsuario(usuario.getId());
+        if (agendamentos > 0) {
+            throw new BusinessException(String.format(
+                    "Este usuário possui %d agendamento(s) no histórico e não pode ser excluído. Desative-o.",
+                    agendamentos));
+        }
+
+        // Dados acessórios do próprio usuário
+        notificacaoRepository.deleteAllByUsuarioId(usuario.getId());
+        pushSubscriptionRepository.deleteAllByUsuarioId(usuario.getId());
+        backupCodeRepository.deleteAllByUsuarioId(usuario.getId());
+
+        // Cadastros de cliente/profissional sem histórico (horários e serviços do profissional
+        // saem junto via cascade/join table)
+        for (Cliente cliente : clienteRepository.findByUsuarioId(usuario.getId())) {
+            fidelidadeClienteRepository.deleteAllByClienteId(cliente.getId());
+            clienteRepository.delete(cliente);
+        }
+        profissionalRepository.findByUsuarioId(usuario.getId()).ifPresent(profissionalRepository::delete);
+
+        try {
+            usuarioRepository.delete(usuario);
+            usuarioRepository.flush();
+        } catch (DataIntegrityViolationException e) {
+            log.warn("Exclusão do usuário {} barrada por registros vinculados: {}", id, e.getMostSpecificCause().getMessage());
+            throw new BusinessException("Este usuário possui registros vinculados no sistema e não pode ser excluído. Desative-o.");
+        }
+
+        log.info("Usuário excluído definitivamente: {}", id);
+    }
+
+    /**
+     * Um ADMIN só pode excluir usuários vinculados ao próprio salão (como membro da equipe,
+     * cliente ou profissional). Usuários sem vínculo com nenhum salão são permitidos.
+     */
+    private void verificarMesmoSalao(Usuario usuarioLogado, Usuario usuarioAlvo) {
+        Long salonLogadoId = salonRepository.findByAdminId(usuarioLogado.getId())
+                .map(Salon::getId)
+                .orElse(usuarioLogado.getSalon() != null ? usuarioLogado.getSalon().getId() : null);
+
+        java.util.Set<Long> saloesAlvo = new java.util.HashSet<>();
+        if (usuarioAlvo.getSalon() != null) saloesAlvo.add(usuarioAlvo.getSalon().getId());
+        clienteRepository.findByUsuarioId(usuarioAlvo.getId())
+                .forEach(c -> saloesAlvo.add(c.getSalon().getId()));
+        profissionalRepository.findByUsuarioId(usuarioAlvo.getId())
+                .ifPresent(p -> saloesAlvo.add(p.getSalon().getId()));
+
+        if (!saloesAlvo.isEmpty() && (salonLogadoId == null || !saloesAlvo.contains(salonLogadoId))) {
+            throw new AccessDeniedException("Acesso negado: usuário pertence a outro estabelecimento");
+        }
     }
 
     /**

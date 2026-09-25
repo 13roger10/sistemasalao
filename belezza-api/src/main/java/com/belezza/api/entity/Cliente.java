@@ -101,4 +101,20 @@ public class Cliente {
     @LastModifiedDate
     @Column(nullable = false)
     private LocalDateTime atualizadoEm;
+
+    /**
+     * Registra um não comparecimento e bloqueia o cliente ao atingir o limite do salão.
+     * O contador é alterado na própria entidade (e não por UPDATE em lote), para que a
+     * contagem usada na regra de bloqueio seja sempre a mesma que é persistida.
+     *
+     * @return true se o cliente acabou de ser bloqueado por este no-show
+     */
+    public boolean registrarNoShow(int maxNoShowsPermitidos) {
+        noShows++;
+        if (!bloqueado && noShows >= maxNoShowsPermitidos) {
+            bloqueado = true;
+            return true;
+        }
+        return false;
+    }
 }
