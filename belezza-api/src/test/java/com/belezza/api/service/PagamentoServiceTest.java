@@ -2,6 +2,7 @@ package com.belezza.api.service;
 
 import com.belezza.api.dto.pagamento.PagamentoRequest;
 import com.belezza.api.dto.pagamento.PagamentoResponse;
+import com.belezza.api.exception.BusinessException;
 import com.belezza.api.entity.*;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.ClienteRepository;
@@ -38,6 +39,9 @@ class PagamentoServiceTest {
 
     @Mock
     private ClienteRepository clienteRepository;
+
+    @Mock
+    private CaixaService caixaService;
 
     @InjectMocks
     private PagamentoService pagamentoService;
@@ -86,12 +90,27 @@ class PagamentoServiceTest {
         void shouldRegisterForOwnSalon() {
             when(agendamentoRepository.findById(100L)).thenReturn(Optional.of(agendamentoConcluido(salonA)));
             when(pagamentoRepository.findByAgendamentoId(100L)).thenReturn(Optional.empty());
+            Caixa caixaAberto = Caixa.builder().id(7L).salon(salonA).status(StatusCaixa.ABERTO).build();
+            when(caixaService.exigirAberto(1L)).thenReturn(caixaAberto);
             when(pagamentoRepository.save(any(Pagamento.class))).thenAnswer(inv -> inv.getArgument(0));
 
             PagamentoResponse response = pagamentoService.registrar(request(), operador);
 
             assertThat(response.getStatus()).isEqualTo(StatusPagamento.APROVADO);
-            verify(pagamentoRepository).save(any(Pagamento.class));
+            verify(pagamentoRepository).save(argThat(p -> p.getCaixa() == caixaAberto));
+        }
+
+        @Test
+        @DisplayName("Should not register payment when the salon has no open cash register")
+        void shouldRequireOpenCashRegister() {
+            when(agendamentoRepository.findById(100L)).thenReturn(Optional.of(agendamentoConcluido(salonA)));
+            when(pagamentoRepository.findByAgendamentoId(100L)).thenReturn(Optional.empty());
+            when(caixaService.exigirAberto(1L)).thenThrow(new BusinessException("Nenhum caixa aberto"));
+
+            assertThatThrownBy(() -> pagamentoService.registrar(request(), operador))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("caixa aberto");
+            verify(pagamentoRepository, never()).save(any());
         }
 
         @Test

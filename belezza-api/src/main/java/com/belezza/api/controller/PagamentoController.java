@@ -60,8 +60,10 @@ public class PagamentoController {
     @PostMapping("/{id}/estornar")
     @ProfissionalOrAdmin
     @Operation(summary = "Estornar pagamento", description = "Estorna um pagamento aprovado. Exclusivo para ADMIN e PROFISSIONAL.")
-    public ResponseEntity<PagamentoResponse> estornar(@PathVariable Long id) {
-        PagamentoResponse response = pagamentoService.estornar(id);
+    public ResponseEntity<PagamentoResponse> estornar(
+            @PathVariable Long id,
+            @AuthenticationPrincipal Usuario operador) {
+        PagamentoResponse response = pagamentoService.estornar(id, operador);
         return ResponseEntity.ok(response);
     }
 }

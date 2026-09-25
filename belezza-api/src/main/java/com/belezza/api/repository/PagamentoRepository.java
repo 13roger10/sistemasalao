@@ -19,6 +19,11 @@ public interface PagamentoRepository extends JpaRepository<Pagamento, Long> {
 
     Optional<Pagamento> findByAgendamentoId(Long agendamentoId);
 
+    /** Pagamentos aprovados de um caixa, somados por forma: [forma, soma]. */
+    @Query("SELECT p.forma, SUM(p.valor) FROM Pagamento p WHERE p.caixa.id = :caixaId " +
+           "AND p.status = 'APROVADO' GROUP BY p.forma")
+    List<Object[]> sumAprovadosByCaixaGroupByForma(@Param("caixaId") Long caixaId);
+
     List<Pagamento> findByAgendamentoClienteId(Long clienteId);
 
     Page<Pagamento> findBySalonId(Long salonId, Pageable pageable);

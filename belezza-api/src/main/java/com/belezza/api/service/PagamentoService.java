@@ -3,6 +3,7 @@ package com.belezza.api.service;
 import com.belezza.api.dto.pagamento.PagamentoRequest;
 import com.belezza.api.dto.pagamento.PagamentoResponse;
 import com.belezza.api.entity.Agendamento;
+import com.belezza.api.entity.Caixa;
 import com.belezza.api.entity.Cliente;
 import com.belezza.api.entity.Pagamento;
 import com.belezza.api.entity.Role;
@@ -36,6 +37,7 @@ public class PagamentoService {
     private final PagamentoRepository pagamentoRepository;
     private final AgendamentoRepository agendamentoRepository;
     private final ClienteRepository clienteRepository;
+    private final CaixaService caixaService;
 
     @Transactional
     @Auditable(action = "CREATE", entityType = "Pagamento", captureNewState = true)
@@ -56,9 +58,13 @@ public class PagamentoService {
             throw new BusinessException("Já existe um pagamento para este agendamento");
         }
 
+        // Todo pagamento entra no caixa aberto do salão; sem caixa aberto não há pagamento.
+        Caixa caixa = caixaService.exigirAberto(agendamento.getSalon().getId());
+
         Pagamento pagamento = Pagamento.builder()
                 .agendamento(agendamento)
                 .salon(agendamento.getSalon())
+                .caixa(caixa)
                 .valor(request.getValor())
                 .forma(request.getForma())
                 .status(StatusPagamento.APROVADO)
@@ -138,6 +144,11 @@ public class PagamentoService {
 
     @Transactional
     public PagamentoResponse estornar(Long pagamentoId) {
+        return estornar(pagamentoId, null);
+    }
+
+    @Transactional
+    public PagamentoResponse estornar(Long pagamentoId, Usuario operador) {
         Pagamento pagamento = pagamentoRepository.findById(pagamentoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pagamento", pagamentoId));
 
@@ -147,6 +158,9 @@ public class PagamentoService {
         if (pagamento.getStatus() != StatusPagamento.APROVADO) {
             throw new BusinessException("Apenas pagamentos aprovados podem ser estornados");
         }
+
+        // Pagamento de caixa já fechado: a devolução sai do caixa aberto (exige caixa aberto)
+        caixaService.registrarEstorno(pagamento, operador);
 
         pagamento.setStatus(StatusPagamento.ESTORNADO);
         pagamento = pagamentoRepository.save(pagamento);

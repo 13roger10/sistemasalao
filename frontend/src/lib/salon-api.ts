@@ -182,6 +182,22 @@ export function clearAuthToken(): void {
 }
 
 /**
+ * Salão do usuário logado, lido do claim salonId do token (null se não houver).
+ */
+export function getSalonIdFromToken(): number | null {
+  if (typeof window === "undefined") return null;
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) return null;
+  try {
+    const base64 = (token.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=")));
+    return typeof payload.salonId === "number" ? payload.salonId : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Verifica se existe um token válido
  */
 export function hasValidToken(): boolean {

@@ -37,6 +37,11 @@ public class Pagamento {
     @JoinColumn(name = "salon_id", nullable = false)
     private Salon salon;
 
+    /** Caixa em que o pagamento entrou (nulo apenas em pagamentos anteriores ao controle de caixa). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "caixa_id")
+    private Caixa caixa;
+
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal valor;
 
