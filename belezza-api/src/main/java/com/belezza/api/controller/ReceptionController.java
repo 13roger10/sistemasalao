@@ -9,9 +9,11 @@ import com.belezza.api.dto.pagamento.PagamentoRequest;
 import com.belezza.api.dto.pagamento.PagamentoResponse;
 import com.belezza.api.dto.recepcao.ReceptionAppointmentResponse;
 import com.belezza.api.entity.Usuario;
+import com.belezza.api.security.TenantContext;
 import com.belezza.api.service.AgendamentoService;
 import com.belezza.api.service.ClienteService;
 import com.belezza.api.service.PagamentoService;
+import com.belezza.api.service.TenantIsolationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -46,6 +48,7 @@ public class ReceptionController {
     private final AgendamentoService agendamentoService;
     private final ClienteService clienteService;
     private final PagamentoService pagamentoService;
+    private final TenantIsolationService tenantIsolationService;
 
     // ─── Appointments ──────────────────────────────────────────────────────────
 
@@ -60,6 +63,7 @@ public class ReceptionController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @AuthenticationPrincipal Usuario operador) {
 
+        tenantIsolationService.assertStaffTenant(salonId);
         LocalDate targetDate = date != null ? date : LocalDate.now();
         LocalDateTime dayStart = targetDate.atStartOfDay();
         LocalDateTime dayEnd = targetDate.plusDays(1).atStartOfDay();
@@ -101,9 +105,12 @@ public class ReceptionController {
     @Operation(summary = "Reagendar agendamento", description = "Reagenda um agendamento para nova data/hora ou profissional")
     public ResponseEntity<AgendamentoResponse> reagendarAgendamento(
             @PathVariable Long id,
-            @Valid @RequestBody ReagendamentoRequest request) {
+            @Valid @RequestBody ReagendamentoRequest request,
+            @AuthenticationPrincipal Usuario operador) {
 
-        AgendamentoResponse response = agendamentoService.reagendar(id, request, false);
+        // Passa o operador para o service aplicar a verificação de salão — a sobrecarga sem
+        // operador pulava essa verificação e permitia reagendar agendamentos de outro salão.
+        AgendamentoResponse response = agendamentoService.reagendar(id, request, false, false, operador);
         log.info("PUT /recepcao/appointments/{} → status={}", id, response.getStatus());
         return ResponseEntity.ok(response);
     }
@@ -120,6 +127,7 @@ public class ReceptionController {
             @RequestParam Long salonId,
             @RequestParam(required = false) String search) {
 
+        tenantIsolationService.assertStaffTenant(salonId);
         // restrictSensitiveData = false: receptionist CAN see phone/whatsapp/email
         List<ClienteResponse> clientes = clienteService.listarPorSalon(salonId, search, null, null, false);
         log.info("GET /recepcao/clients salonId={} search='{}' → {} clientes", salonId, search, clientes.size());
@@ -131,10 +139,9 @@ public class ReceptionController {
     public ResponseEntity<ClienteResponse> criarCliente(
             @Valid @RequestBody ClienteRequest request) {
 
-        Long salonId = request.getSalonId();
-        if (salonId == null) {
-            return ResponseEntity.badRequest().build();
-        }
+        // O cliente é criado no salão de quem cadastra; um salonId de outro salão é negado.
+        Long salonId = request.getSalonId() != null ? request.getSalonId() : TenantContext.getCurrentTenant();
+        tenantIsolationService.assertStaffTenant(salonId);
         ClienteResponse response = clienteService.criarComSalonId(request, salonId);
         log.info("POST /recepcao/clients → clienteId={}", response.getId());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -153,6 +160,7 @@ public class ReceptionController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @AuthenticationPrincipal Usuario operador) {
 
+        tenantIsolationService.assertStaffTenant(salonId);
         LocalDate targetDate = date != null ? date : LocalDate.now();
         LocalDateTime dayStart = targetDate.atStartOfDay();
         LocalDateTime dayEnd = targetDate.plusDays(1).atStartOfDay();

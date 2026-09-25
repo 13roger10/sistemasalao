@@ -487,4 +487,60 @@ class AgendamentoServiceTest {
                     .hasMessageContaining("confirmados");
         }
     }
+
+    @Nested
+    @DisplayName("Criar - isolamento entre estabelecimentos")
+    class CriarIsolamentoTests {
+
+        private final Usuario recepcionista = Usuario.builder().id(14L).role(Role.RECEPCIONISTA).build();
+
+        private AgendamentoRequest request() {
+            return AgendamentoRequest.builder()
+                    .clienteId(1L)
+                    .profissionalId(1L)
+                    .servicoId(1L)
+                    .dataHora(LocalDateTime.now().plusDays(1).withHour(10).withMinute(0))
+                    .build();
+        }
+
+        @Test
+        @DisplayName("Equipe de outro salão não cria agendamento com profissional deste salão")
+        void equipeDeOutroSalao() {
+            TenantContext.setCurrentTenant(2L);
+            when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
+
+            assertThatThrownBy(() -> agendamentoService.criar(request(), recepcionista))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+
+            verify(agendamentoRepository, never()).save(any());
+            verifyNoInteractions(clienteRepository);
+        }
+
+        @Test
+        @DisplayName("API pública (sem token): operador que não é admin do salão do profissional é negado")
+        void apiPublicaOutroSalao() {
+            TenantContext.clear();
+            Usuario adminOutroSalao = Usuario.builder().id(99L).role(Role.ADMIN).build();
+            when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
+
+            assertThatThrownBy(() -> agendamentoService.criar(request(), adminOutroSalao))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+
+            verifyNoInteractions(clienteRepository);
+        }
+
+        @Test
+        @DisplayName("API pública (sem token): admin do próprio salão passa pela verificação")
+        void apiPublicaMesmoSalao() {
+            TenantContext.clear();
+            Usuario adminDoSalao = Usuario.builder().id(50L).role(Role.ADMIN).build();
+            salon.setAdmin(adminDoSalao);
+            when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
+            when(clienteRepository.findById(1L)).thenReturn(Optional.empty());
+
+            // Passa pela verificação de salão e segue para a busca do cliente
+            assertThatThrownBy(() -> agendamentoService.criar(request(), adminDoSalao))
+                    .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
 }
