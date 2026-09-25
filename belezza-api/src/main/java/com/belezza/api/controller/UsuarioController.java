@@ -85,8 +85,24 @@ public class UsuarioController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @PutMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Atualizar o próprio perfil",
+            description = "Auto-serviço: o usuário autenticado altera apenas nome, telefone, avatar e a própria senha. "
+                    + "Nenhum campo administrativo (role, plano, status, email, tenant) pode ser enviado por aqui (SEC-002).")
+    public ResponseEntity<UsuarioListResponse> atualizarMeuPerfil(
+            @Valid @RequestBody UpdateMeuPerfilRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        UsuarioListResponse response = usuarioService.atualizarMeuPerfil(userDetails.getUsername(), request);
+        return ResponseEntity.ok(response);
+    }
+
     @PutMapping("/{id}")
-    @Operation(summary = "Atualizar usuário", description = "Atualiza dados de um usuário existente")
+    @AdminOnly
+    @Operation(summary = "Atualizar usuário (administrativo)",
+            description = "Endpoint administrativo: apenas ADMIN pode alterar dados de usuários (incluindo role, plano, "
+                    + "status, email e tenant), restrito ao seu próprio estabelecimento. O próprio usuário deve usar PUT /api/usuarios/me.")
     public ResponseEntity<UsuarioListResponse> atualizar(
             @PathVariable Long id,
             @Valid @RequestBody UpdateUsuarioRequest request,
@@ -104,6 +120,19 @@ public class UsuarioController {
             @AuthenticationPrincipal UserDetails userDetails) {
 
         usuarioService.desativar(id, userDetails.getUsername());
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{id}/permanente")
+    @AdminOnly
+    @Operation(summary = "Excluir usuário definitivamente",
+            description = "Remove o usuário do sistema. Só é permitido para usuários sem histórico "
+                    + "(agendamentos, administração de salão etc.); caso contrário retorna 400 e o usuário deve ser desativado.")
+    public ResponseEntity<Void> excluirPermanentemente(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        usuarioService.excluirPermanentemente(id, userDetails.getUsername());
         return ResponseEntity.noContent().build();
     }
 

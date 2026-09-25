@@ -60,9 +60,9 @@ public class AgendamentoService {
 
     @Transactional
     @Auditable(action = "CREATE", entityType = "Agendamento", captureNewState = true)
-    public AgendamentoResponse criar(AgendamentoRequest request, String emailUsuarioAutenticado) {
-        log.info("Criando agendamento - usuário autenticado: {}, clienteId fornecido: {}",
-                emailUsuarioAutenticado, request.getClienteId());
+    public AgendamentoResponse criar(AgendamentoRequest request, Usuario operador) {
+        log.info("Criando agendamento - operador: {}, clienteId fornecido: {}",
+                operador != null ? operador.getId() : "ANONIMO", request.getClienteId());
 
         // Validate request
         if (!request.isValid()) {
@@ -72,30 +72,36 @@ public class AgendamentoService {
         Profissional profissional = profissionalService.getProfissionalEntity(request.getProfissionalId());
         Salon salon = profissional.getSalon();
 
-        // Get client: use clienteId from request if provided, otherwise use authenticated user
+        // SEC-008 (Broken Access Control / Business Logic): a resolução do cliente do
+        // agendamento não pode confiar cegamente no clienteId do corpo.
+        //  - Um CLIENTE só agenda para si mesmo: qualquer clienteId enviado é IGNORADO e
+        //    usamos sempre o cliente vinculado ao próprio usuário autenticado.
+        //  - Equipe (ADMIN/RECEPCIONISTA/PROFISSIONAL) ou a superfície pública /api/v1
+        //    (autenticada por API Key, operador = admin do salão) pode informar clienteId,
+        //    mas o cliente PRECISA pertencer ao salão do profissional — impedindo vínculo
+        //    entre estabelecimentos e o vazamento de PII de clientes de outro salão.
         Cliente cliente;
-        if (request.getClienteId() != null) {
-            // Admin/receptionist creating appointment for a specific client
+        boolean isCliente = operador != null && operador.getRole() == Role.CLIENTE;
+
+        if (isCliente) {
+            cliente = clienteService.getOrCreateCliente(salon.getId(), operador.getUsername());
+            log.info("Cliente agendando para si: usuarioId={} clienteId={}", operador.getId(), cliente.getId());
+        } else if (request.getClienteId() != null) {
             cliente = clienteRepository.findById(request.getClienteId())
                     .orElseThrow(() -> new ResourceNotFoundException("Cliente", request.getClienteId()));
-            log.info("Usando cliente fornecido: {} (ID: {})",
-                    cliente.getUsuario() != null ? cliente.getUsuario().getNome() : "N/A",
-                    cliente.getId());
-        } else if (emailUsuarioAutenticado != null && !emailUsuarioAutenticado.isBlank()) {
-            // Client booking their own appointment
-            cliente = clienteService.getOrCreateCliente(salon.getId(), emailUsuarioAutenticado);
-            log.info("Usando cliente autenticado: {} (ID: {})",
-                    cliente.getUsuario() != null ? cliente.getUsuario().getNome() : "N/A",
-                    cliente.getId());
+            if (cliente.getSalon() == null || !cliente.getSalon().getId().equals(salon.getId())) {
+                throw new BusinessException("Cliente não pertence a este estabelecimento");
+            }
+            log.info("Equipe/API criando agendamento para cliente {} no salão {}", cliente.getId(), salon.getId());
         } else {
-            throw new BusinessException("É necessário fornecer o clienteId ou estar autenticado para criar um agendamento");
+            throw new BusinessException("É necessário estar autenticado como cliente ou informar um clienteId válido do estabelecimento");
         }
 
         // Check if multiple services or single service
         if (request.hasMultipleServices()) {
-            return criarComMultiplosServicos(request, profissional, salon, cliente);
+            return criarComMultiplosServicos(request, profissional, salon, cliente, operador);
         } else {
-            return criarComServicoUnico(request, profissional, salon, cliente);
+            return criarComServicoUnico(request, profissional, salon, cliente, operador);
         }
     }
 
@@ -104,7 +110,8 @@ public class AgendamentoService {
      */
     @SuppressWarnings("deprecation")
     private AgendamentoResponse criarComServicoUnico(AgendamentoRequest request,
-                                                      Profissional profissional, Salon salon, Cliente cliente) {
+                                                      Profissional profissional, Salon salon, Cliente cliente,
+                                                      Usuario operador) {
         Servico servico = servicoService.getServicoEntity(request.getServicoId());
 
         // Validate everything
@@ -143,7 +150,7 @@ public class AgendamentoService {
         enviarNotificacaoConfirmacao(agendamento);
 
         // Criar notificação no sistema + enviar email
-        enviarNotificacoesSistemaConfirmacao(agendamento);
+        enviarNotificacoesSistemaConfirmacao(agendamento, operador);
 
         return AgendamentoResponse.fromEntity(agendamento);
     }
@@ -153,7 +160,8 @@ public class AgendamentoService {
      */
     @SuppressWarnings("deprecation")
     private AgendamentoResponse criarComMultiplosServicos(AgendamentoRequest request,
-                                                           Profissional profissional, Salon salon, Cliente cliente) {
+                                                           Profissional profissional, Salon salon, Cliente cliente,
+                                                           Usuario operador) {
         log.info("Criando agendamento com {} serviços", request.getServicoIds().size());
 
         // Load all services
@@ -230,7 +238,7 @@ public class AgendamentoService {
         enviarNotificacaoConfirmacao(agendamento);
 
         // Criar notificação no sistema + enviar email
-        enviarNotificacoesSistemaConfirmacao(agendamento);
+        enviarNotificacoesSistemaConfirmacao(agendamento, operador);
 
         return AgendamentoResponse.fromEntity(agendamento);
     }
@@ -257,6 +265,41 @@ public class AgendamentoService {
         return AgendamentoResponse.fromEntity(agendamento, restrictSensitiveData, hideInternalNotes);
     }
 
+    /**
+     * SEC-003: leitura de agendamento por ID com verificação de acesso do chamador.
+     * Diferente da sobrecarga legada (que só valida tenant e trata contexto ausente como
+     * "permitir", adequado a fluxos internos/token), esta versão exige um usuário
+     * autenticado e impede IDOR: um CLIENTE só lê os próprios agendamentos e a equipe
+     * (ADMIN/PROFISSIONAL/RECEPCIONISTA) só lê agendamentos do próprio estabelecimento.
+     */
+    @Transactional(readOnly = true)
+    public AgendamentoResponse buscarPorId(Long id, boolean restrictSensitiveData,
+                                           boolean hideInternalNotes, Usuario operador) {
+        Agendamento agendamento = agendamentoRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Agendamento", id));
+        enforceReadAccess(agendamento, operador);
+        return AgendamentoResponse.fromEntity(agendamento, restrictSensitiveData, hideInternalNotes);
+    }
+
+    /**
+     * SEC-003: garante que o chamador autenticado pode LER o agendamento.
+     * CLIENTE → apenas os próprios; equipe → apenas dentro do próprio tenant (salão).
+     */
+    private void enforceReadAccess(Agendamento agendamento, Usuario operador) {
+        if (operador == null) {
+            throw new AccessDeniedException("Autenticação necessária");
+        }
+        if (operador.getRole() == Role.CLIENTE) {
+            Cliente cliente = agendamento.getCliente();
+            if (cliente == null || cliente.getUsuario() == null
+                    || !cliente.getUsuario().getId().equals(operador.getId())) {
+                throw new AccessDeniedException("Acesso negado: este agendamento não pertence a este cliente");
+            }
+            return;
+        }
+        enforceStaffTenant(agendamento.getSalon().getId());
+    }
+
     @Transactional(readOnly = true)
     public Page<AgendamentoResponse> listarPorSalon(Long salonId, Pageable pageable, boolean restrictSensitiveData) {
         tenantIsolationService.assertRequestedSalon(salonId);
@@ -266,6 +309,12 @@ public class AgendamentoService {
 
     @Transactional(readOnly = true)
     public Page<AgendamentoResponse> listarPorCliente(Long clienteId, Pageable pageable, boolean restrictSensitiveData) {
+        // SEC-004: valida que o cliente consultado pertence ao estabelecimento do
+        // solicitante. Sem isto, a equipe de um salão listava os agendamentos (com
+        // telefone e observações) de clientes de outro salão apenas trocando o ID.
+        Cliente cliente = clienteRepository.findById(clienteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cliente", clienteId));
+        enforceStaffTenant(cliente.getSalon().getId());
         return agendamentoRepository.findByClienteId(clienteId, pageable)
                 .map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
     }
@@ -285,6 +334,10 @@ public class AgendamentoService {
      */
     @Transactional(readOnly = true)
     public Page<AgendamentoResponse> listarPorProfissional(Long profissionalId, Pageable pageable, boolean restrictSensitiveData) {
+        // SEC-004: valida que o profissional consultado pertence ao estabelecimento do
+        // solicitante (a checagem de "profissional só vê a própria agenda" fica no
+        // controller; aqui garantimos o isolamento entre salões também para ADMIN).
+        enforceStaffTenant(profissionalService.getProfissionalEntity(profissionalId).getSalon().getId());
         return agendamentoRepository.findByProfissionalId(profissionalId, pageable)
                 .map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
     }
@@ -304,6 +357,9 @@ public class AgendamentoService {
      */
     @Transactional(readOnly = true)
     public List<AgendamentoResponse> listarAgendaDiaria(Long profissionalId, LocalDateTime data, boolean restrictSensitiveData) {
+        // SEC-004: isolamento de tenant — a agenda diária de um profissional só pode ser
+        // consultada por alguém do mesmo estabelecimento.
+        enforceStaffTenant(profissionalService.getProfissionalEntity(profissionalId).getSalon().getId());
         LocalDateTime dayStart = data.toLocalDate().atStartOfDay();
         LocalDateTime dayEnd = dayStart.plusDays(1);
 
@@ -470,11 +526,7 @@ public class AgendamentoService {
         agendamento = agendamentoRepository.save(agendamento);
         log.info("Agendamento confirmado por token: {}", agendamento.getId());
 
-        try {
-            notificacaoService.notificarEquipeAgendamentoConfirmadoPeloCliente(agendamento);
-        } catch (Exception e) {
-            log.error("Erro ao notificar equipe sobre confirmação do cliente: {}", e.getMessage(), e);
-        }
+        enviarNotificacoesConfirmacaoPeloCliente(agendamento);
 
         // Token flow: caller is the client via an emailed link, not staff — never expose sensitive data.
         return AgendamentoResponse.fromEntityForClient(agendamento);
@@ -504,11 +556,7 @@ public class AgendamentoService {
         agendamento = agendamentoRepository.save(agendamento);
         log.info("Agendamento confirmado pelo cliente via app: {}", agendamentoId);
 
-        try {
-            notificacaoService.notificarEquipeAgendamentoConfirmadoPeloCliente(agendamento);
-        } catch (Exception e) {
-            log.error("Erro ao notificar equipe sobre confirmação do cliente: {}", e.getMessage(), e);
-        }
+        enviarNotificacoesConfirmacaoPeloCliente(agendamento);
 
         return MeuAgendamentoDTO.fromEntity(agendamento);
     }
@@ -884,16 +932,14 @@ public class AgendamentoService {
         agendamento.setStatus(StatusAgendamento.NO_SHOW);
         agendamento = agendamentoRepository.save(agendamento);
 
-        // Increment client no-show counter
-        clienteRepository.incrementNoShows(agendamento.getCliente().getId());
-
-        // Check if client should be blocked
+        // Increment client no-show counter and block once the salon limit is reached
         Salon salon = agendamento.getSalon();
         Cliente cliente = agendamento.getCliente();
-        if (cliente.getNoShows() + 1 >= salon.getMaxNoShowsPermitidos()) {
-            cliente.setBloqueado(true);
-            clienteRepository.save(cliente);
-            log.warn("Cliente {} bloqueado por excesso de no-shows", cliente.getId());
+        boolean bloqueadoAgora = cliente.registrarNoShow(salon.getMaxNoShowsPermitidos());
+        clienteRepository.save(cliente);
+        if (bloqueadoAgora) {
+            log.warn("Cliente {} bloqueado por excesso de no-shows ({}/{})",
+                    cliente.getId(), cliente.getNoShows(), salon.getMaxNoShowsPermitidos());
         }
 
         log.info("Agendamento marcado como no-show: {}", id);
@@ -1007,13 +1053,29 @@ public class AgendamentoService {
     /**
      * Create system notification + send email after appointment creation.
      */
-    private void enviarNotificacoesSistemaConfirmacao(Agendamento agendamento) {
+    private void enviarNotificacoesSistemaConfirmacao(Agendamento agendamento, Usuario operador) {
         try {
             // O agendamento acabou de ser criado com status PENDENTE: notifica o
             // cliente pedindo confirmação, e não que já está confirmado.
             notificacaoService.notificarClienteAgendamentoPendente(agendamento);
         } catch (Exception e) {
             log.error("Erro ao criar notificação de confirmação: {}", e.getMessage(), e);
+        }
+
+        try {
+            // Avisa a equipe (profissional agendado, administrador e recepção) do novo
+            // agendamento — exceto quem o criou, que não precisa ser notificado da própria ação.
+            String nomeCliente = agendamento.getCliente() != null && agendamento.getCliente().getUsuario() != null
+                    ? agendamento.getCliente().getUsuario().getNome() : "Cliente";
+            String mensagem = String.format("%s agendou %s para %s às %s.",
+                    nomeCliente,
+                    resolverNomeServico(agendamento),
+                    agendamento.getDataHora().format(DateTimeFormatter.ofPattern("dd/MM")),
+                    agendamento.getDataHora().format(DateTimeFormatter.ofPattern("HH:mm")));
+            notificacaoService.notificarEquipeMudancaStatusAgendamento(
+                    agendamento, operador, TipoNotificacao.AGENDAMENTO_PENDENTE, "Novo Agendamento", mensagem);
+        } catch (Exception e) {
+            log.error("Erro ao notificar equipe sobre novo agendamento: {}", e.getMessage(), e);
         }
 
         try {
@@ -1035,6 +1097,28 @@ public class AgendamentoService {
                     cliente.getUsuario().getEmail(), nomeCliente, data, hora, servico, profissional, link);
         } catch (Exception e) {
             log.error("Erro ao enviar email de confirmação: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Notificações quando o próprio cliente confirma (pelo app ou pelo link do e-mail): o cliente
+     * recebe o comprovante "Agendamento Confirmado" e a equipe (profissional, administrador e
+     * recepção) é avisada — mesmo padrão da confirmação feita pela equipe.
+     */
+    private void enviarNotificacoesConfirmacaoPeloCliente(Agendamento agendamento) {
+        try {
+            notificacaoService.notificarAgendamentoConfirmado(agendamento);
+        } catch (Exception e) {
+            log.error("Erro ao notificar cliente sobre confirmação do agendamento: {}", e.getMessage(), e);
+        }
+
+        try {
+            notificacaoService.notificarEquipeMudancaStatusAgendamento(
+                    agendamento, null, TipoNotificacao.AGENDAMENTO_CONFIRMADO_CLIENTE,
+                    "Agendamento Confirmado",
+                    mensagemEquipe(agendamento, "foi confirmado pelo cliente"));
+        } catch (Exception e) {
+            log.error("Erro ao notificar equipe sobre confirmação do cliente: {}", e.getMessage(), e);
         }
     }
 

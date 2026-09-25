@@ -367,8 +367,10 @@ public class ClienteService {
                     if (status != null && !status.isEmpty()) {
                         if ("active".equals(status)) {
                             return c.isAtivo() && !c.isBloqueado();
+                        } else if ("blocked".equals(status)) {
+                            return c.isAtivo() && c.isBloqueado();
                         } else if ("inactive".equals(status)) {
-                            return !c.isAtivo() || c.isBloqueado();
+                            return !c.isAtivo();
                         }
                     }
                     return true;

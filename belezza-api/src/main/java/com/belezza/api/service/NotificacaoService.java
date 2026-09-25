@@ -181,38 +181,6 @@ public class NotificacaoService {
     }
 
     /**
-     * Notifica o profissional, a recepção e o administrador do salão que o cliente confirmou
-     * o agendamento (via link de confirmação por token, ou pelo próprio app).
-     */
-    @Transactional
-    public void notificarEquipeAgendamentoConfirmadoPeloCliente(Agendamento agendamento) {
-        Salon salon = agendamento.getSalon();
-        String nomeCliente = agendamento.getCliente() != null && agendamento.getCliente().getUsuario() != null
-                ? agendamento.getCliente().getUsuario().getNome() : "Cliente";
-        String data = agendamento.getDataHora().toLocalDate()
-                .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM"));
-        String hora = agendamento.getDataHora().toLocalTime()
-                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-
-        String titulo = "Cliente confirmou agendamento";
-        String mensagem = String.format("%s confirmou o agendamento de %s às %s.", nomeCliente, data, hora);
-        String link = "/salon/appointments";
-
-        if (agendamento.getProfissional() != null && agendamento.getProfissional().getUsuario() != null) {
-            criarNotificacao(agendamento.getProfissional().getUsuario(), TipoNotificacao.AGENDAMENTO_CONFIRMADO_CLIENTE, titulo, mensagem, link, agendamento.getId());
-        }
-
-        if (salon.getAdmin() != null) {
-            criarNotificacao(salon.getAdmin(), TipoNotificacao.AGENDAMENTO_CONFIRMADO_CLIENTE, titulo, mensagem, link, agendamento.getId());
-        }
-
-        List<Usuario> recepcionistas = usuarioRepository.findByRoleAndSalonIdAndAtivoTrue(Role.RECEPCIONISTA, salon.getId());
-        for (Usuario recepcionista : recepcionistas) {
-            criarNotificacao(recepcionista, TipoNotificacao.AGENDAMENTO_CONFIRMADO_CLIENTE, titulo, mensagem, link, agendamento.getId());
-        }
-    }
-
-    /**
      * Notifica o profissional, a recepção e o administrador do salão que o cliente
      * reagendou o próprio atendimento (data/hora, e possivelmente profissional/serviços).
      */

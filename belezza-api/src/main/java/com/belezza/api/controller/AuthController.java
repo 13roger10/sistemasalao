@@ -34,17 +34,21 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/register")
-    @Operation(summary = "Register new user", description = "Creates a new user account")
+    @Operation(summary = "Register new user",
+            description = "Inicia o auto-cadastro de cliente. Por segurança (anti-enumeração), retorna sempre "
+                    + "uma resposta genérica e confirma o cadastro por e-mail — não revela se o e-mail já existe "
+                    + "nem faz auto-login.")
     @ApiResponses({
-        @ApiResponse(responseCode = "201", description = "User created successfully",
-            content = @Content(schema = @Schema(implementation = AuthResponse.class))),
-        @ApiResponse(responseCode = "400", description = "Invalid input"),
-        @ApiResponse(responseCode = "409", description = "Email already exists")
+        @ApiResponse(responseCode = "202", description = "Solicitação recebida (resposta genérica)"),
+        @ApiResponse(responseCode = "400", description = "Invalid input")
     })
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
-        log.info("Register request for email: {}", request.getEmail());
-        AuthResponse response = authService.register(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    public ResponseEntity<Map<String, String>> register(@Valid @RequestBody RegisterRequest request) {
+        log.info("Register request received");
+        authService.register(request);
+        // SEC-016: mensagem genérica idêntica para e-mail novo ou já existente.
+        return ResponseEntity.accepted().body(Map.of(
+            "message", "Se os dados forem válidos, você receberá um e-mail para confirmar o cadastro."
+        ));
     }
 
     @PostMapping("/login")
@@ -76,7 +80,7 @@ public class AuthController {
     @PostMapping("/logout")
     @Operation(summary = "User logout", description = "Invalidates JWT token by adding to blacklist")
     @ApiResponse(responseCode = "200", description = "Logout successful")
-    public ResponseEntity<Map<String, String>> logout(@RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<Map<String, String>> logout(@RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("Logout request");
         authService.logout(authHeader);
         return ResponseEntity.ok(Map.of("message", "Logout realizado com sucesso"));
@@ -91,6 +95,12 @@ public class AuthController {
     })
     public ResponseEntity<UserResponse> getCurrentUser(@AuthenticationPrincipal UserDetails userDetails) {
         log.debug("Get current user request");
+        // SEC-009: /api/auth/me é permitAll (o filtro JWT popula o principal). Quando o
+        // token está ausente, é inválido ou foi revogado no logout (blacklist), o principal
+        // fica nulo — respondemos 401 limpo em vez de estourar NPE (HTTP 500).
+        if (userDetails == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         UserResponse response = authService.getCurrentUser(userDetails.getUsername());
         return ResponseEntity.ok(response);
     }

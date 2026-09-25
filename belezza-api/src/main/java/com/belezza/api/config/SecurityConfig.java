@@ -4,6 +4,7 @@ import com.belezza.api.security.ApiKeyAuthFilter;
 import com.belezza.api.security.JwtAuthenticationFilter;
 import com.belezza.api.security.RateLimitFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -46,16 +47,30 @@ public class SecurityConfig {
     private final CorsConfigurationSource corsConfigurationSource;
 
     /**
+     * SEC-010: o console H2 só deve ser acessível quando explicitamente habilitado
+     * (perfil local/dev). Em produção fica desligado, então o permitAll de /h2-console
+     * abaixo só é registrado quando o console está ligado.
+     */
+    @Value("${spring.h2.console.enabled:false}")
+    private boolean h2ConsoleEnabled;
+
+    /**
      * Public endpoints that don't require authentication.
      */
     private static final String[] PUBLIC_ENDPOINTS = {
         "/api/auth/**",
         "/api/public/**",  // Token-based confirm/cancel links, public v1 booking surface
         "/api/v1/**",      // Public API v1 — authenticated by ApiKeyAuthFilter via X-API-Key
+        "/api/webhooks/**", // SEC-017: chamados pela Meta sem JWT — GET valida verify-token,
+                            // POST valida assinatura HMAC (X-Hub-Signature-256) no controller
         "/ws/**",          // WebSocket handshake (auth happens inside STOMP CONNECT)
         "/api/usuarios/roles",
-        "/api/agendamentos/**", // Booking creation/lookup/availability; write actions below are still
-                                // individually @PreAuthorize'd or ownership-checked in the service layer
+        // SEC-003: /api/agendamentos/** NÃO é mais público. Ele expunha
+        // GET /api/agendamentos/{id} sem autenticação (IDOR — qualquer pessoa lia o
+        // agendamento de qualquer cliente/salão iterando o ID). Agora todo o recurso
+        // exige autenticação; apenas a consulta de disponibilidade (sem PII) permanece
+        // pública, declarada abaixo via requestMatchers(GET, .../disponibilidade).
+        // O confirmar/cancelar público continua por token secreto em /api/public/**.
         "/api/servicos/**",     // Service menu — no PII, admin writes are still @AdminOnly
         "/actuator/health",
         "/actuator/health/**",
@@ -74,8 +89,9 @@ public class SecurityConfig {
         "/v3/api-docs/**",
         "/api-docs/**",
         "/swagger-resources/**",
-        "/webjars/**",
-        "/h2-console/**"
+        "/webjars/**"
+        // SEC-010: /h2-console/** removido daqui. Só é liberado (via requestMatchers no
+        // securityFilterChain) quando spring.h2.console.enabled=true — nunca em produção.
     };
 
     @Bean
@@ -99,26 +115,36 @@ public class SecurityConfig {
             )
 
             // Configure authorization rules
-            .authorizeHttpRequests(auth -> auth
+            .authorizeHttpRequests(auth -> {
                 // Public endpoints
-                .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
-                .requestMatchers(SWAGGER_ENDPOINTS).permitAll()
+                auth.requestMatchers(PUBLIC_ENDPOINTS).permitAll();
+                auth.requestMatchers(SWAGGER_ENDPOINTS).permitAll();
 
                 // Allow OPTIONS requests (CORS preflight)
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
+
+                // SEC-003: única rota pública de agendamentos — consulta de horários
+                // disponíveis (sem dados pessoais), usada pelo calendário de reserva.
+                auth.requestMatchers(HttpMethod.GET, "/api/agendamentos/disponibilidade").permitAll();
+
+                // SEC-010: console H2 só é público quando explicitamente habilitado
+                // (perfil local/dev); em produção nunca é registrado.
+                if (h2ConsoleEnabled) {
+                    auth.requestMatchers("/h2-console/**").permitAll();
+                }
 
                 // Admin-only endpoints
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                auth.requestMatchers("/api/admin/**").hasRole("ADMIN");
 
                 // Profissional or Admin endpoints
-                .requestMatchers("/api/profissional/**").hasAnyRole("ADMIN", "PROFISSIONAL")
+                auth.requestMatchers("/api/profissional/**").hasAnyRole("ADMIN", "PROFISSIONAL");
 
                 // Receptionist or Admin endpoints
-                .requestMatchers("/api/recepcao/**").hasAnyRole("ADMIN", "RECEPCIONISTA")
+                auth.requestMatchers("/api/recepcao/**").hasAnyRole("ADMIN", "RECEPCIONISTA");
 
                 // All other endpoints require authentication
-                .anyRequest().authenticated()
-            )
+                auth.anyRequest().authenticated();
+            })
 
             // Allow frames for H2 console
             .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))

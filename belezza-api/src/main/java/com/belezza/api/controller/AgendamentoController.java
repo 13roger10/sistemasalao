@@ -94,24 +94,14 @@ public class AgendamentoController {
     @Operation(summary = "Criar agendamento", description = "Cria um novo agendamento")
     public ResponseEntity<AgendamentoResponse> criar(
             @Valid @RequestBody AgendamentoRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        // Debug logging
-        log.info("=== POST /api/agendamentos - Request received ===");
-        log.info("Request body: profissionalId={}, servicoId={}, servicoIds={}, dataHora={}, clienteId={}",
-            request.getProfissionalId(), request.getServicoId(), request.getServicoIds(),
-            request.getDataHora(), request.getClienteId());
-        log.info("Request valid: {}, validation error: {}", request.isValid(), request.getValidationError());
-        log.info("Authenticated user: {}", userDetails != null ? userDetails.getUsername() : "ANONYMOUS");
-
-        if (userDetails != null) {
-            log.info("User authorities: {}", userDetails.getAuthorities());
-        }
-
-        // Se não há usuário autenticado, usar null (clienteId deve estar no request)
-        String emailUsuario = userDetails != null ? userDetails.getUsername() : null;
+            @AuthenticationPrincipal Usuario operador) {
+        log.info("=== POST /api/agendamentos - operador={} clienteId={} ===",
+            operador != null ? operador.getUsername() : "ANONYMOUS", request.getClienteId());
 
         try {
-            AgendamentoResponse response = agendamentoService.criar(request, emailUsuario);
+            // SEC-008: o service resolve o cliente conforme o papel do operador (cliente
+            // agenda só para si; equipe/API valida que o clienteId pertence ao salão).
+            AgendamentoResponse response = agendamentoService.criar(request, operador);
             log.info("=== Agendamento created successfully: id={} ===", response.getId());
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (Exception e) {
@@ -121,13 +111,16 @@ public class AgendamentoController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Buscar agendamento", description = "Busca um agendamento por ID")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Buscar agendamento",
+            description = "Busca um agendamento por ID. Requer autenticação: o CLIENTE só acessa os próprios "
+                    + "agendamentos e a equipe apenas os do seu estabelecimento (SEC-003).")
     public ResponseEntity<AgendamentoResponse> buscarPorId(
             @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        boolean restrictData = shouldRestrictSensitiveData(userDetails);
-        boolean hideInternalNotes = shouldHideInternalNotes(userDetails);
-        AgendamentoResponse response = agendamentoService.buscarPorId(id, restrictData, hideInternalNotes);
+            @AuthenticationPrincipal Usuario operador) {
+        boolean restrictData = shouldRestrictSensitiveData(operador);
+        boolean hideInternalNotes = shouldHideInternalNotes(operador);
+        AgendamentoResponse response = agendamentoService.buscarPorId(id, restrictData, hideInternalNotes, operador);
         return ResponseEntity.ok(response);
     }
 

@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSalonAuth } from "./SalonAuthContext";
+import { api } from "@/lib/api";
 
 // ===== Types =====
 interface UnitOption {
@@ -74,17 +75,42 @@ export function UnitProvider({ children }: UnitProviderProps) {
       return;
     }
 
-    // Simulate API call
     setIsLoading(true);
 
-    // TODO: Replace with actual API call
-    // const units = await unitService.access.getUserUnits(user.id);
+    if (canViewAllUnits) {
+      // Admin: only their own salon is accessible (backend enforces tenant isolation),
+      // so the unit list comes from the real salon instead of mock units.
+      let cancelled = false;
+      api
+        .get<{ id: number; nome: string }>("/api/salons/meu")
+        .then(({ data }) => {
+          if (cancelled) return;
+          const unit: UnitOption = { id: String(data.id), name: data.nome, isHeadquarters: true };
+          setAvailableUnits([unit]);
+
+          // Drop a stale saved selection (e.g. a unit that doesn't exist / belongs to another salon)
+          const savedUnitId = localStorage.getItem(SELECTED_UNIT_KEY);
+          if (savedUnitId !== unit.id) {
+            localStorage.setItem(SELECTED_UNIT_KEY, unit.id);
+          }
+          setSelectedUnitId(unit.id);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          localStorage.removeItem(SELECTED_UNIT_KEY);
+          setAvailableUnits([]);
+          setSelectedUnitId(null);
+        })
+        .finally(() => {
+          if (!cancelled) setIsLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
 
     setTimeout(() => {
-      if (canViewAllUnits) {
-        // Admin can see all units
-        setAvailableUnits(MOCK_UNITS);
-      } else if (user.unitId) {
+      if (user.unitId) {
         // Other roles see only their assigned unit
         const userUnit = MOCK_UNITS.find(u => u.id === user.unitId);
         setAvailableUnits(userUnit ? [userUnit] : []);
@@ -96,20 +122,8 @@ export function UnitProvider({ children }: UnitProviderProps) {
         setAvailableUnits([]);
       }
 
-      // Restore previously selected unit from localStorage
-      const savedUnitId = localStorage.getItem(SELECTED_UNIT_KEY);
-
-      if (canViewAllUnits) {
-        // Admin: restore saved selection or select all (null)
-        if (savedUnitId && MOCK_UNITS.some(u => u.id === savedUnitId)) {
-          setSelectedUnitId(savedUnitId);
-        } else {
-          setSelectedUnitId(null); // null = all units
-        }
-      } else {
-        // Non-admin: set to their unit
-        setSelectedUnitId(user.unitId || null);
-      }
+      // Non-admin: set to their unit
+      setSelectedUnitId(user.unitId || null);
 
       setIsLoading(false);
     }, 100);

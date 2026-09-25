@@ -6,7 +6,9 @@ import com.belezza.api.entity.WhatsAppMessage;
 import com.belezza.api.entity.WhatsAppMessageStatus;
 import com.belezza.api.integration.WhatsAppService;
 import com.belezza.api.repository.WhatsAppMessageRepository;
+import com.belezza.api.security.TenantContext;
 import com.belezza.api.security.annotation.ProfissionalOrAdmin;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -37,6 +39,25 @@ public class WhatsAppMessageController {
     private final WhatsAppMessageRepository messageRepository;
     private final WhatsAppService whatsAppService;
 
+    /**
+     * SEC-011: isolamento entre estabelecimentos. Estes endpoints faziam consultas por
+     * salonId/telefone/agendamento/id sem validar o tenant, permitindo que a equipe de um
+     * salão lesse o histórico de mensagens (PII) de outro salão. Usamos o salonId do JWT
+     * (TenantContext) como fonte de verdade.
+     */
+    private void assertTenant(Long salonId) {
+        Long tenant = TenantContext.getCurrentTenant();
+        if (tenant == null || salonId == null || !tenant.equals(salonId)) {
+            throw new AccessDeniedException("Acesso negado: recurso pertence a outro estabelecimento");
+        }
+    }
+
+    /** Verdadeiro quando a mensagem pertence ao estabelecimento do solicitante (JWT). */
+    private boolean noTenantAtual(WhatsAppMessage m) {
+        Long tenant = TenantContext.getCurrentTenant();
+        return tenant != null && m.getSalon() != null && tenant.equals(m.getSalon().getId());
+    }
+
     @GetMapping("/salon/{salonId}")
     @ProfissionalOrAdmin
     @Operation(summary = "Listar mensagens por salão", description = "Lista todas as mensagens WhatsApp de um salão com filtro opcional por status")
@@ -44,6 +65,7 @@ public class WhatsAppMessageController {
             @PathVariable Long salonId,
             @RequestParam(required = false) WhatsAppMessageStatus status,
             @PageableDefault(size = 20, sort = "criadoEm") Pageable pageable) {
+        assertTenant(salonId);
 
         Page<WhatsAppMessage> messages;
         if (status != null) {
@@ -59,8 +81,10 @@ public class WhatsAppMessageController {
     @ProfissionalOrAdmin
     @Operation(summary = "Listar mensagens por agendamento", description = "Lista todas as mensagens enviadas para um agendamento específico")
     public ResponseEntity<List<WhatsAppMessageResponse>> listarPorAgendamento(@PathVariable Long agendamentoId) {
+        // SEC-011: só retorna mensagens do próprio estabelecimento.
         List<WhatsAppMessage> messages = messageRepository.findByAgendamentoIdOrderByCriadoEmDesc(agendamentoId);
         return ResponseEntity.ok(messages.stream()
+                .filter(this::noTenantAtual)
                 .map(WhatsAppMessageResponse::fromEntity)
                 .collect(Collectors.toList()));
     }
@@ -69,8 +93,10 @@ public class WhatsAppMessageController {
     @ProfissionalOrAdmin
     @Operation(summary = "Listar mensagens por telefone", description = "Lista todas as mensagens enviadas para um número de telefone")
     public ResponseEntity<List<WhatsAppMessageResponse>> listarPorTelefone(@PathVariable String telefone) {
+        // SEC-011: um telefone pode existir em vários salões — retorna só o do solicitante.
         List<WhatsAppMessage> messages = messageRepository.findByTelefoneOrderByCriadoEmDesc(telefone);
         return ResponseEntity.ok(messages.stream()
+                .filter(this::noTenantAtual)
                 .map(WhatsAppMessageResponse::fromEntity)
                 .collect(Collectors.toList()));
     }
@@ -81,6 +107,8 @@ public class WhatsAppMessageController {
     @SuppressWarnings("null")
     public ResponseEntity<WhatsAppMessageResponse> buscarPorId(@PathVariable Long id) {
         return messageRepository.findById(id)
+                // SEC-011: só expõe a mensagem se pertencer ao estabelecimento do solicitante.
+                .filter(this::noTenantAtual)
                 .map(WhatsAppMessageResponse::fromEntity)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -112,6 +140,7 @@ public class WhatsAppMessageController {
     public ResponseEntity<Map<String, Object>> estatisticas(
             @PathVariable Long salonId,
             @RequestParam(defaultValue = "7") int dias) {
+        assertTenant(salonId); // SEC-011
 
         LocalDateTime start = LocalDateTime.now().minusDays(dias);
         LocalDateTime end = LocalDateTime.now();
@@ -141,6 +170,7 @@ public class WhatsAppMessageController {
     @ProfissionalOrAdmin
     @Operation(summary = "Listar mensagens com falha", description = "Lista mensagens com falha que podem ser reenviadas")
     public ResponseEntity<List<WhatsAppMessageResponse>> listarFalhas(@PathVariable Long salonId) {
+        assertTenant(salonId); // SEC-011
         LocalDateTime since = LocalDateTime.now().minusDays(7);
         List<WhatsAppMessage> messages = messageRepository.findRetryableFailed(since);
 

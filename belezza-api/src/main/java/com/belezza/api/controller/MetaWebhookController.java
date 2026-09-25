@@ -1,7 +1,11 @@
 package com.belezza.api.controller;
 
+import com.belezza.api.security.WebhookSignatureVerifier;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -16,11 +20,17 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/webhooks/meta")
+@RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Webhooks", description = "Meta Graph API webhook endpoints")
 public class MetaWebhookController {
 
-    @Value("${meta.webhook.verify-token:belezza_webhook_verify_token}")
+    private final WebhookSignatureVerifier signatureVerifier;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    // SEC-017: caminho de propriedade corrigido (antes "meta.webhook.verify-token", que
+    // não existia e sempre caía no default público). Sem default inseguro.
+    @Value("${belezza.meta.webhook-verify-token:}")
     private String verifyToken;
 
     /**
@@ -61,8 +71,23 @@ public class MetaWebhookController {
         description = "Receives event notifications from Meta (Instagram/Facebook). " +
                      "Processes post updates, metrics changes, and other events."
     )
-    public ResponseEntity<String> handleWebhook(@RequestBody Map<String, Object> payload) {
-        log.info("Webhook event received: {}", payload);
+    public ResponseEntity<String> handleWebhook(
+            @RequestBody(required = false) String rawBody,
+            @RequestHeader(value = "X-Hub-Signature-256", required = false) String signature) {
+        // SEC-017: valida a assinatura HMAC sobre o corpo BRUTO antes de processar.
+        if (!signatureVerifier.isValid(rawBody, signature)) {
+            return ResponseEntity.status(401).body("invalid signature");
+        }
+
+        Map<String, Object> payload;
+        try {
+            payload = (rawBody == null || rawBody.isBlank())
+                    ? Map.of()
+                    : objectMapper.readValue(rawBody, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            log.error("Falha ao parsear payload do webhook Meta: {}", e.getMessage());
+            return ResponseEntity.ok("EVENT_RECEIVED");
+        }
 
         try {
             // Parse webhook payload

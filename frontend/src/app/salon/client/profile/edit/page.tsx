@@ -139,7 +139,7 @@ export default function EditProfilePage() {
         body.password = form.novaSenha;
       }
 
-      const response = await fetch(`/api/usuarios/${user.id}`, {
+      const response = await fetch(`/api/usuarios/me`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

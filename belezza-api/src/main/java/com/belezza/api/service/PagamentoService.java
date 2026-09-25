@@ -14,10 +14,12 @@ import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.ClienteRepository;
 import com.belezza.api.repository.PagamentoRepository;
+import com.belezza.api.security.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.belezza.api.security.annotation.Auditable;
@@ -93,10 +95,23 @@ public class PagamentoService {
         clienteRepository.save(cliente);
     }
 
+    /**
+     * SEC-011: garante que o solicitante só acessa pagamentos do próprio estabelecimento.
+     * Usa o salonId do JWT (TenantContext); exige que exista e coincida com o salão do recurso.
+     */
+    private void assertTenant(Long salonId) {
+        Long tenant = TenantContext.getCurrentTenant();
+        if (tenant == null || salonId == null || !tenant.equals(salonId)) {
+            throw new AccessDeniedException("Acesso negado: recurso pertence a outro estabelecimento");
+        }
+    }
+
     @Transactional(readOnly = true)
     public PagamentoResponse buscarPorAgendamento(Long agendamentoId) {
         Pagamento pagamento = pagamentoRepository.findByAgendamentoId(agendamentoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pagamento", "agendamento", agendamentoId.toString()));
+        // SEC-011: bloqueia leitura de pagamento de outro estabelecimento por IDOR no agendamentoId.
+        assertTenant(pagamento.getSalon() != null ? pagamento.getSalon().getId() : null);
         return PagamentoResponse.fromEntity(pagamento);
     }
 
@@ -107,6 +122,7 @@ public class PagamentoService {
      */
     @Transactional(readOnly = true)
     public Page<PagamentoResponse> listarPorSalon(Long salonId, Pageable pageable, Usuario solicitante) {
+        assertTenant(salonId); // SEC-011: isolamento entre estabelecimentos
         if (solicitante.getRole() == Role.RECEPCIONISTA) {
             return pagamentoRepository
                     .findBySalonIdAndRegistradoPorId(salonId, solicitante.getId(), pageable)

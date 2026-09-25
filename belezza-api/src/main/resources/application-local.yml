@@ -37,7 +37,8 @@ spring:
       enabled: true
       path: /h2-console
       settings:
-        web-allow-others: true
+        # SEC-010: aceita conexões apenas do localhost (não expõe o console na rede).
+        web-allow-others: false
 
   # Disable Redis completely
   data:

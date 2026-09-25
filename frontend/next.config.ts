@@ -14,6 +14,42 @@ const nextConfig: NextConfig = {
   },
   // Configuração vazia do Turbopack para compatibilidade com plugins webpack
   turbopack: {},
+  // SEC-013 / SEC-021: headers de segurança em todas as rotas.
+  // A CSP é a mitigação principal contra roubo do token (que fica em localStorage por
+  // exigência do WebSocket). Observação: script-src usa 'unsafe-inline'/'unsafe-eval'
+  // por compatibilidade com o Next/PWA; a evolução recomendada é uma CSP baseada em nonce.
+  async headers() {
+    const csp = [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "form-action 'self'",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      // permite chamadas à própria origem (proxy /api), à API e ao WebSocket
+      "connect-src 'self' http: https: ws: wss:",
+      "worker-src 'self' blob:",
+      "manifest-src 'self'",
+    ].join("; ");
+
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: csp },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(self), payment=()" },
+          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+          { key: "X-DNS-Prefetch-Control", value: "off" },
+        ],
+      },
+    ];
+  },
   async redirects() {
     return [
       {

@@ -240,4 +240,8 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long> 
         @Param("inicio") LocalDateTime inicio,
         @Param("fim") LocalDateTime fim
     );
+
+    /** Agendamentos em que o usuário participa como cliente ou como profissional (histórico). */
+    @Query("SELECT COUNT(a) FROM Agendamento a WHERE a.cliente.usuario.id = :usuarioId OR a.profissional.usuario.id = :usuarioId")
+    long countEnvolvendoUsuario(@Param("usuarioId") Long usuarioId);
 }

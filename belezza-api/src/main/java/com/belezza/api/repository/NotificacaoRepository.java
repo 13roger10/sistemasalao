@@ -42,4 +42,8 @@ public interface NotificacaoRepository extends JpaRepository<Notificacao, Long> 
         @Param("tipo") TipoNotificacao tipo,
         Pageable pageable
     );
+
+    @Modifying
+    @Query("DELETE FROM Notificacao n WHERE n.usuario.id = :usuarioId")
+    void deleteAllByUsuarioId(@Param("usuarioId") Long usuarioId);
 }

@@ -164,13 +164,10 @@ public class PublicApiController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
-        // Use the salon admin email as the "authenticated user" context
+        // SEC-008: contexto de operador = admin do salão (equipe). O service valida que o
+        // clienteId informado pertence a ESTE salão, impedindo vínculo entre estabelecimentos.
         Salon salon = loadSalon(salonId);
-        String salonEmail = salon.getAdmin() != null && salon.getAdmin().getEmail() != null
-            ? salon.getAdmin().getEmail()
-            : "api@belezza.internal";
-
-        AgendamentoResponse resp = agendamentoService.criar(request, salonEmail);
+        AgendamentoResponse resp = agendamentoService.criar(request, salon.getAdmin());
         return ResponseEntity.status(HttpStatus.CREATED).body(resp);
     }
 

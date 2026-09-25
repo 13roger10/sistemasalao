@@ -37,6 +37,17 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Value("${belezza.rate-limit.requests-per-minute:60}")
     private int requestsPerMinute;
 
+    // SEC-015: limite bem mais restritivo para endpoints de autenticação (força bruta).
+    @Value("${belezza.rate-limit.auth-requests-per-minute:10}")
+    private int authRequestsPerMinute;
+
+    // SEC-015: por padrão o IP vem do socket (não falsificável). Só quando a app está
+    // atrás de um proxy reverso confiável (nginx/ingress) deve-se confiar no
+    // X-Forwarded-For — e, nesse caso, usamos o ÚLTIMO salto (adicionado pelo proxy),
+    // não o primeiro (que o cliente pode forjar).
+    @Value("${belezza.rate-limit.trust-forward-header:false}")
+    private boolean trustForwardHeader;
+
     private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -56,36 +67,64 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
 
         String clientIp = getClientIp(request);
-        Bucket bucket = buckets.computeIfAbsent(clientIp, this::createBucket);
+        boolean auth = isAuthEndpoint(request.getServletPath());
+        int limit = auth ? authRequestsPerMinute : requestsPerMinute;
+        // Bucket separado por escopo: endpoints de auth têm balde próprio (mais restrito),
+        // então tráfego normal não "gasta" o limite de login e vice-versa.
+        String key = (auth ? "auth:" : "gen:") + clientIp;
+
+        Bucket bucket = buckets.computeIfAbsent(key, k -> createBucket(limit));
 
         if (bucket.tryConsume(1)) {
             filterChain.doFilter(request, response);
         } else {
-            log.warn("Rate limit exceeded for IP: {}", clientIp);
+            log.warn("Rate limit exceeded for key: {} (auth={})", key, auth);
             sendRateLimitResponse(response, request.getRequestURI());
         }
     }
 
     @SuppressWarnings("deprecation")
-    private Bucket createBucket(String key) {
+    private Bucket createBucket(int limitPerMinute) {
         Bandwidth limit = Bandwidth.classic(
-                requestsPerMinute,
-                Refill.greedy(requestsPerMinute, Duration.ofMinutes(1))
+                limitPerMinute,
+                Refill.greedy(limitPerMinute, Duration.ofMinutes(1))
         );
         return Bucket.builder().addLimit(limit).build();
     }
 
+    /**
+     * SEC-015: endpoints sensíveis a força bruta/abuso que recebem o limite restrito.
+     */
+    private boolean isAuthEndpoint(String path) {
+        if (path == null) return false;
+        return path.equals("/api/auth/login")
+                || path.equals("/api/auth/register")
+                || path.equals("/api/auth/forgot-password")
+                || path.equals("/api/auth/reset-password");
+    }
+
+    /**
+     * SEC-015: resolve o IP do cliente sem confiar cegamente em cabeçalhos forjáveis.
+     * Por padrão usa o IP do socket (request.getRemoteAddr), que o cliente não controla.
+     * Quando a app roda atrás de um proxy confiável (trust-forward-header=true), usa o
+     * ÚLTIMO valor do X-Forwarded-For — o salto adicionado pelo próprio proxy — evitando
+     * o bypass em que o cliente injeta um X-Forwarded-For arbitrário por requisição.
+     */
     private String getClientIp(HttpServletRequest request) {
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            return xForwardedFor.split(",")[0].trim();
+        if (trustForwardHeader) {
+            String xForwardedFor = request.getHeader("X-Forwarded-For");
+            if (xForwardedFor != null && !xForwardedFor.isBlank()) {
+                String[] hops = xForwardedFor.split(",");
+                String last = hops[hops.length - 1].trim();
+                if (!last.isEmpty()) {
+                    return last;
+                }
+            }
+            String xRealIp = request.getHeader("X-Real-IP");
+            if (xRealIp != null && !xRealIp.isBlank()) {
+                return xRealIp.trim();
+            }
         }
-
-        String xRealIp = request.getHeader("X-Real-IP");
-        if (xRealIp != null && !xRealIp.isEmpty()) {
-            return xRealIp;
-        }
-
         return request.getRemoteAddr();
     }
 
