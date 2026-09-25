@@ -87,6 +87,7 @@ public class AgendamentoService {
             cliente = clienteService.getOrCreateCliente(salon.getId(), operador.getUsername());
             log.info("Cliente agendando para si: usuarioId={} clienteId={}", operador.getId(), cliente.getId());
         } else if (request.getClienteId() != null) {
+            verificarOperadorDoSalao(operador, salon);
             cliente = clienteRepository.findById(request.getClienteId())
                     .orElseThrow(() -> new ResourceNotFoundException("Cliente", request.getClienteId()));
             if (cliente.getSalon() == null || !cliente.getSalon().getId().equals(salon.getId())) {
@@ -728,6 +729,23 @@ public class AgendamentoService {
      * resolve to a salon — a staff JWT with no salonId claim means the account was never properly
      * linked to a salon and must not be allowed to touch any salon's appointments.
      */
+    /**
+     * A equipe só cria agendamentos no próprio salão. Antes só se validava que cliente e
+     * profissional eram do mesmo salão — um admin/recepcionista de outro salão agendava
+     * livremente com profissional e cliente alheios. Com token JWT, o salão do token precisa ser
+     * o do profissional; sem token (API pública por chave), o operador é o admin do salão da
+     * chave e precisa ser o admin do salão do profissional.
+     */
+    private void verificarOperadorDoSalao(Usuario operador, Salon salon) {
+        Long tenant = TenantContext.getCurrentTenant();
+        boolean permitido = tenant != null
+                ? tenant.equals(salon.getId())
+                : operador != null && salon.getAdmin() != null && salon.getAdmin().getId().equals(operador.getId());
+        if (!permitido) {
+            throw new AccessDeniedException("Acesso negado: profissional pertence a outro estabelecimento");
+        }
+    }
+
     private void enforceStaffTenant(Long agendamentoSalonId) {
         if (TenantContext.getCurrentTenant() == null) {
             throw new AccessDeniedException("Acesso negado: usuário sem salão vinculado");
