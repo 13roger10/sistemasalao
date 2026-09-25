@@ -71,22 +71,41 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
            "AND u.role = :role ORDER BY u.criadoEm DESC")
     Page<Usuario> searchByNomeOrEmailAndRole(@Param("search") String search, @Param("role") Role role, Pageable pageable);
 
-    // Query para buscar usuários por salon (via profissional, vínculo direto para recepcionista, ou admin dono)
+    // Equipe de um salão: profissionais, recepcionistas (vínculo direto) e o admin dono DESSE salão
+    // (antes a condição "u.role = 'ADMIN'" trazia os administradores de todos os salões).
     @Query("SELECT DISTINCT u FROM Usuario u " +
            "LEFT JOIN Profissional p ON p.usuario = u " +
-           "WHERE p.salon.id = :salonId OR u.salon.id = :salonId OR u.role = 'ADMIN'")
+           "WHERE p.salon.id = :salonId OR u.salon.id = :salonId " +
+           "OR EXISTS (SELECT s FROM Salon s WHERE s.admin = u AND s.id = :salonId)")
     Page<Usuario> findBySalonId(@Param("salonId") Long salonId, Pageable pageable);
 
     @Query("SELECT DISTINCT u FROM Usuario u " +
            "LEFT JOIN Profissional p ON p.usuario = u " +
-           "WHERE (p.salon.id = :salonId OR u.salon.id = :salonId OR u.role = 'ADMIN') AND u.role = :role")
+           "WHERE (p.salon.id = :salonId OR u.salon.id = :salonId " +
+           "OR EXISTS (SELECT s FROM Salon s WHERE s.admin = u AND s.id = :salonId)) AND u.role = :role")
     Page<Usuario> findBySalonIdAndRole(@Param("salonId") Long salonId, @Param("role") Role role, Pageable pageable);
+
+    // Todos os usuários vinculados a um salão — equipe, admin dono e clientes do salão —, com busca
+    // por nome/e-mail (search vazio = todos). Usado na listagem do ADMIN, restrita ao próprio salão.
+    String VINCULADO_AO_SALAO =
+           "(u.salon.id = :salonId " +
+           "OR EXISTS (SELECT p FROM Profissional p WHERE p.usuario = u AND p.salon.id = :salonId) " +
+           "OR EXISTS (SELECT c FROM Cliente c WHERE c.usuario = u AND c.salon.id = :salonId) " +
+           "OR EXISTS (SELECT s FROM Salon s WHERE s.admin = u AND s.id = :salonId))";
+    String BUSCA_NOME_EMAIL =
+           "(LOWER(u.nome) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))";
+
+    @Query("SELECT u FROM Usuario u WHERE " + VINCULADO_AO_SALAO + " AND " + BUSCA_NOME_EMAIL +
+           " ORDER BY u.criadoEm DESC")
+    Page<Usuario> searchVinculadosAoSalao(@Param("salonId") Long salonId, @Param("search") String search,
+                                           Pageable pageable);
+
+    @Query("SELECT u FROM Usuario u WHERE " + VINCULADO_AO_SALAO + " AND " + BUSCA_NOME_EMAIL +
+           " AND u.role = :role ORDER BY u.criadoEm DESC")
+    Page<Usuario> searchVinculadosAoSalaoAndRole(@Param("salonId") Long salonId, @Param("search") String search,
+                                                  @Param("role") Role role, Pageable pageable);
 
     // Recepcionistas ativos vinculados diretamente a um salão (para notificações da equipe)
     List<Usuario> findByRoleAndSalonIdAndAtivoTrue(Role role, Long salonId);
-
-    // Buscar usuários CLIENTE que ainda não estão vinculados a um salão específico
-    @Query("SELECT u FROM Usuario u WHERE u.role = 'CLIENTE' AND u.ativo = true " +
-           "AND NOT EXISTS (SELECT c FROM Cliente c WHERE c.usuario = u AND c.salon.id = :salonId)")
-    List<Usuario> findClientesNaoVinculadosAoSalon(@Param("salonId") Long salonId);
 }
