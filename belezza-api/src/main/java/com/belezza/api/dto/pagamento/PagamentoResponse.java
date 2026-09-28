@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Builder
@@ -31,6 +32,18 @@ public class PagamentoResponse {
     private Long registradoPorId;
     private String registradoPorNome;
 
+    /** Em dinheiro: valor entregue pelo cliente e troco devolvido. */
+    private BigDecimal valorRecebido;
+    private BigDecimal troco;
+
+    /**
+     * Apenas na resposta do registro: todas as partes gravadas (uma, ou várias no pagamento
+     * dividido), o total do atendimento e o troco somado de todas as partes em dinheiro.
+     */
+    private List<PagamentoResponse> partes;
+    private BigDecimal totalAtendimento;
+    private BigDecimal trocoTotal;
+
     public static PagamentoResponse fromEntity(Pagamento pagamento) {
         return PagamentoResponse.builder()
                 .id(pagamento.getId())
@@ -46,6 +59,8 @@ public class PagamentoResponse {
                 .criadoEm(pagamento.getCriadoEm())
                 .registradoPorId(pagamento.getRegistradoPorId())
                 .registradoPorNome(pagamento.getRegistradoPorNome())
+                .valorRecebido(pagamento.getValorRecebido())
+                .troco(pagamento.getTroco())
                 .build();
     }
 }

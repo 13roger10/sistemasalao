@@ -35,6 +35,13 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long> 
     @Query(value = "SELECT id FROM profissionais WHERE id = :profId FOR UPDATE", nativeQuery = true)
     Long lockProfissional(@Param("profId") Long profissionalId);
 
+    /**
+     * Trava o agendamento até o fim da transação — serializa pagamentos simultâneos do mesmo
+     * atendimento (duplo clique em "Pagar"), para o saldo a pagar ser conferido um de cada vez.
+     */
+    @Query(value = "SELECT id FROM agendamentos WHERE id = :id FOR UPDATE", nativeQuery = true)
+    Long lockAgendamento(@Param("id") Long agendamentoId);
+
     // Check for scheduling conflicts
     @Query("SELECT a FROM Agendamento a WHERE a.profissional.id = :profId " +
            "AND a.status NOT IN ('CANCELADO', 'NO_SHOW') " +

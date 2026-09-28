@@ -190,7 +190,7 @@ public class CaixaService {
         if (saiDaGaveta) {
             BigDecimal disponivel = calcularAoVivo(caixa).dinheiroEsperado();
             if (valor.compareTo(disponivel) > 0) {
-                throw new BusinessException(String.format(
+                throw new BusinessException(String.format(java.util.Locale.forLanguageTag("pt-BR"),
                         "Valor maior que o dinheiro disponível no caixa (R$ %.2f)", disponivel));
             }
         }

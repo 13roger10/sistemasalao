@@ -218,10 +218,11 @@ public class ClienteService {
                     ? agendamento.getProfissional().getUsuario().getNome()
                     : "—";
 
-            // Valor de um pagamento realmente aprovado para este agendamento (se houver)
-            BigDecimal valorPagoAprovado = pagamentoRepository.findByAgendamentoId(agendamento.getId())
+            // Valor realmente pago (soma das partes aprovadas — pagamento dividido gera várias); nulo se nada aprovado
+            BigDecimal valorPagoAprovado = pagamentoRepository.findByAgendamentoIdOrderByCriadoEmAsc(agendamento.getId()).stream()
                     .filter(p -> p.getStatus() == StatusPagamento.APROVADO)
                     .map(Pagamento::getValor)
+                    .reduce(BigDecimal::add)
                     .orElse(null);
 
             // "Total gasto" só soma o que foi de fato pago; agendamentos sem pagamento aprovado não contam

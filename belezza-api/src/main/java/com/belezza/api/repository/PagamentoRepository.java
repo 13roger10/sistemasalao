@@ -12,12 +12,17 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 @Repository
 public interface PagamentoRepository extends JpaRepository<Pagamento, Long> {
 
-    Optional<Pagamento> findByAgendamentoId(Long agendamentoId);
+    /** Partes de pagamento de um atendimento (pagamento dividido gera várias), mais antigas primeiro. */
+    List<Pagamento> findByAgendamentoIdOrderByCriadoEmAsc(Long agendamentoId);
+
+    /** Total já pago (aprovado, sem estornos) de um atendimento. */
+    @Query("SELECT COALESCE(SUM(p.valor), 0) FROM Pagamento p WHERE p.agendamento.id = :agendamentoId " +
+           "AND p.status = 'APROVADO'")
+    BigDecimal sumAprovadoByAgendamentoId(@Param("agendamentoId") Long agendamentoId);
 
     /** Pagamentos aprovados de um caixa, somados por forma: [forma, soma]. */
     @Query("SELECT p.forma, SUM(p.valor) FROM Pagamento p WHERE p.caixa.id = :caixaId " +
@@ -50,13 +55,26 @@ public interface PagamentoRepository extends JpaRepository<Pagamento, Long> {
         @Param("fim") LocalDateTime fim
     );
 
-    @Query("SELECT AVG(p.valor) FROM Pagamento p WHERE p.salon.id = :salonId " +
+    /** Atendimentos distintos com pagamento aprovado no período. */
+    @Query("SELECT COUNT(DISTINCT p.agendamento.id) FROM Pagamento p WHERE p.salon.id = :salonId " +
            "AND p.status = 'APROVADO' AND p.processadoEm BETWEEN :inicio AND :fim")
-    BigDecimal avgTicketMedioBySalonIdAndPeriod(
+    long countAtendimentosPagosBySalonIdAndPeriod(
         @Param("salonId") Long salonId,
         @Param("inicio") LocalDateTime inicio,
         @Param("fim") LocalDateTime fim
     );
+
+    /**
+     * Ticket médio = faturamento ÷ atendimentos pagos (não a média por linha de pagamento: um
+     * pagamento dividido em duas partes contaria como dois tickets pela metade). Nulo sem pagamentos.
+     */
+    default BigDecimal avgTicketMedioBySalonIdAndPeriod(Long salonId, LocalDateTime inicio, LocalDateTime fim) {
+        long atendimentos = countAtendimentosPagosBySalonIdAndPeriod(salonId, inicio, fim);
+        if (atendimentos == 0) return null;
+        BigDecimal total = sumFaturamentoBySalonIdAndPeriod(salonId, inicio, fim);
+        return (total != null ? total : BigDecimal.ZERO)
+                .divide(BigDecimal.valueOf(atendimentos), 2, java.math.RoundingMode.HALF_UP);
+    }
 
     // Find payments by salon, status and period (for metrics)
     @Query("SELECT p FROM Pagamento p WHERE p.salon.id = :salonId " +

@@ -8,6 +8,7 @@ import com.belezza.api.dto.cliente.ClienteResponse;
 import com.belezza.api.dto.pagamento.PagamentoRequest;
 import com.belezza.api.dto.pagamento.PagamentoResponse;
 import com.belezza.api.dto.recepcao.ReceptionAppointmentResponse;
+import com.belezza.api.entity.StatusPagamento;
 import com.belezza.api.entity.Usuario;
 import com.belezza.api.security.TenantContext;
 import com.belezza.api.service.AgendamentoService;
@@ -29,6 +30,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -77,10 +80,12 @@ public class ReceptionController {
                 .collect(Collectors.toList());
 
         // Fetch all payments for the salon and build lookup map
+        // Um atendimento pode ter várias partes (pagamento dividido): agrega por agendamento
         Map<Long, PagamentoResponse> payMap = new HashMap<>();
         pagamentoService.listarPorSalon(salonId, PageRequest.of(0, 500), operador)
-                .getContent()
-                .forEach(p -> payMap.put(p.getAgendamentoId(), p));
+                .getContent().stream()
+                .collect(Collectors.groupingBy(PagamentoResponse::getAgendamentoId))
+                .forEach((agendamentoId, partes) -> payMap.put(agendamentoId, agregarPartes(partes)));
 
         List<ReceptionAppointmentResponse> result = allAppts.stream()
                 .map(a -> ReceptionAppointmentResponse.from(a, payMap.get(a.getId())))
@@ -88,6 +93,34 @@ public class ReceptionController {
 
         log.info("GET /recepcao/appointments salonId={} date={} → {} appointments", salonId, targetDate, result.size());
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Resumo das partes de pagamento de um atendimento: pago se houver parte aprovada, valor =
+     * soma das aprovadas e formas juntas (ex.: "PIX + Dinheiro"); sem aprovadas, a parte mais recente.
+     */
+    private PagamentoResponse agregarPartes(List<PagamentoResponse> partes) {
+        List<PagamentoResponse> aprovadas = partes.stream()
+                .filter(p -> p.getStatus() == StatusPagamento.APROVADO)
+                .toList();
+        if (aprovadas.isEmpty()) {
+            return partes.stream().max(Comparator.comparing(PagamentoResponse::getId)).orElseThrow();
+        }
+        PagamentoResponse base = aprovadas.stream().max(Comparator.comparing(PagamentoResponse::getId)).orElseThrow();
+        return PagamentoResponse.builder()
+                .id(base.getId())
+                .agendamentoId(base.getAgendamentoId())
+                .salonId(base.getSalonId())
+                .status(StatusPagamento.APROVADO)
+                .statusDescricao(base.getStatusDescricao())
+                .forma(base.getForma())
+                .formaDescricao(aprovadas.stream().map(PagamentoResponse::getFormaDescricao).distinct()
+                        .collect(Collectors.joining(" + ")))
+                .valor(aprovadas.stream().map(PagamentoResponse::getValor).reduce(BigDecimal.ZERO, BigDecimal::add))
+                .processadoEm(base.getProcessadoEm())
+                .criadoEm(base.getCriadoEm())
+                .partes(aprovadas)
+                .build();
     }
 
     @PostMapping("/appointments")

@@ -38,6 +38,7 @@ import { api } from "@/services/salon/api";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import { useToast } from "@/components/ui/Toast";
 import { getSalonIdFromToken } from "@/lib/salon-api";
+import { PagamentoForm, type PagamentoFormState } from "@/components/salon/PagamentoForm";
 import type {
   CashRegister,
   CashRegisterOpenInput,
@@ -66,12 +67,15 @@ interface AgendamentoPendente {
   dataHora: string;
   status: string;
   valorCobrado?: number;
+  /** Já pago (partes aprovadas) — o formulário cobra só o que falta. */
+  valorPago?: number;
 }
 
 interface PagamentoBackend {
   id: number;
   agendamentoId: number;
   status: string;
+  valor: number;
 }
 
 interface AuditLog {
@@ -259,8 +263,7 @@ export default function FinanceCashPage() {
   const [pendingAppointments, setPendingAppointments] = useState<AgendamentoPendente[]>([]);
   const [isLoadingPending, setIsLoadingPending] = useState(false);
   const [paymentTarget, setPaymentTarget] = useState<AgendamentoPendente | null>(null);
-  const [paymentValor, setPaymentValor] = useState("");
-  const [paymentForma, setPaymentForma] = useState("");
+  const [paymentState, setPaymentState] = useState<PagamentoFormState>({ partes: [], valido: false, troco: 0 });
 
   // Estados dos formulários
   const [openCashForm, setOpenCashForm] = useState<CashRegisterOpenInput>({
@@ -378,8 +381,7 @@ export default function FinanceCashPage() {
   const loadPendingAppointments = async () => {
     setIsLoadingPending(true);
     setPaymentTarget(null);
-    setPaymentValor("");
-    setPaymentForma("");
+    setPaymentState({ partes: [], valido: false, troco: 0 });
     try {
       const salonId = getSalonIdFromToken();
       if (!salonId) throw new Error("Usuário sem salão vinculado");
@@ -397,15 +399,16 @@ export default function FinanceCashPage() {
       const appts = Array.isArray(apptRes) ? apptRes : apptRes.content ?? [];
       const pays = Array.isArray(payRes) ? payRes : payRes.content ?? [];
 
-      const pagosIds = new Set(
-        pays.filter((p) => p.status === "APROVADO").map((p) => p.agendamentoId)
-      );
+      // Soma paga por atendimento (pagamento dividido tem várias partes; estornadas não contam)
+      const pagoPorAtendimento = new Map<number, number>();
+      pays
+        .filter((p) => p.status === "APROVADO")
+        .forEach((p) => pagoPorAtendimento.set(p.agendamentoId, (pagoPorAtendimento.get(p.agendamentoId) ?? 0) + Number(p.valor)));
 
-      const pendentes = appts.filter(
-        (a) =>
-          (a.status === "CONCLUIDO" || a.status === "EM_ANDAMENTO") &&
-          !pagosIds.has(a.id)
-      );
+      const pendentes = appts
+        .filter((a) => a.status === "CONCLUIDO" || a.status === "EM_ANDAMENTO")
+        .map((a) => ({ ...a, valorPago: pagoPorAtendimento.get(a.id) ?? 0 }))
+        .filter((a) => a.valorCobrado == null || a.valorPago < Number(a.valorCobrado) - 0.001);
 
       setPendingAppointments(pendentes);
     } catch (error) {
@@ -424,25 +427,22 @@ export default function FinanceCashPage() {
 
   const handleSelectPaymentTarget = (appt: AgendamentoPendente) => {
     setPaymentTarget(appt);
-    setPaymentValor(appt.valorCobrado != null ? String(appt.valorCobrado) : "");
-    setPaymentForma("");
+    setPaymentState({ partes: [], valido: false, troco: 0 });
   };
 
   const handleConfirmPayment = async () => {
-    if (!paymentTarget || !paymentForma) return;
-    const valor = parseFloat(paymentValor.replace(",", "."));
-    if (isNaN(valor) || valor <= 0) return;
+    if (!paymentTarget || !paymentState.valido) return;
 
     setIsSubmitting(true);
     try {
-      await api.post("/pagamentos", {
+      const r = await api.post<{ trocoTotal?: number }>("/pagamentos", {
         agendamentoId: paymentTarget.id,
-        valor,
-        forma: paymentForma,
+        partes: paymentState.partes,
       });
       setIsRegisterPaymentModalOpen(false);
       setPaymentTarget(null);
-      toast.success("Pagamento registrado");
+      const troco = Number(r?.trocoTotal ?? 0);
+      toast.success("Pagamento registrado", troco > 0 ? `Troco: ${formatCurrency(troco)}` : undefined);
       loadData();
     } catch (error) {
       console.error("Erro ao registrar pagamento:", error);
@@ -1062,7 +1062,7 @@ export default function FinanceCashPage() {
               <Button
                 onClick={handleConfirmPayment}
                 isLoading={isSubmitting}
-                disabled={!paymentForma || !paymentValor}
+                disabled={!paymentState.valido}
               >
                 Confirmar Pagamento
               </Button>
@@ -1123,49 +1123,18 @@ export default function FinanceCashPage() {
               </p>
             </div>
 
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Valor *
-              </label>
-              <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={paymentValor}
-                  onChange={(e) => setPaymentValor(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 bg-white pl-10 pr-4 py-2.5 text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Forma de Pagamento *
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { value: "DINHEIRO", label: "Dinheiro", icon: <Wallet className="h-4 w-4" /> },
-                  { value: "PIX", label: "PIX", icon: <QrCode className="h-4 w-4" /> },
-                  { value: "CARTAO_CREDITO", label: "Cartão de Crédito", icon: <CreditCard className="h-4 w-4" /> },
-                  { value: "CARTAO_DEBITO", label: "Cartão de Débito", icon: <CreditCard className="h-4 w-4" /> },
-                ].map((f) => (
-                  <button
-                    key={f.value}
-                    onClick={() => setPaymentForma(f.value)}
-                    className={`flex items-center gap-2 rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-all ${
-                      paymentForma === f.value
-                        ? "border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300"
-                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
-                    }`}
-                  >
-                    {f.icon}
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {paymentTarget.valorCobrado != null ? (
+              <PagamentoForm
+                key={paymentTarget.id}
+                total={Number(paymentTarget.valorCobrado) - (paymentTarget.valorPago ?? 0)}
+                onChange={setPaymentState}
+                accent="violet"
+              />
+            ) : (
+              <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                O valor deste atendimento não está disponível. Confira o agendamento antes de registrar o pagamento.
+              </p>
+            )}
           </div>
         )}
       </Modal>

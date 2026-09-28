@@ -296,6 +296,13 @@ class AnaCarlosAtendimentoPagamentoFlowIT {
             step7_createReceptionistProfile();
         }
 
+        // Pagamento exige caixa aberto no salão (BUG-006)
+        mockMvc.perform(post("/api/salon/finance/cash-register/open")
+                        .header("Authorization", "Bearer " + recepcionistaToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"openingBalance\": 0}"))
+                .andExpect(status().isCreated());
+
         String pagamentoRequest = """
             {
                 "agendamentoId": %d,
@@ -327,6 +334,6 @@ class AnaCarlosAtendimentoPagamentoFlowIT {
                 .andExpect(jsonPath("$.status").value("APROVADO"))
                 .andExpect(jsonPath("$.registradoPorNome").value("Recepcionista Beatriz"));
 
-        assertThat(pagamentoRepository.findByAgendamentoId(appointmentId)).isPresent();
+        assertThat(pagamentoRepository.findByAgendamentoIdOrderByCriadoEmAsc(appointmentId)).hasSize(1);
     }
 }

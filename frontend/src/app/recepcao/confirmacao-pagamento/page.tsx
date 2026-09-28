@@ -3,12 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/services/salon/api";
+import { PagamentoForm, type PagamentoFormState, type PartePagamento } from "@/components/salon/PagamentoForm";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   ArrowLeft, Loader2, AlertCircle, RefreshCw,
   CheckCircle2, Clock, User, Scissors, CalendarCheck,
-  X, Banknote, QrCode, CreditCard,
+  X,
 } from "lucide-react";
 
 const SALON_ID = "1";
@@ -72,15 +73,6 @@ function canConfirm(status: string): boolean {
     status === "completed" || status === "in_progress";
 }
 
-// ─── Forma options ────────────────────────────────────────────────────────────
-
-const FORMAS = [
-  { value: "DINHEIRO",       label: "Dinheiro",          icon: <Banknote className="h-5 w-5" /> },
-  { value: "PIX",            label: "PIX",               icon: <QrCode className="h-5 w-5" /> },
-  { value: "CARTAO_CREDITO", label: "Cartão de Crédito", icon: <CreditCard className="h-5 w-5" /> },
-  { value: "CARTAO_DEBITO",  label: "Cartão de Débito",  icon: <CreditCard className="h-5 w-5" /> },
-];
-
 // ─── Confirmation Modal ───────────────────────────────────────────────────────
 
 function ConfirmacaoModal({
@@ -89,27 +81,23 @@ function ConfirmacaoModal({
   onClose,
 }: {
   appt: AgendamentoBackend;
-  onConfirm: (agendamentoId: number, valor: number, forma: string) => Promise<void>;
+  onConfirm: (agendamentoId: number, partes: PartePagamento[]) => Promise<void>;
   onClose: () => void;
 }) {
-  const [forma, setForma] = useState("");
-  const [valor, setValor] = useState(
-    appt.valorCobrado != null ? Number(appt.valorCobrado).toFixed(2) : ""
-  );
-  const [valorError, setValorError] = useState("");
+  const [pagamento, setPagamento] = useState<PagamentoFormState>({ partes: [], valido: false, troco: 0 });
+  const [erro, setErro] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const registradoEm = nowLabel();
+  const total = appt.valorCobrado != null ? Number(appt.valorCobrado) : null;
 
   const handleSubmit = async () => {
-    const num = parseFloat(valor.replace(",", "."));
-    if (isNaN(num) || num <= 0) {
-      setValorError("Informe um valor válido");
-      return;
-    }
-    if (!forma) return;
+    if (!pagamento.valido) return;
     setSubmitting(true);
+    setErro("");
     try {
-      await onConfirm(appt.id, num, forma);
+      await onConfirm(appt.id, pagamento.partes);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message.replace(/^\[HTTP \d+\]\s*/, "") : "Não foi possível registrar o pagamento.");
     } finally {
       setSubmitting(false);
     }
@@ -156,55 +144,20 @@ function ConfirmacaoModal({
             <span>Registrado em: <strong>{registradoEm}</strong></span>
           </div>
 
-          {/* Valor */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Valor pago <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-2.5 text-sm text-gray-500">R$</span>
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                placeholder="0,00"
-                value={valor}
-                onChange={(e) => {
-                  setValor(e.target.value);
-                  setValorError("");
-                }}
-                className={`w-full rounded-lg border py-2 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-emerald-500 ${
-                  valorError ? "border-red-400" : "border-gray-200"
-                }`}
-              />
-            </div>
-            {valorError && <p className="mt-1 text-xs text-red-500">{valorError}</p>}
-          </div>
+          {total != null ? (
+            <PagamentoForm total={total} onChange={setPagamento} accent="emerald" />
+          ) : (
+            <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              O valor deste atendimento não está disponível. Confira o agendamento antes de registrar o pagamento.
+            </p>
+          )}
 
-          {/* Forma de pagamento */}
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">
-              Forma de pagamento <span className="text-red-500">*</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {FORMAS.map((f) => (
-                <button
-                  key={f.value}
-                  onClick={() => setForma(f.value)}
-                  className={`flex items-center gap-2 rounded-lg border-2 px-3 py-3 text-sm font-medium transition-all ${
-                    forma === f.value
-                      ? "border-emerald-500 bg-emerald-50 text-emerald-700"
-                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  <span className={forma === f.value ? "text-emerald-500" : "text-gray-400"}>
-                    {f.icon}
-                  </span>
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          {erro && (
+            <p className="flex items-start gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              {erro}
+            </p>
+          )}
         </div>
 
         {/* Footer */}
@@ -218,7 +171,7 @@ function ConfirmacaoModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={submitting || !forma}
+            disabled={submitting || !pagamento.valido}
             className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
           >
             {submitting ? (
@@ -390,14 +343,15 @@ export default function ConfirmacaoPagamentoPage() {
     load();
   }, [load]);
 
-  const handleConfirmar = async (
-    agendamentoId: number,
-    valor: number,
-    forma: string
-  ) => {
-    await api.post("/pagamentos", { agendamentoId, valor, forma });
+  const handleConfirmar = async (agendamentoId: number, partes: PartePagamento[]) => {
+    const r = await api.post<{ trocoTotal?: number }>("/pagamentos", { agendamentoId, partes });
     setConfirmTarget(null);
-    showToast("Pagamento confirmado com sucesso");
+    const troco = Number(r?.trocoTotal ?? 0);
+    showToast(
+      troco > 0
+        ? `Pagamento confirmado. Troco: ${troco.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
+        : "Pagamento confirmado com sucesso"
+    );
     load();
   };
 
