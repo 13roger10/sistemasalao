@@ -31,7 +31,7 @@ public class ClienteResponse {
     private LocalDate birthDate;
     private String avatar;
 
-    // Status (active/inactive baseado em ativo e bloqueado)
+    // Status: active / inactive (cadastro desativado) / blocked (bloqueado para agendar)
     private String status;
 
     // Fidelidade
@@ -112,7 +112,8 @@ public class ClienteResponse {
                 .whatsapp(restrictSensitiveData ? null : cliente.getWhatsapp())
                 .birthDate(cliente.getDataNascimento())
                 .avatar(cliente.getUsuario().getAvatarUrl())
-                .status(cliente.isBloqueado() ? "inactive" : (cliente.isAtivo() ? "active" : "inactive"))
+                // "blocked" (excesso de no-shows / bloqueio manual) é distinto de "inactive" (cadastro desativado)
+                .status(!cliente.isAtivo() ? "inactive" : (cliente.isBloqueado() ? "blocked" : "active"))
                 // Restrict sensitive data for professionals
                 .notes(restrictSensitiveData ? null : cliente.getObservacoes())
                 .noShows(cliente.getNoShows())

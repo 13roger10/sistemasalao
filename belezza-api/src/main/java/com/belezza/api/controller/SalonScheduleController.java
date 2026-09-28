@@ -2,8 +2,6 @@ package com.belezza.api.controller;
 
 import com.belezza.api.entity.*;
 import com.belezza.api.repository.HorarioFuncionamentoSalonRepository;
-import com.belezza.api.repository.HorarioTrabalhoRepository;
-import com.belezza.api.repository.ProfissionalRepository;
 import com.belezza.api.service.SalonService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,8 +18,10 @@ import java.util.*;
 /**
  * Controller for managing business schedule and hours.
  * The admin configures which days the salon is open and the operating hours.
- * This configuration is persisted in horarios_funcionamento_salon and propagated
- * to all professionals' horarios_trabalho.
+ * This configuration is persisted in horarios_funcionamento_salon only. Professionals keep
+ * their own horarios_trabalho: availability and booking use the intersection of both, so
+ * a closed day or shorter salon hours take effect without overwriting individual schedules
+ * or days off.
  */
 @RestController
 @RequestMapping("/api/salon/schedule")
@@ -30,8 +30,6 @@ import java.util.*;
 public class SalonScheduleController {
 
     private final SalonService salonService;
-    private final ProfissionalRepository profissionalRepository;
-    private final HorarioTrabalhoRepository horarioTrabalhoRepository;
     private final HorarioFuncionamentoSalonRepository horarioFuncionamentoSalonRepository;
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
@@ -140,9 +138,6 @@ public class SalonScheduleController {
                 hfs.setHoraInicio(inicio);
                 hfs.setHoraFim(fim);
                 horarioFuncionamentoSalonRepository.save(hfs);
-
-                // Propagate to all professionals for this day
-                propagarDiaParaProfissionais(salon, dia, dayReq.isOpen(), inicio, fim);
             }
 
             // Update salon global opening/closing from the first open weekday
@@ -178,46 +173,6 @@ public class SalonScheduleController {
 
         // Return updated schedule
         return getSchedule(userDetails);
-    }
-
-    /**
-     * Propagates one day's open/closed state and hours to all active professionals.
-     */
-    private void propagarDiaParaProfissionais(Salon salon, DiaSemana dia,
-                                               boolean aberto,
-                                               LocalTime inicio, LocalTime fim) {
-        List<Profissional> profissionais = profissionalRepository.findBySalonIdAndAtivoTrue(salon.getId());
-
-        for (Profissional prof : profissionais) {
-            Optional<HorarioTrabalho> existing =
-                    horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(prof.getId(), dia);
-
-            if (aberto && inicio != null) {
-                if (existing.isPresent()) {
-                    HorarioTrabalho ht = existing.get();
-                    ht.setAtivo(true);
-                    ht.setHoraInicio(inicio);
-                    ht.setHoraFim(fim);
-                    horarioTrabalhoRepository.save(ht);
-                } else {
-                    HorarioTrabalho ht = HorarioTrabalho.builder()
-                            .profissional(prof)
-                            .diaSemana(dia)
-                            .horaInicio(inicio)
-                            .horaFim(fim)
-                            .ativo(true)
-                            .build();
-                    horarioTrabalhoRepository.save(ht);
-                }
-            } else {
-                // Salon closed on this day → disable professional's record
-                existing.ifPresent(ht -> {
-                    ht.setAtivo(false);
-                    horarioTrabalhoRepository.save(ht);
-                });
-            }
-        }
-        log.info("Dia {} propagado para {} profissionais (aberto={})", dia, profissionais.size(), aberto);
     }
 
     private Salon getSalon(UserDetails userDetails) {

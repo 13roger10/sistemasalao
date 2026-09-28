@@ -1,6 +1,14 @@
 package com.belezza.api.controller;
 
 import com.belezza.api.entity.Agendamento;
+import com.belezza.api.entity.Caixa;
+import com.belezza.api.entity.MovimentacaoCaixa;
+import com.belezza.api.entity.StatusPagamento;
+import com.belezza.api.entity.TipoMovimentacaoCaixa;
+import com.belezza.api.exception.BusinessException;
+import com.belezza.api.repository.MovimentacaoCaixaRepository;
+import com.belezza.api.security.TenantContext;
+import com.belezza.api.service.CaixaService;
 import com.belezza.api.entity.Cliente;
 import com.belezza.api.entity.FormaPagamento;
 import com.belezza.api.entity.Pagamento;
@@ -19,6 +27,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -48,6 +57,8 @@ public class FinanceController {
     private final PagamentoRepository pagamentoRepository;
     private final AgendamentoRepository agendamentoRepository;
     private final TenantIsolationService tenantIsolationService;
+    private final CaixaService caixaService;
+    private final MovimentacaoCaixaRepository movimentacaoCaixaRepository;
 
     /**
      * Sums approved payments for a salon/period grouped by payment method.
@@ -73,38 +84,71 @@ public class FinanceController {
 
     // ===== TRANSACTIONS =====
 
+    /**
+     * Salão da requisição: o unitId informado (se houver) precisa ser o salão do usuário; sem
+     * unitId usa o salão do token. Antes o padrão era o salão 1 e a verificação liberava token
+     * sem salão.
+     */
+    private Long resolverSalao(String unitId) {
+        Long salonId = unitId != null && !unitId.isBlank() ? Long.valueOf(unitId) : TenantContext.getCurrentTenant();
+        tenantIsolationService.assertStaffTenant(salonId);
+        return salonId;
+    }
+
     @GetMapping("/transactions")
     @Transactional(readOnly = true)
-    @Operation(summary = "Listar transações", description = "Lista os pagamentos registrados como transações do caixa. RECEPCIONISTA recebe apenas os que ela mesma registrou.")
+    @Operation(summary = "Listar transações", description = "Lista pagamentos e movimentações de caixa (sangrias, suprimentos, despesas, lançamentos e estornos), mais recentes primeiro. RECEPCIONISTA recebe apenas os que ela mesma registrou.")
     public ResponseEntity<PaginatedTransactionsResponse> listTransactions(
-            @RequestParam(required = false, defaultValue = "1") Long unitId,
+            @RequestParam(required = false) String unitId,
             @RequestParam(required = false, defaultValue = "1") int page,
             @RequestParam(required = false, defaultValue = "50") int limit,
             @AuthenticationPrincipal Usuario operador) {
-        log.debug("Listing finance transactions for unitId: {}", unitId);
-        tenantIsolationService.assertRequestedSalon(unitId);
+        Long salonId = resolverSalao(unitId);
+        boolean soDaRecepcionista = operador != null && operador.getRole() == Role.RECEPCIONISTA;
 
-        // Frontend pagination is 1-based; Spring's Pageable is 0-based.
-        Pageable pageable = PageRequest.of(Math.max(0, page - 1), limit, Sort.by(Sort.Direction.DESC, "criadoEm"));
+        // Pagamentos e movimentações vêm de tabelas diferentes: busca as primeiras page*limit de
+        // cada uma, junta por data e recorta a página pedida (paginação 1-based do frontend).
+        int janela = Math.max(1, page) * limit;
+        Pageable topo = PageRequest.of(0, janela, Sort.by(Sort.Direction.DESC, "criadoEm"));
+        Page<Pagamento> pagamentos = soDaRecepcionista
+                ? pagamentoRepository.findBySalonIdAndRegistradoPorId(salonId, operador.getId(), topo)
+                : pagamentoRepository.findBySalonId(salonId, topo);
+        Page<MovimentacaoCaixa> movimentacoes = movimentacaoCaixaRepository.findBySalonId(salonId, PageRequest.of(0, janela));
 
-        Page<Pagamento> pagamentos = (operador != null && operador.getRole() == Role.RECEPCIONISTA)
-                ? pagamentoRepository.findBySalonIdAndRegistradoPorId(unitId, operador.getId(), pageable)
-                : pagamentoRepository.findBySalonId(unitId, pageable);
+        List<TransactionResponse> todas = new ArrayList<>();
+        pagamentos.getContent().forEach(p -> todas.add(toTransactionResponse(p)));
+        movimentacoes.getContent().stream()
+                .filter(m -> !soDaRecepcionista || operador.getId().equals(m.getRegistradoPorId()))
+                .forEach(m -> todas.add(toTransactionResponse(m)));
+        todas.sort(Comparator.comparing(TransactionResponse::createdAt, Comparator.nullsLast(Comparator.reverseOrder())));
 
-        List<TransactionResponse> data = pagamentos.getContent().stream()
-                .map(this::toTransactionResponse)
-                .toList();
-
-        PageMeta meta = new PageMeta(
-                pagamentos.getTotalElements(),
-                page,
-                limit,
-                pagamentos.getTotalPages(),
-                pagamentos.hasNext(),
-                pagamentos.hasPrevious()
-        );
-
+        int from = Math.min(todas.size(), (Math.max(1, page) - 1) * limit);
+        List<TransactionResponse> data = todas.subList(from, Math.min(todas.size(), from + limit));
+        long total = pagamentos.getTotalElements() + movimentacoes.getTotalElements();
+        int totalPages = (int) Math.ceil(total / (double) limit);
+        PageMeta meta = new PageMeta(total, page, limit, totalPages, page < totalPages, page > 1);
         return ResponseEntity.ok(new PaginatedTransactionsResponse(data, data, meta));
+    }
+
+    @PostMapping("/transactions")
+    @Operation(summary = "Lançamento no caixa", description = "Registra no caixa aberto uma entrada avulsa (income), despesa (expense), sangria (withdrawal) ou suprimento (supply).")
+    public ResponseEntity<TransactionResponse> createTransaction(
+            @RequestParam(required = false) String unitId,
+            @RequestBody TransactionCreateRequest request,
+            @AuthenticationPrincipal Usuario operador) {
+        Long salonId = resolverSalao(unitId);
+        TipoMovimentacaoCaixa tipo = switch (request.type() != null ? request.type() : "") {
+            case "income" -> TipoMovimentacaoCaixa.RECEITA;
+            case "expense" -> TipoMovimentacaoCaixa.DESPESA;
+            case "withdrawal" -> TipoMovimentacaoCaixa.SANGRIA;
+            case "supply" -> TipoMovimentacaoCaixa.SUPRIMENTO;
+            default -> throw new BusinessException("Tipo de lançamento inválido: use income, expense, withdrawal ou supply");
+        };
+        MovimentacaoCaixa mov = caixaService.registrarMovimentacao(salonId, null, tipo,
+                request.amount() != null ? BigDecimal.valueOf(request.amount()) : null,
+                toFormaPagamento(request.paymentMethod()),
+                request.description(), request.category(), operador);
+        return ResponseEntity.status(HttpStatus.CREATED).body(toTransactionResponse(mov));
     }
 
     private TransactionResponse toTransactionResponse(Pagamento pagamento) {
@@ -115,14 +159,15 @@ public class FinanceController {
         String clienteNome = cliente != null && cliente.getUsuario() != null
                 ? cliente.getUsuario().getNome() : null;
         String servicoNome = servico != null ? servico.getNome() : "Atendimento";
+        boolean estornado = pagamento.getStatus() == StatusPagamento.ESTORNADO;
 
         return new TransactionResponse(
                 String.valueOf(pagamento.getId()),
-                String.valueOf(pagamento.getSalon().getId()),
+                pagamento.getCaixa() != null ? String.valueOf(pagamento.getCaixa().getId()) : null,
                 String.valueOf(pagamento.getSalon().getId()),
                 "income",
                 "service",
-                clienteNome != null ? servicoNome + " - " + clienteNome : servicoNome,
+                (clienteNome != null ? servicoNome + " - " + clienteNome : servicoNome) + (estornado ? " (estornado)" : ""),
                 pagamento.getValor().doubleValue(),
                 mapFormaPagamento(pagamento.getForma()),
                 agendamento != null ? String.valueOf(agendamento.getId()) : null,
@@ -132,6 +177,41 @@ public class FinanceController {
                 pagamento.getRegistradoPorNome(),
                 pagamento.getCriadoEm(),
                 pagamento.getCriadoEm()
+        );
+    }
+
+    private TransactionResponse toTransactionResponse(MovimentacaoCaixa mov) {
+        String type = switch (mov.getTipo()) {
+            case RECEITA, SUPRIMENTO -> "income";
+            case DESPESA, ESTORNO -> "expense";
+            case SANGRIA -> "withdrawal";
+        };
+        String category = mov.getCategoria() != null ? mov.getCategoria()
+                : switch (mov.getTipo()) {
+                    case RECEITA, SUPRIMENTO -> "other_income";
+                    default -> "other_expense";
+                };
+        String prefixo = switch (mov.getTipo()) {
+            case SANGRIA -> "Sangria - ";
+            case SUPRIMENTO -> "Suprimento - ";
+            default -> "";
+        };
+        return new TransactionResponse(
+                String.valueOf(mov.getId()),
+                String.valueOf(mov.getCaixa().getId()),
+                String.valueOf(mov.getCaixa().getSalon().getId()),
+                type,
+                category,
+                prefixo + mov.getDescricao(),
+                mov.getValor().doubleValue(),
+                mapFormaPagamento(mov.getForma()),
+                null,
+                null,
+                null,
+                mov.getRegistradoPorId() != null ? String.valueOf(mov.getRegistradoPorId()) : null,
+                mov.getRegistradoPorNome(),
+                mov.getCriadoEm(),
+                mov.getCriadoEm()
         );
     }
 
@@ -146,149 +226,134 @@ public class FinanceController {
         };
     }
 
+    private FormaPagamento toFormaPagamento(String paymentMethod) {
+        if (paymentMethod == null) return FormaPagamento.DINHEIRO;
+        return switch (paymentMethod) {
+            case "pix" -> FormaPagamento.PIX;
+            case "credit_card" -> FormaPagamento.CARTAO_CREDITO;
+            case "debit_card" -> FormaPagamento.CARTAO_DEBITO;
+            case "voucher" -> FormaPagamento.VALE;
+            case "transfer" -> FormaPagamento.TRANSFERENCIA;
+            default -> FormaPagamento.DINHEIRO;
+        };
+    }
+
     // ===== CASH REGISTER =====
 
     @GetMapping("/cash-register/current")
     @Transactional(readOnly = true)
-    @Operation(summary = "Caixa atual", description = "Retorna o caixa aberto atual, com totais somados a partir dos pagamentos reais de hoje")
+    @Operation(summary = "Caixa atual", description = "Retorna o caixa aberto do salão com os totais reais, ou corpo vazio quando não há caixa aberto")
     public ResponseEntity<CashRegisterResponse> getCurrentCashRegister(
             @RequestParam(required = false) String unitId) {
-        Long salonId = unitId != null ? Long.valueOf(unitId) : 1L;
-        log.debug("Getting current cash register for salonId: {}", salonId);
-        tenantIsolationService.assertRequestedSalon(salonId);
+        Long salonId = resolverSalao(unitId);
+        return caixaService.buscarAberto(salonId)
+                .map(c -> ResponseEntity.ok(toCashRegisterResponse(c)))
+                .orElseGet(() -> ResponseEntity.ok().build());
+    }
 
-        LocalDate today = LocalDate.now();
-        LocalDateTime inicio = today.atStartOfDay();
-        LocalDateTime fim = today.plusDays(1).atStartOfDay();
-
-        Map<FormaPagamento, BigDecimal> totals = sumByForma(salonId, inicio, fim);
-        double cashTotal = formaTotal(totals, FormaPagamento.DINHEIRO);
-        double pixTotal = formaTotal(totals, FormaPagamento.PIX);
-        double creditCardTotal = formaTotal(totals, FormaPagamento.CARTAO_CREDITO);
-        double debitCardTotal = formaTotal(totals, FormaPagamento.CARTAO_DEBITO) + formaTotal(totals, FormaPagamento.TRANSFERENCIA);
-        double voucherTotal = formaTotal(totals, FormaPagamento.VALE);
-        double totalIncome = cashTotal + pixTotal + creditCardTotal + debitCardTotal + voucherTotal;
-
-        CashRegisterResponse cashRegister = new CashRegisterResponse(
-            String.valueOf(salonId),
-            String.valueOf(salonId),
-            "1",
-            "Sistema",
-            "open",
-            inicio,
-            null,
-            null,
-            null,
-            0.0,
-            totalIncome,
-            0.0,
-            0.0,
-            cashTotal,
-            pixTotal,
-            creditCardTotal,
-            debitCardTotal,
-            voucherTotal,
-            inicio,
-            LocalDateTime.now()
-        );
-
-        return ResponseEntity.ok(cashRegister);
+    @GetMapping("/cash-register")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Histórico de caixas", description = "Lista os caixas do salão, mais recentes primeiro")
+    public ResponseEntity<PaginatedCashRegistersResponse> listCashRegisters(
+            @RequestParam(required = false) String unitId,
+            @RequestParam(required = false, defaultValue = "1") int page,
+            @RequestParam(required = false, defaultValue = "20") int limit) {
+        Long salonId = resolverSalao(unitId);
+        Page<Caixa> caixas = caixaService.listar(salonId, PageRequest.of(Math.max(0, page - 1), limit));
+        List<CashRegisterResponse> data = caixas.getContent().stream().map(this::toCashRegisterResponse).toList();
+        PageMeta meta = new PageMeta(caixas.getTotalElements(), page, limit, caixas.getTotalPages(),
+                caixas.hasNext(), caixas.hasPrevious());
+        return ResponseEntity.ok(new PaginatedCashRegistersResponse(data, data, meta));
     }
 
     @GetMapping("/cash-register/{id}")
-    @Operation(summary = "Buscar caixa por ID", description = "Retorna um caixa específico")
-    public ResponseEntity<CashRegisterResponse> getCashRegisterById(@PathVariable String id) {
-        log.debug("Getting cash register by id: {}", id);
-
-        CashRegisterResponse cashRegister = new CashRegisterResponse(
-            id,
-            "1",
-            "1",
-            "Admin",
-            "closed",
-            LocalDateTime.now().minusDays(1).withHour(9),
-            LocalDateTime.now().minusDays(1).withHour(18),
-            "1",
-            "Admin",
-            200.0,
-            2500.0,
-            300.0,
-            200.0,
-            1000.0,
-            800.0,
-            500.0,
-            200.0,
-            0.0,
-            LocalDateTime.now().minusDays(1),
-            LocalDateTime.now().minusDays(1)
-        );
-
-        return ResponseEntity.ok(cashRegister);
+    @Transactional(readOnly = true)
+    @Operation(summary = "Buscar caixa por ID", description = "Retorna um caixa do salão com seus totais")
+    public ResponseEntity<CashRegisterResponse> getCashRegisterById(@PathVariable Long id) {
+        return ResponseEntity.ok(toCashRegisterResponse(caixaService.buscar(id)));
     }
 
     @PostMapping("/cash-register/open")
-    @Operation(summary = "Abrir caixa", description = "Abre um novo caixa")
+    @Operation(summary = "Abrir caixa", description = "Abre o caixa do salão com o saldo inicial em dinheiro. Só um caixa aberto por salão.")
     public ResponseEntity<CashRegisterResponse> openCashRegister(
-            @RequestBody CashRegisterOpenRequest request) {
-        log.debug("Opening cash register with balance: {}", request.openingBalance());
-
-        CashRegisterResponse cashRegister = new CashRegisterResponse(
-            UUID.randomUUID().toString(),
-            request.unitId() != null ? request.unitId() : "1",
-            "1",
-            "Admin",
-            "open",
-            LocalDateTime.now(),
-            null,
-            null,
-            null,
-            request.openingBalance(),
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            LocalDateTime.now(),
-            LocalDateTime.now()
-        );
-
-        return ResponseEntity.ok(cashRegister);
+            @RequestBody CashRegisterOpenRequest request,
+            @AuthenticationPrincipal Usuario operador) {
+        Long salonId = resolverSalao(request.unitId());
+        Caixa caixa = caixaService.abrir(salonId, BigDecimal.valueOf(request.openingBalance()),
+                request.openingNotes() != null ? request.openingNotes() : request.notes(), operador);
+        return ResponseEntity.status(HttpStatus.CREATED).body(toCashRegisterResponse(caixa));
     }
 
     @PostMapping("/cash-register/{id}/close")
-    @Operation(summary = "Fechar caixa", description = "Fecha o caixa atual")
+    @Operation(summary = "Fechar caixa", description = "Fecha o caixa informando o dinheiro contado; o sistema calcula o esperado e a diferença")
     public ResponseEntity<CashRegisterResponse> closeCashRegister(
-            @PathVariable String id,
-            @RequestBody CashRegisterCloseRequest request) {
-        log.debug("Closing cash register {} with balance: {}", id, request.closingBalance());
+            @PathVariable Long id,
+            @RequestBody CashRegisterCloseRequest request,
+            @AuthenticationPrincipal Usuario operador) {
+        Caixa caixa = caixaService.fechar(id, request.closingBalance() != null ? BigDecimal.valueOf(request.closingBalance()) : null,
+                request.closingNotes() != null ? request.closingNotes() : request.notes(), operador);
+        return ResponseEntity.ok(toCashRegisterResponse(caixa));
+    }
 
-        CashRegisterResponse cashRegister = new CashRegisterResponse(
-            id,
-            "1",
-            "1",
-            "Admin",
-            "closed",
-            LocalDateTime.now().minusHours(8),
-            LocalDateTime.now(),
-            "1",
-            "Admin",
-            200.0,
-            1850.0,
-            150.0,
-            100.0,
-            800.0,
-            650.0,
-            300.0,
-            100.0,
-            0.0,
-            LocalDateTime.now().minusHours(8),
-            LocalDateTime.now()
+    @PostMapping("/cash-register/{id}/withdrawal")
+    @Operation(summary = "Sangria", description = "Retira dinheiro da gaveta do caixa aberto (limitado ao dinheiro disponível)")
+    public ResponseEntity<TransactionResponse> withdrawal(
+            @PathVariable Long id,
+            @RequestBody WithdrawalRequest request,
+            @AuthenticationPrincipal Usuario operador) {
+        Caixa caixa = caixaService.buscar(id);
+        MovimentacaoCaixa mov = caixaService.registrarMovimentacao(caixa.getSalon().getId(), id,
+                TipoMovimentacaoCaixa.SANGRIA,
+                request.amount() != null ? BigDecimal.valueOf(request.amount()) : null,
+                FormaPagamento.DINHEIRO, request.reason(), "withdrawal", operador);
+        return ResponseEntity.status(HttpStatus.CREATED).body(toTransactionResponse(mov));
+    }
+
+    @PostMapping("/cash-register/{id}/supply")
+    @Operation(summary = "Suprimento", description = "Coloca dinheiro na gaveta do caixa aberto sem venda (ex.: troco)")
+    public ResponseEntity<TransactionResponse> supply(
+            @PathVariable Long id,
+            @RequestBody WithdrawalRequest request,
+            @AuthenticationPrincipal Usuario operador) {
+        Caixa caixa = caixaService.buscar(id);
+        MovimentacaoCaixa mov = caixaService.registrarMovimentacao(caixa.getSalon().getId(), id,
+                TipoMovimentacaoCaixa.SUPRIMENTO,
+                request.amount() != null ? BigDecimal.valueOf(request.amount()) : null,
+                FormaPagamento.DINHEIRO, request.reason(), "supply", operador);
+        return ResponseEntity.status(HttpStatus.CREATED).body(toTransactionResponse(mov));
+    }
+
+    private CashRegisterResponse toCashRegisterResponse(Caixa caixa) {
+        CaixaService.Totais t = caixaService.totais(caixa);
+        double debito = t.porForma(FormaPagamento.CARTAO_DEBITO).add(t.porForma(FormaPagamento.TRANSFERENCIA)).doubleValue();
+        return new CashRegisterResponse(
+                String.valueOf(caixa.getId()),
+                String.valueOf(caixa.getSalon().getId()),
+                caixa.getAbertoPorId() != null ? String.valueOf(caixa.getAbertoPorId()) : null,
+                caixa.getAbertoPorNome(),
+                caixa.isAberto() ? "open" : "closed",
+                caixa.getAbertoEm(),
+                caixa.getFechadoEm(),
+                caixa.getFechadoPorId() != null ? String.valueOf(caixa.getFechadoPorId()) : null,
+                caixa.getFechadoPorNome(),
+                caixa.getSaldoInicial().doubleValue(),
+                t.entradas().doubleValue(),
+                t.despesas().doubleValue(),
+                t.sangrias().doubleValue(),
+                t.porForma(FormaPagamento.DINHEIRO).doubleValue(),
+                t.porForma(FormaPagamento.PIX).doubleValue(),
+                t.porForma(FormaPagamento.CARTAO_CREDITO).doubleValue(),
+                debito,
+                t.porForma(FormaPagamento.VALE).doubleValue(),
+                caixa.getCriadoEm(),
+                caixa.getAtualizadoEm(),
+                caixa.getObservacoesAbertura(),
+                caixa.getSaldoInformado() != null ? caixa.getSaldoInformado().doubleValue() : null,
+                t.dinheiroEsperado().doubleValue(),
+                caixa.getDiferenca() != null ? caixa.getDiferenca().doubleValue() : null,
+                caixa.getObservacoesFechamento(),
+                t.suprimentos().doubleValue()
         );
-
-        return ResponseEntity.ok(cashRegister);
     }
 
     // ===== STATS =====
@@ -430,9 +495,8 @@ public class FinanceController {
     public ResponseEntity<DailyReportResponse> getDailyReport(
             @RequestParam String date,
             @RequestParam(required = false) String unitId) {
-        Long salonId = unitId != null ? Long.valueOf(unitId) : 1L;
+        Long salonId = resolverSalao(unitId);
         log.debug("Getting daily report for {} salonId: {}", date, salonId);
-        tenantIsolationService.assertRequestedSalon(salonId);
 
         LocalDate targetDate = parseDateFlexible(date);
         LocalDateTime inicio = targetDate.atStartOfDay();
@@ -450,8 +514,17 @@ public class FinanceController {
         // product/package/tip tracking yet, so those stay at 0 rather than showing fake numbers.
         DailyRevenueSummary revenue = new DailyRevenueSummary(totalRevenue, 0.0, 0.0, 0.0, 0.0, totalRevenue);
 
-        // No expense-tracking entity exists yet, so expenses are genuinely 0 (not fabricated).
-        DailyExpensesSummary expenses = new DailyExpensesSummary(0.0, List.of());
+        // Despesas reais: movimentações DESPESA registradas no caixa no dia, por categoria
+        double totalDespesas = movimentacaoCaixaRepository
+                .sumBySalonAndTipoAndPeriod(salonId, TipoMovimentacaoCaixa.DESPESA, inicio, fim).doubleValue();
+        List<ExpenseByCategory> porCategoria = new ArrayList<>();
+        for (Object[] row : movimentacaoCaixaRepository.sumByCategoriaAndPeriod(salonId, TipoMovimentacaoCaixa.DESPESA, inicio, fim)) {
+            String categoria = row[0] != null ? (String) row[0] : "other_expense";
+            double valor = ((BigDecimal) row[1]).doubleValue();
+            porCategoria.add(new ExpenseByCategory(categoria, categoria, valor,
+                    totalDespesas > 0 ? Math.round(valor * 1000.0 / totalDespesas) / 10.0 : 0.0));
+        }
+        DailyExpensesSummary expenses = new DailyExpensesSummary(totalDespesas, porCategoria);
 
         DailyPaymentMethods paymentMethods = new DailyPaymentMethods(
             cashTotal, pixTotal, creditCardTotal, debitCardTotal, voucherTotal
@@ -474,16 +547,17 @@ public class FinanceController {
         BigDecimal avgTicket = pagamentoRepository.avgTicketMedioBySalonIdAndPeriod(salonId, inicio, fim);
         double averageTicket = avgTicket != null ? avgTicket.doubleValue() : 0.0;
 
+        Optional<Caixa> caixaAberto = caixaService.buscarAberto(salonId);
         DailyReportResponse report = new DailyReportResponse(
             date,
-            String.valueOf(salonId),
-            "open",
+            caixaAberto.map(c -> String.valueOf(c.getId())).orElse(null),
+            caixaAberto.isPresent() ? "open" : "closed",
             revenue,
             expenses,
             paymentMethods,
             appointments,
             averageTicket,
-            totalRevenue // profit == revenue until real expenses are tracked
+            totalRevenue - totalDespesas
         );
 
         return ResponseEntity.ok(report);
@@ -686,17 +760,45 @@ public class FinanceController {
         double debitCardTotal,
         double voucherTotal,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        String openingNotes,
+        Double closingBalance,
+        double expectedBalance,
+        Double difference,
+        String closingNotes,
+        double totalSupplies
+    ) {}
+
+    public record PaginatedCashRegistersResponse(
+        List<CashRegisterResponse> data,
+        List<CashRegisterResponse> items,
+        PageMeta meta
     ) {}
 
     public record CashRegisterOpenRequest(
         String unitId,
         double openingBalance,
+        String openingNotes,
         String notes
     ) {}
 
     public record CashRegisterCloseRequest(
-        double closingBalance,
+        Double closingBalance,
+        String closingNotes,
+        String notes
+    ) {}
+
+    public record WithdrawalRequest(
+        Double amount,
+        String reason
+    ) {}
+
+    public record TransactionCreateRequest(
+        String type,
+        String category,
+        String description,
+        Double amount,
+        String paymentMethod,
         String notes
     ) {}
 }

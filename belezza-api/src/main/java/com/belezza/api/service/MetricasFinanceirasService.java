@@ -66,7 +66,7 @@ public class MetricasFinanceirasService {
         List<Pagamento> pagamentos = pagamentoRepository.findBySalonIdAndStatusAndPeriod(
                 salonId, StatusPagamento.APROVADO, inicio, fim);
 
-        int totalAtendimentos = pagamentos.size();
+        int totalAtendimentos = contarAtendimentos(pagamentos); // pagamento dividido tem várias linhas por atendimento
 
         // Calculate metrics by payment method
         List<MetricaPorFormaPagamento> porFormaPagamento = calcularPorFormaPagamento(salonId, inicio, fim, totalBruto);
@@ -142,7 +142,7 @@ public class MetricasFinanceirasService {
                             .map(Pagamento::getValor)
                             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-                    int quantidade = servicoPagamentos.size();
+                    int quantidade = contarAtendimentos(servicoPagamentos);
 
                     BigDecimal ticketMedio = quantidade > 0 ?
                             total.divide(BigDecimal.valueOf(quantidade), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
@@ -180,7 +180,7 @@ public class MetricasFinanceirasService {
                             .map(Pagamento::getValor)
                             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-                    int quantidade = profPagamentos.size();
+                    int quantidade = contarAtendimentos(profPagamentos);
 
                     BigDecimal ticketMedio = quantidade > 0 ?
                             total.divide(BigDecimal.valueOf(quantidade), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
@@ -243,7 +243,7 @@ public class MetricasFinanceirasService {
             evolucao.add(EvolucaoMensal.builder()
                     .mes(current.toString())
                     .totalBruto(total.setScale(2, RoundingMode.HALF_UP))
-                    .quantidade(monthPagamentos.size())
+                    .quantidade(contarAtendimentos(monthPagamentos))
                     .ticketMedio(ticketMedio.setScale(2, RoundingMode.HALF_UP))
                     .crescimentoPercentual(Math.round(crescimento * 100.0) / 100.0)
                     .build());
@@ -253,5 +253,10 @@ public class MetricasFinanceirasService {
         }
 
         return evolucao;
+    }
+
+    /** Atendimentos distintos entre os pagamentos (um pagamento dividido tem várias linhas). */
+    private static int contarAtendimentos(List<Pagamento> pagamentos) {
+        return (int) pagamentos.stream().map(p -> p.getAgendamento().getId()).distinct().count();
     }
 }

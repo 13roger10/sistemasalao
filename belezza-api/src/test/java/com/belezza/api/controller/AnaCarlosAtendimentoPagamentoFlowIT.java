@@ -56,6 +56,9 @@ class AnaCarlosAtendimentoPagamentoFlowIT {
     private ProfissionalRepository profissionalRepository;
 
     @Autowired
+    private HorarioTrabalhoRepository horarioTrabalhoRepository;
+
+    @Autowired
     private ServicoRepository servicoRepository;
 
     @Autowired
@@ -138,6 +141,7 @@ class AnaCarlosAtendimentoPagamentoFlowIT {
         ana.setAceitaAgendamentoOnline(true);
         ana = profissionalRepository.save(ana);
         professionalId = ana.getId();
+        cadastrarExpediente(ana);
 
         Servico servico = servicoRepository.findBySalonId(salonId).stream().findFirst()
                 .orElseGet(() -> {
@@ -296,6 +300,13 @@ class AnaCarlosAtendimentoPagamentoFlowIT {
             step7_createReceptionistProfile();
         }
 
+        // Pagamento exige caixa aberto no salão (BUG-006)
+        mockMvc.perform(post("/api/salon/finance/cash-register/open")
+                        .header("Authorization", "Bearer " + recepcionistaToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"openingBalance\": 0}"))
+                .andExpect(status().isCreated());
+
         String pagamentoRequest = """
             {
                 "agendamentoId": %d,
@@ -327,6 +338,20 @@ class AnaCarlosAtendimentoPagamentoFlowIT {
                 .andExpect(jsonPath("$.status").value("APROVADO"))
                 .andExpect(jsonPath("$.registradoPorNome").value("Recepcionista Beatriz"));
 
-        assertThat(pagamentoRepository.findByAgendamentoId(appointmentId)).isPresent();
+        assertThat(pagamentoRepository.findByAgendamentoIdOrderByCriadoEmAsc(appointmentId)).hasSize(1);
+    }
+
+    /** Expediente todos os dias (08h-20h): sem ele o profissional está de folga e não recebe agendamentos. */
+    private void cadastrarExpediente(Profissional profissional) {
+        for (DiaSemana dia : DiaSemana.values()) {
+            if (horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(profissional.getId(), dia).isEmpty()) {
+                horarioTrabalhoRepository.save(HorarioTrabalho.builder()
+                        .profissional(profissional)
+                        .diaSemana(dia)
+                        .horaInicio(java.time.LocalTime.of(8, 0))
+                        .horaFim(java.time.LocalTime.of(20, 0))
+                        .build());
+            }
+        }
     }
 }

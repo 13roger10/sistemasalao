@@ -498,7 +498,7 @@ export const appointmentService = {
 
   // Get single appointment by ID
   getById: (id: string): Promise<Appointment> => {
-    return api.get<Appointment>(`${BASE_PATH}/${id}`);
+    return api.get<AgendamentoBackendResponse>(`${BASE_PATH}/${id}`).then(mapAgendamentoToFrontend);
   },
 
   // Create new appointment

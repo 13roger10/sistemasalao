@@ -5,13 +5,20 @@ import com.belezza.api.entity.*;
 import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.DuplicateResourceException;
 import com.belezza.api.exception.ResourceNotFoundException;
+import com.belezza.api.repository.AgendamentoRepository;
+import com.belezza.api.repository.BackupCodeRepository;
 import com.belezza.api.repository.ClienteRepository;
+import com.belezza.api.repository.FidelidadeClienteRepository;
+import com.belezza.api.repository.NotificacaoRepository;
 import com.belezza.api.repository.ProfissionalRepository;
+import com.belezza.api.repository.PushSubscriptionRepository;
 import com.belezza.api.repository.SalonRepository;
 import com.belezza.api.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -19,6 +26,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -33,7 +41,12 @@ public class UsuarioService {
     private final ProfissionalRepository profissionalRepository;
     private final SalonRepository salonRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AgendamentoRepository agendamentoRepository;
     private final ClienteRepository clienteRepository;
+    private final FidelidadeClienteRepository fidelidadeClienteRepository;
+    private final NotificacaoRepository notificacaoRepository;
+    private final PushSubscriptionRepository pushSubscriptionRepository;
+    private final BackupCodeRepository backupCodeRepository;
 
     /**
      * List users with pagination and filters.
@@ -49,19 +62,12 @@ public class UsuarioService {
         Pageable pageable = PageRequest.of(page, size);
         Page<Usuario> usuarios;
 
-        // Multi-unidade: PROFISSIONAL vê apenas sua unidade
+        // PROFISSIONAL não consulta a equipe nem os clientes por aqui: recebe só o próprio
+        // cadastro (antes listava e-mail e telefone de todos os colegas e clientes do salão)
         if (usuarioLogado.getRole() == Role.PROFISSIONAL) {
-            Optional<Profissional> profissional = profissionalRepository.findByUsuarioIdAndAtivoTrue(usuarioLogado.getId());
-            if (profissional.isEmpty()) {
-                throw new BusinessException("Profissional não encontrado para este usuário");
-            }
-            Long salonId = profissional.get().getSalon().getId();
-
-            if (roleFilter != null) {
-                usuarios = usuarioRepository.findBySalonIdAndRole(salonId, roleFilter, pageable);
-            } else {
-                usuarios = usuarioRepository.findBySalonId(salonId, pageable);
-            }
+            boolean incluiProprio = roleFilter == null || roleFilter == Role.PROFISSIONAL;
+            usuarios = new PageImpl<>(incluiProprio ? List.of(usuarioLogado) : List.of(), pageable,
+                    incluiProprio ? 1 : 0);
         } else if (usuarioLogado.getRole() == Role.RECEPCIONISTA) {
             // Multi-unidade: RECEPCIONISTA vê apenas sua unidade
             if (usuarioLogado.getSalon() == null) {
@@ -361,6 +367,65 @@ public class UsuarioService {
     }
 
     /**
+     * Exclui definitivamente um usuário que não possui histórico no sistema.
+     *
+     * <p>Usuários com agendamentos (como cliente ou profissional) ou que administram um salão
+     * não podem ser excluídos — o histórico de atendimentos/financeiro precisa ser preservado;
+     * para esses, use {@link #desativar}. Dados acessórios do próprio usuário (notificações,
+     * inscrições de push, códigos 2FA, cadastro de cliente/profissional sem histórico) são
+     * removidos junto. Qualquer outro vínculo remanescente é barrado pelas FKs do banco e
+     * devolvido como a mesma mensagem de negócio.</p>
+     */
+    @Transactional
+    public void excluirPermanentemente(Long id, String emailAdmin) {
+        log.info("Exclusão definitiva do usuário id: {} solicitada por {}", id, emailAdmin);
+
+        Usuario usuarioLogado = getUsuarioByEmail(emailAdmin);
+        Usuario usuario = usuarioRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário", id));
+
+        if (usuario.getId().equals(usuarioLogado.getId())) {
+            throw new BusinessException("Você não pode excluir sua própria conta");
+        }
+
+        verificarAcessoUsuario(usuarioLogado, usuario);
+
+        if (salonRepository.findByAdminId(usuario.getId()).isPresent()) {
+            throw new BusinessException("Este usuário é administrador de um salão e não pode ser excluído. Desative-o.");
+        }
+
+        long agendamentos = agendamentoRepository.countEnvolvendoUsuario(usuario.getId());
+        if (agendamentos > 0) {
+            throw new BusinessException(String.format(
+                    "Este usuário possui %d agendamento(s) no histórico e não pode ser excluído. Desative-o.",
+                    agendamentos));
+        }
+
+        // Dados acessórios do próprio usuário
+        notificacaoRepository.deleteAllByUsuarioId(usuario.getId());
+        pushSubscriptionRepository.deleteAllByUsuarioId(usuario.getId());
+        backupCodeRepository.deleteAllByUsuarioId(usuario.getId());
+
+        // Cadastros de cliente/profissional sem histórico (horários e serviços do profissional
+        // saem junto via cascade/join table)
+        for (Cliente cliente : clienteRepository.findByUsuarioId(usuario.getId())) {
+            fidelidadeClienteRepository.deleteAllByClienteId(cliente.getId());
+            clienteRepository.delete(cliente);
+        }
+        profissionalRepository.findByUsuarioId(usuario.getId()).ifPresent(profissionalRepository::delete);
+
+        try {
+            usuarioRepository.delete(usuario);
+            usuarioRepository.flush();
+        } catch (DataIntegrityViolationException e) {
+            log.warn("Exclusão do usuário {} barrada por registros vinculados: {}", id, e.getMostSpecificCause().getMessage());
+            throw new BusinessException("Este usuário possui registros vinculados no sistema e não pode ser excluído. Desative-o.");
+        }
+
+        log.info("Usuário excluído definitivamente: {}", id);
+    }
+
+    /**
      * Um ADMIN só acessa usuários vinculados ao próprio salão (como admin dono, membro da equipe,
      * cliente ou profissional). Usuários sem vínculo com nenhum salão são permitidos.
      */
@@ -440,27 +505,11 @@ public class UsuarioService {
             return;
         }
 
-        // PROFISSIONAL só pode acessar usuários da sua unidade
+        // PROFISSIONAL acessa só o próprio cadastro: dados pessoais de colegas e clientes
+        // (e-mail, telefone) não são expostos a ele por esta rota
         if (usuarioLogado.getRole() == Role.PROFISSIONAL) {
-            Optional<Profissional> profLogado = profissionalRepository.findByUsuarioIdAndAtivoTrue(usuarioLogado.getId());
-            Optional<Profissional> profAlvo = profissionalRepository.findByUsuarioId(usuarioAlvo.getId());
-
-            if (profLogado.isEmpty()) {
-                throw new BusinessException("Você não tem permissão para acessar este recurso");
-            }
-
-            // Se o alvo não é profissional e não é o próprio usuário
-            if (profAlvo.isEmpty() && !usuarioAlvo.getId().equals(usuarioLogado.getId())) {
-                // Permite apenas se o alvo for CLIENTE (sem vínculo específico)
-                if (usuarioAlvo.getRole() != Role.CLIENTE) {
-                    throw new BusinessException("Você não tem permissão para acessar este usuário");
-                }
-            }
-
-            // Se ambos são profissionais, verificar se são do mesmo salão
-            if (profAlvo.isPresent() &&
-                !profLogado.get().getSalon().getId().equals(profAlvo.get().getSalon().getId())) {
-                throw new BusinessException("Você não tem permissão para acessar usuários de outras unidades");
+            if (!usuarioAlvo.getId().equals(usuarioLogado.getId())) {
+                throw new AccessDeniedException("Acesso negado: profissional só acessa o próprio cadastro");
             }
         }
     }

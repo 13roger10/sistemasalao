@@ -24,7 +24,27 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long> 
 
     Page<Agendamento> findByProfissionalId(Long profissionalId, Pageable pageable);
 
+    Page<Agendamento> findBySalonIdAndProfissionalUsuarioId(Long salonId, Long usuarioId, Pageable pageable);
+
+    Page<Agendamento> findByClienteIdAndProfissionalUsuarioId(Long clienteId, Long usuarioId, Pageable pageable);
+
     List<Agendamento> findBySalonIdAndStatus(Long salonId, StatusAgendamento status);
+
+    /**
+     * Trava a linha do profissional até o fim da transação. Chamado antes de verificar conflitos:
+     * duas marcações simultâneas para o mesmo profissional passam a ser feitas uma de cada vez,
+     * e a segunda já enxerga o agendamento gravado pela primeira. SQL nativo com FOR UPDATE
+     * (funciona no PostgreSQL e no H2; o @Lock do Hibernate gera FOR NO KEY UPDATE, que o H2 recusa).
+     */
+    @Query(value = "SELECT id FROM profissionais WHERE id = :profId FOR UPDATE", nativeQuery = true)
+    Long lockProfissional(@Param("profId") Long profissionalId);
+
+    /**
+     * Trava o agendamento até o fim da transação — serializa pagamentos simultâneos do mesmo
+     * atendimento (duplo clique em "Pagar"), para o saldo a pagar ser conferido um de cada vez.
+     */
+    @Query(value = "SELECT id FROM agendamentos WHERE id = :id FOR UPDATE", nativeQuery = true)
+    Long lockAgendamento(@Param("id") Long agendamentoId);
 
     // Check for scheduling conflicts
     @Query("SELECT a FROM Agendamento a WHERE a.profissional.id = :profId " +
@@ -240,4 +260,8 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long> 
         @Param("inicio") LocalDateTime inicio,
         @Param("fim") LocalDateTime fim
     );
+
+    /** Agendamentos em que o usuário participa como cliente ou como profissional (histórico). */
+    @Query("SELECT COUNT(a) FROM Agendamento a WHERE a.cliente.usuario.id = :usuarioId OR a.profissional.usuario.id = :usuarioId")
+    long countEnvolvendoUsuario(@Param("usuarioId") Long usuarioId);
 }

@@ -62,6 +62,11 @@ export const clientService = {
     return api.delete(`${BASE_PATH}/${id}`);
   },
 
+  // Unblock client (e.g. blocked after too many no-shows) — admin only
+  unblock: (id: string): Promise<void> => {
+    return api.post(`${BASE_PATH}/${id}/desbloquear`);
+  },
+
   // Get client statistics
   getStats: (unitId?: string): Promise<ClientStats> => {
     return api.get<ClientStats>(`${BASE_PATH}/stats`, { unitId });

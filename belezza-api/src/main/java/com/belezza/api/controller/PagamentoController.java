@@ -3,7 +3,7 @@ package com.belezza.api.controller;
 import com.belezza.api.dto.pagamento.PagamentoRequest;
 import com.belezza.api.dto.pagamento.PagamentoResponse;
 import com.belezza.api.entity.Usuario;
-import com.belezza.api.security.annotation.ProfissionalOrAdmin;
+import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.service.PagamentoService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -41,14 +41,16 @@ public class PagamentoController {
     @GetMapping("/agendamento/{agendamentoId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
     @Operation(summary = "Buscar por agendamento", description = "Busca pagamento de um agendamento")
-    public ResponseEntity<PagamentoResponse> buscarPorAgendamento(@PathVariable Long agendamentoId) {
-        PagamentoResponse response = pagamentoService.buscarPorAgendamento(agendamentoId);
+    public ResponseEntity<PagamentoResponse> buscarPorAgendamento(
+            @PathVariable Long agendamentoId,
+            @AuthenticationPrincipal Usuario operador) {
+        PagamentoResponse response = pagamentoService.buscarPorAgendamento(agendamentoId, operador);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/salon/{salonId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
-    @Operation(summary = "Listar por salão", description = "Lista pagamentos do salão. RECEPCIONISTA recebe apenas os seus próprios registros.")
+    @Operation(summary = "Listar por salão", description = "Lista pagamentos do salão. RECEPCIONISTA recebe apenas os seus próprios registros; PROFISSIONAL, os dos próprios atendimentos.")
     public ResponseEntity<Page<PagamentoResponse>> listarPorSalon(
             @PathVariable Long salonId,
             @PageableDefault(size = 20, sort = "criadoEm") Pageable pageable,
@@ -58,10 +60,12 @@ public class PagamentoController {
     }
 
     @PostMapping("/{id}/estornar")
-    @ProfissionalOrAdmin
-    @Operation(summary = "Estornar pagamento", description = "Estorna um pagamento aprovado. Exclusivo para ADMIN e PROFISSIONAL.")
-    public ResponseEntity<PagamentoResponse> estornar(@PathVariable Long id) {
-        PagamentoResponse response = pagamentoService.estornar(id);
+    @AdminOnly
+    @Operation(summary = "Estornar pagamento", description = "Estorna um pagamento aprovado do próprio salão. Exclusivo para ADMIN.")
+    public ResponseEntity<PagamentoResponse> estornar(
+            @PathVariable Long id,
+            @AuthenticationPrincipal Usuario operador) {
+        PagamentoResponse response = pagamentoService.estornar(id, operador);
         return ResponseEntity.ok(response);
     }
 }

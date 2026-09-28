@@ -116,6 +116,8 @@ export default function SalonUsersPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isPermanentDeleteModalOpen, setIsPermanentDeleteModalOpen] = useState(false);
+  const [permanentDeleteError, setPermanentDeleteError] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<UsuarioListItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -378,6 +380,32 @@ export default function SalonUsersPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Exclusão definitiva — só para usuários sem histórico (o backend valida e explica o motivo)
+  const handlePermanentDelete = async () => {
+    if (!selectedUser) return;
+
+    setIsSubmitting(true);
+    setPermanentDeleteError(null);
+    try {
+      await userService.deletePermanently(selectedUser.id);
+      setIsPermanentDeleteModalOpen(false);
+      setSelectedUser(null);
+      loadUsuarios();
+    } catch (error: unknown) {
+      console.error("Erro ao excluir usuário:", error);
+      const err = error as { response?: { data?: { message?: string } } };
+      setPermanentDeleteError(err.response?.data?.message || "Erro ao excluir usuário");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const closePermanentDeleteModal = () => {
+    setIsPermanentDeleteModalOpen(false);
+    setPermanentDeleteError(null);
+    setSelectedUser(null);
   };
 
   const handleReactivate = async (usuario: UsuarioListItem) => {
@@ -672,7 +700,11 @@ export default function SalonUsersPage() {
                   </ActionMenuItem>
                 )}
                 <ActionMenuItem
-                  onClick={() => openDeleteModal(item)}
+                  onClick={() => {
+                    setSelectedUser(item);
+                    setPermanentDeleteError(null);
+                    setIsPermanentDeleteModalOpen(true);
+                  }}
                   icon={<Trash2 className="h-4 w-4" />}
                   variant="danger"
                 >
@@ -1245,7 +1277,7 @@ export default function SalonUsersPage() {
         </div>
       </Modal>
 
-      {/* Modal de Confirmação de Exclusão */}
+      {/* Modal de Confirmação de Desativação */}
       <ConfirmModal
         isOpen={isDeleteModalOpen}
         onClose={() => {
@@ -1253,13 +1285,61 @@ export default function SalonUsersPage() {
           setSelectedUser(null);
         }}
         onConfirm={handleDelete}
-        title="Excluir Usuário"
-        message={`Tem certeza que deseja excluir o usuário "${selectedUser?.nome}"? O usuário será desativado e não poderá mais acessar o sistema.`}
-        confirmText="Excluir"
+        title="Desativar Usuário"
+        message={`Tem certeza que deseja desativar o usuário "${selectedUser?.nome}"? Ele não poderá mais acessar o sistema, mas o histórico é mantido e ele pode ser reativado depois.`}
+        confirmText="Desativar"
         cancelText="Cancelar"
         variant="danger"
         isLoading={isSubmitting}
       />
+
+      {/* Modal de Exclusão Definitiva */}
+      <Modal
+        isOpen={isPermanentDeleteModalOpen}
+        onClose={closePermanentDeleteModal}
+        title="Excluir Usuário"
+        size="md"
+        footer={
+          <>
+            <Button variant="ghost" onClick={closePermanentDeleteModal} disabled={isSubmitting}>
+              {permanentDeleteError ? "Fechar" : "Cancelar"}
+            </Button>
+            {permanentDeleteError && selectedUser?.ativo ? (
+              <Button
+                variant="danger"
+                onClick={() => {
+                  setIsPermanentDeleteModalOpen(false);
+                  setPermanentDeleteError(null);
+                  setIsDeleteModalOpen(true);
+                }}
+              >
+                Desativar
+              </Button>
+            ) : !permanentDeleteError ? (
+              <Button variant="danger" onClick={handlePermanentDelete} isLoading={isSubmitting}>
+                Excluir definitivamente
+              </Button>
+            ) : null}
+          </>
+        }
+      >
+        <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
+          <p>
+            Tem certeza que deseja excluir definitivamente o usuário{" "}
+            <span className="font-semibold text-gray-900 dark:text-white">&quot;{selectedUser?.nome}&quot;</span>?
+            Esta ação não pode ser desfeita.
+          </p>
+          <p className="text-gray-500 dark:text-gray-400">
+            Só é possível excluir usuários sem histórico. Usuários com agendamentos ou que administram um salão
+            devem ser desativados.
+          </p>
+          {permanentDeleteError && (
+            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+              {permanentDeleteError}
+            </div>
+          )}
+        </div>
+      </Modal>
 
       {/* Modal de Erro de Configuração do Profissional */}
       <Modal

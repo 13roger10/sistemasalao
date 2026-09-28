@@ -9,6 +9,7 @@ import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.integration.WhatsAppService;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.ClienteRepository;
+import com.belezza.api.repository.HorarioFuncionamentoSalonRepository;
 import com.belezza.api.repository.HorarioTrabalhoRepository;
 import com.belezza.api.security.TenantContext;
 import org.junit.jupiter.api.AfterEach;
@@ -51,6 +52,9 @@ class AgendamentoServiceTest {
 
     @Mock
     private HorarioTrabalhoRepository horarioTrabalhoRepository;
+
+    @Mock
+    private HorarioFuncionamentoSalonRepository horarioFuncionamentoSalonRepository;
 
     @Mock
     private SalonService salonService;
@@ -452,9 +456,28 @@ class AgendamentoServiceTest {
             // When
             AgendamentoResponse response = agendamentoService.marcarNoShow(1L);
 
-            // Then
+            // Then — counter persisted on the entity, client not blocked yet (1 of 3)
             assertThat(response).isNotNull();
-            verify(clienteRepository).incrementNoShows(cliente.getId());
+            assertThat(cliente.getNoShows()).isEqualTo(1);
+            assertThat(cliente.isBloqueado()).isFalse();
+            verify(clienteRepository).save(cliente);
+        }
+
+        @Test
+        @DisplayName("Should not block client before reaching max no-shows")
+        void shouldNotBlockClientBeforeMaxNoShows() {
+            // Given — salon allows 3; this is the 2nd no-show
+            agendamento.setStatus(StatusAgendamento.CONFIRMADO);
+            cliente.setNoShows(1);
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+            when(agendamentoRepository.save(any(Agendamento.class))).thenReturn(agendamento);
+
+            // When
+            agendamentoService.marcarNoShow(1L);
+
+            // Then
+            assertThat(cliente.getNoShows()).isEqualTo(2);
+            assertThat(cliente.isBloqueado()).isFalse();
         }
 
         @Test
@@ -470,6 +493,7 @@ class AgendamentoServiceTest {
             agendamentoService.marcarNoShow(1L);
 
             // Then
+            assertThat(cliente.getNoShows()).isEqualTo(3);
             verify(clienteRepository).save(cliente);
             assertThat(cliente.isBloqueado()).isTrue();
         }
@@ -530,6 +554,27 @@ class AgendamentoServiceTest {
         }
 
         @Test
+        @DisplayName("Trava o profissional antes de procurar conflitos (evita agendamento duplicado em requisições simultâneas)")
+        void travaProfissionalAntesDeVerificarConflitos() {
+            Usuario recepcionistaDoSalao = Usuario.builder().id(14L).role(Role.RECEPCIONISTA).build();
+            when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
+            when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
+            when(servicoService.getServicoEntity(1L)).thenReturn(servico);
+            when(horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(eq(1L), any())).thenReturn(Optional.of(expediente(true)));
+            when(bloqueioHorarioService.temBloqueio(eq(1L), any(), any())).thenReturn(false);
+            when(agendamentoRepository.findConflicts(eq(1L), any(), any())).thenReturn(List.of(agendamento));
+
+            assertThatThrownBy(() -> agendamentoService.criar(request(), recepcionistaDoSalao))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("já possui agendamento");
+
+            var ordem = inOrder(agendamentoRepository);
+            ordem.verify(agendamentoRepository).lockProfissional(1L);
+            ordem.verify(agendamentoRepository).findConflicts(eq(1L), any(), any());
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
         @DisplayName("API pública (sem token): admin do próprio salão passa pela verificação")
         void apiPublicaMesmoSalao() {
             TenantContext.clear();
@@ -541,6 +586,226 @@ class AgendamentoServiceTest {
             // Passa pela verificação de salão e segue para a busca do cliente
             assertThatThrownBy(() -> agendamentoService.criar(request(), adminDoSalao))
                     .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("Profissional só acessa a própria agenda (BUG-012)")
+    class ProfissionalPropriaAgendaTests {
+
+        // O agendamento do setUp é do profissional cujo usuário tem id 2
+        private final Usuario dono = Usuario.builder().id(2L).role(Role.PROFISSIONAL).build();
+        private final Usuario colega = Usuario.builder().id(3L).role(Role.PROFISSIONAL).build();
+
+        @Test
+        @DisplayName("Colega não abre, confirma, inicia, conclui, cancela, reagenda nem marca no-show pelo id")
+        void colegaNaoAgePeloId() {
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+
+            assertThatThrownBy(() -> agendamentoService.buscarPorId(1L, true, false, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            assertThatThrownBy(() -> agendamentoService.confirmar(1L, true, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            assertThatThrownBy(() -> agendamentoService.iniciar(1L, true, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            assertThatThrownBy(() -> agendamentoService.concluir(1L, true, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            assertThatThrownBy(() -> agendamentoService.marcarNoShow(1L, true, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            assertThatThrownBy(() -> agendamentoService.cancelar(1L, CancelamentoRequest.builder().motivo("x").build(), true, false, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            assertThatThrownBy(() -> agendamentoService.reagendar(1L,
+                    com.belezza.api.dto.agendamento.ReagendamentoRequest.builder()
+                            .novaDataHora(LocalDateTime.now().plusDays(2)).build(), true, false, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+
+            assertThat(agendamento.getStatus()).isEqualTo(StatusAgendamento.PENDENTE);
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("O próprio profissional confirma o seu agendamento")
+        void donoConfirma() {
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+            when(agendamentoRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            AgendamentoResponse response = agendamentoService.confirmar(1L, true, dono);
+
+            assertThat(response.getStatus()).isEqualTo(StatusAgendamento.CONFIRMADO);
+        }
+
+        @Test
+        @DisplayName("Lista do salão e histórico do cliente trazem só a agenda do profissional")
+        void listasFiltradas() {
+            Pageable pageable = PageRequest.of(0, 10);
+            when(agendamentoRepository.findBySalonIdAndProfissionalUsuarioId(1L, 3L, pageable)).thenReturn(Page.empty());
+            when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
+            when(agendamentoRepository.findByClienteIdAndProfissionalUsuarioId(1L, 3L, pageable)).thenReturn(Page.empty());
+
+            agendamentoService.listarPorSalon(1L, pageable, true, colega);
+            agendamentoService.listarPorCliente(1L, pageable, true, colega);
+
+            verify(agendamentoRepository, never()).findBySalonId(any(), any());
+            verify(agendamentoRepository, never()).findByClienteId(any(), any());
+        }
+
+        @Test
+        @DisplayName("Profissional não cria agendamento na agenda de um colega")
+        void naoCriaNaAgendaDoColega() {
+            when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
+            AgendamentoRequest request = AgendamentoRequest.builder().clienteId(1L).profissionalId(1L).servicoId(1L)
+                    .dataHora(LocalDateTime.now().plusDays(1).withHour(10).withMinute(0)).build();
+
+            assertThatThrownBy(() -> agendamentoService.criar(request, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            verify(agendamentoRepository, never()).save(any());
+        }
+    }
+
+    private HorarioTrabalho expediente(boolean ativo) {
+        return HorarioTrabalho.builder()
+                .profissional(profissional)
+                .horaInicio(LocalTime.of(9, 0))
+                .horaFim(LocalTime.of(17, 0))
+                .ativo(ativo)
+                .build();
+    }
+
+    @Nested
+    @DisplayName("Criar - dias de folga e salão fechado")
+    class CriarDiaDeAtendimentoTests {
+
+        private final Usuario recepcionista = Usuario.builder().id(14L).role(Role.RECEPCIONISTA).build();
+
+        private AgendamentoRequest request(int hora) {
+            return AgendamentoRequest.builder()
+                    .clienteId(1L)
+                    .profissionalId(1L)
+                    .servicoId(1L)
+                    .dataHora(LocalDateTime.now().plusDays(1).withHour(hora).withMinute(0).withSecond(0).withNano(0))
+                    .build();
+        }
+
+        @BeforeEach
+        void stubs() {
+            when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
+            when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
+            when(servicoService.getServicoEntity(1L)).thenReturn(servico);
+        }
+
+        private void salaoNoDia(HorarioFuncionamentoSalon horario) {
+            when(horarioFuncionamentoSalonRepository.findBySalonIdAndDiaSemana(eq(1L), any()))
+                    .thenReturn(Optional.ofNullable(horario));
+        }
+
+        @Test
+        @DisplayName("Profissional sem expediente cadastrado no dia (folga) não recebe agendamento")
+        void semExpedienteNoDia() {
+            salaoNoDia(null);
+            when(horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(eq(1L), any())).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> agendamentoService.criar(request(10), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("não atende neste dia");
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Expediente do dia desativado conta como folga")
+        void expedienteDesativado() {
+            salaoNoDia(null);
+            when(horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(eq(1L), any())).thenReturn(Optional.of(expediente(false)));
+
+            assertThatThrownBy(() -> agendamentoService.criar(request(10), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("não atende neste dia");
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Salão fechado no dia recusa o agendamento, mesmo com o profissional escalado")
+        void salaoFechadoNoDia() {
+            salaoNoDia(HorarioFuncionamentoSalon.builder().salon(salon).ativo(false).build());
+
+            assertThatThrownBy(() -> agendamentoService.criar(request(10), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("salão não abre neste dia");
+            verifyNoInteractions(horarioTrabalhoRepository);
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Horário do dia configurado no salão prevalece sobre o horário geral")
+        void horarioDoDiaPrevalece() {
+            // Horário geral 08-18, mas neste dia o salão abre só das 13 às 18
+            salaoNoDia(HorarioFuncionamentoSalon.builder().salon(salon)
+                    .horaInicio(LocalTime.of(13, 0)).horaFim(LocalTime.of(18, 0)).build());
+
+            assertThatThrownBy(() -> agendamentoService.criar(request(10), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("fora do funcionamento do salão (13:00 - 18:00)");
+            verify(agendamentoRepository, never()).save(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("Criar - vários serviços validados pela duração total")
+    class CriarVariosServicosTests {
+
+        private final Usuario recepcionista = Usuario.builder().id(14L).role(Role.RECEPCIONISTA).build();
+        private Servico coloracao;
+
+        @BeforeEach
+        void stubs() {
+            coloracao = Servico.builder().id(2L).nome("Coloração").preco(BigDecimal.valueOf(100))
+                    .duracaoMinutos(90).salon(salon).ativo(true).build();
+            when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
+            when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
+            when(servicoService.getServicoEntity(2L)).thenReturn(coloracao);
+            // Expediente 09-17, salão 08-18
+            when(horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(eq(1L), any())).thenReturn(Optional.of(expediente(true)));
+        }
+
+        private AgendamentoRequest duasColoracoes(int hora, int minuto) {
+            return AgendamentoRequest.builder()
+                    .clienteId(1L)
+                    .profissionalId(1L)
+                    .servicoIds(List.of(2L, 2L))
+                    .dataHora(LocalDateTime.now().plusDays(1).withHour(hora).withMinute(minuto).withSecond(0).withNano(0))
+                    .build();
+        }
+
+        @Test
+        @DisplayName("2 × 90 min às 15:00 termina 18:00 e ultrapassa o expediente das 17:00")
+        void blocoUltrapassaExpediente() {
+            assertThatThrownBy(() -> agendamentoService.criar(duasColoracoes(15, 0), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("fora do expediente do profissional (09:00 - 17:00)");
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Bloqueio e conflitos são verificados até o fim do bloco inteiro")
+        void bloqueioVerificadoAteOFimDoBloco() {
+            AgendamentoRequest request = duasColoracoes(14, 0);
+            when(bloqueioHorarioService.temBloqueio(eq(1L), any(), any())).thenReturn(true);
+
+            assertThatThrownBy(() -> agendamentoService.criar(request, recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("bloqueio");
+            verify(bloqueioHorarioService).temBloqueio(1L, request.getDataHora(), request.getDataHora().plusMinutes(180));
+        }
+
+        @Test
+        @DisplayName("Bloco que termina exatamente no fim do expediente é aceito na validação")
+        void blocoTerminaNoFimDoExpediente() {
+            when(bloqueioHorarioService.temBloqueio(eq(1L), any(), any())).thenReturn(false);
+            when(agendamentoRepository.findConflicts(eq(1L), any(), any())).thenReturn(List.of(agendamento));
+
+            // 14:00 + 180 min = 17:00: passa pelo expediente e chega à checagem de conflitos
+            assertThatThrownBy(() -> agendamentoService.criar(duasColoracoes(14, 0), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("já possui agendamento");
         }
     }
 }

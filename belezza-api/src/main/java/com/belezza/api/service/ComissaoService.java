@@ -7,6 +7,7 @@ import com.belezza.api.entity.*;
 import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.ComissaoRepository;
+import com.belezza.api.repository.PagamentoProfissionalRepository;
 import com.belezza.api.repository.ProfissionalRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,7 @@ public class ComissaoService {
 
     private final ComissaoRepository comissaoRepository;
     private final ProfissionalRepository profissionalRepository;
+    private final PagamentoProfissionalRepository pagamentoProfissionalRepository;
 
     /**
      * Calculate commission for a completed appointment.
@@ -259,6 +261,54 @@ public class ComissaoService {
                     comissao.setStatus(StatusComissao.CANCELADA);
                     comissaoRepository.save(comissao);
                     log.info("Comissao cancelada para agendamento: {}", agendamentoId);
+                });
+    }
+
+    /**
+     * Estorno que deixa o atendimento sem pagamento integral: a comissão deixa de ser devida.
+     * Se ela já estava num repasse ainda não pago, sai do repasse e os totais são refeitos
+     * (repasse que fica vazio é cancelado). Comissão já paga ao profissional bloqueia o estorno.
+     */
+    @Transactional
+    public void cancelarPorEstorno(Long agendamentoId) {
+        comissaoRepository.findByAgendamentoId(agendamentoId).ifPresent(comissao -> {
+            if (comissao.getStatus() == StatusComissao.PAGA) {
+                throw new BusinessException("A comissão deste atendimento já foi paga ao profissional. "
+                        + "Acerte o repasse com o profissional antes de estornar o pagamento.");
+            }
+            if (comissao.getStatus() == StatusComissao.CANCELADA) {
+                return;
+            }
+            PagamentoProfissional repasse = comissao.getPagamentoProfissional();
+            if (repasse != null) {
+                repasse.getComissoes().remove(comissao);
+                comissao.setPagamentoProfissional(null);
+                repasse.setTotalServicos(Math.max(0, repasse.getTotalServicos() - 1));
+                repasse.setValorTotalServicos(repasse.getValorTotalServicos().subtract(comissao.getValorServico()));
+                repasse.setValorTotalComissoes(repasse.getValorTotalComissoes().subtract(comissao.getValorComissao()));
+                if (repasse.getTotalServicos() == 0) {
+                    repasse.setStatus(StatusPagamentoProfissional.CANCELADO);
+                }
+                pagamentoProfissionalRepository.save(repasse);
+                log.info("Comissao do agendamento {} retirada do repasse {}", agendamentoId, repasse.getId());
+            }
+            comissao.setStatus(StatusComissao.CANCELADA);
+            comissaoRepository.save(comissao);
+            log.info("Comissao cancelada por estorno do agendamento {}", agendamentoId);
+        });
+    }
+
+    /**
+     * Atendimento cobrado de novo depois de um estorno: a comissão cancelada volta a ser devida.
+     */
+    @Transactional
+    public void reativarAposPagamento(Long agendamentoId) {
+        comissaoRepository.findByAgendamentoId(agendamentoId)
+                .filter(c -> c.getStatus() == StatusComissao.CANCELADA)
+                .ifPresent(comissao -> {
+                    comissao.setStatus(StatusComissao.CALCULADA);
+                    comissaoRepository.save(comissao);
+                    log.info("Comissao reativada apos novo pagamento do agendamento {}", agendamentoId);
                 });
     }
 }

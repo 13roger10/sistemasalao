@@ -1,14 +1,15 @@
 "use client";
 
 import { Menu, Bell, Sun, Moon, Building2, ChevronDown, Check, CheckCheck, ExternalLink } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import { useUnit } from "@/contexts/UnitContext";
 import { useTheme } from "@/contexts/ThemeContext";
-import { useSalonNotificacoes } from "@/contexts/SalonNotificacaoContext";
+import { useSalonNotificacoes, type SalonNotificacaoWs } from "@/contexts/SalonNotificacaoContext";
+import { NotificationsModal } from "./NotificationsModal";
 import { AUTH_ROLE_LABELS, AUTH_ROLE_COLORS } from "@/types/salon/auth";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
-import Link from "next/link";
 
 interface SalonHeaderProps {
   onMenuClick: () => void;
@@ -21,7 +22,28 @@ export function SalonHeader({ onMenuClick, pageTitle }: SalonHeaderProps) {
   const { selectedUnit, selectedUnitId, availableUnits, selectUnit, canViewAllUnits } = useUnit();
   const { naoLidas, recentes, marcarLida, marcarTodasLidas } = useSalonNotificacoes();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
   const [showUnitSelector, setShowUnitSelector] = useState(false);
+  const router = useRouter();
+
+  // Destino ao clicar numa notificação: o agendamento ao qual ela se refere
+  // (a agenda abre direto no modal de detalhes via ?agendamento={id}).
+  const getNotificationHref = (notif: SalonNotificacaoWs): string | null => {
+    if (notif.agendamentoId) {
+      if (user?.role === "CLIENT") return notif.link || "/salon/client/appointments";
+      return `/salon/appointments?agendamento=${notif.agendamentoId}`;
+    }
+    return notif.link || null;
+  };
+
+  const handleNotificationClick = (notif: SalonNotificacaoWs) => {
+    if (!notif.lida) marcarLida(notif.id);
+    const href = getNotificationHref(notif);
+    if (!href) return;
+    setShowNotifications(false);
+    setShowAllNotifications(false);
+    router.push(href);
+  };
 
   const toggleTheme = () => {
     setTheme(theme === "dark" ? "light" : "dark");
@@ -213,7 +235,7 @@ export function SalonHeader({ onMenuClick, pageTitle }: SalonHeaderProps) {
                     recentes.map((notif, index) => (
                       <button
                         key={notif.id}
-                        onClick={() => { if (!notif.lida) marcarLida(notif.id); }}
+                        onClick={() => handleNotificationClick(notif)}
                         className={cn(
                           "w-full px-3 py-3 text-left transition-colors",
                           "hover:bg-gray-50 dark:hover:bg-gray-700",
@@ -245,18 +267,26 @@ export function SalonHeader({ onMenuClick, pageTitle }: SalonHeaderProps) {
 
                 {/* Footer */}
                 <div className="border-t p-2 dark:border-gray-700">
-                  <Link
-                    href="/salon/client/profile/notifications"
-                    onClick={() => setShowNotifications(false)}
+                  <button
+                    onClick={() => {
+                      setShowNotifications(false);
+                      setShowAllNotifications(true);
+                    }}
                     className="flex w-full items-center justify-center gap-1.5 rounded-lg p-2 text-sm font-medium text-violet-600 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-900/20"
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
                     Ver todas as notificações
-                  </Link>
+                  </button>
                 </div>
               </div>
             </>
           )}
+
+          <NotificationsModal
+            isOpen={showAllNotifications}
+            onClose={() => setShowAllNotifications(false)}
+            onSelect={handleNotificationClick}
+          />
         </div>
 
         {/* User info - hidden on mobile */}

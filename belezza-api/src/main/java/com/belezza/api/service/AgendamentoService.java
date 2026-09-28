@@ -10,6 +10,7 @@ import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.integration.WhatsAppService;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.ClienteRepository;
+import com.belezza.api.repository.HorarioFuncionamentoSalonRepository;
 import com.belezza.api.repository.HorarioTrabalhoRepository;
 import com.belezza.api.security.TenantContext;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +44,7 @@ public class AgendamentoService {
     private final AgendamentoRepository agendamentoRepository;
     private final ClienteRepository clienteRepository;
     private final HorarioTrabalhoRepository horarioTrabalhoRepository;
+    private final HorarioFuncionamentoSalonRepository horarioFuncionamentoSalonRepository;
     private final TenantIsolationService tenantIsolationService;
     private final ProfissionalService profissionalService;
     private final ServicoService servicoService;
@@ -88,6 +90,7 @@ public class AgendamentoService {
             log.info("Cliente agendando para si: usuarioId={} clienteId={}", operador.getId(), cliente.getId());
         } else if (request.getClienteId() != null) {
             verificarOperadorDoSalao(operador, salon);
+            enforceAgendaDoProfissional(profissional, operador);
             cliente = clienteRepository.findById(request.getClienteId())
                     .orElseThrow(() -> new ResourceNotFoundException("Cliente", request.getClienteId()));
             if (cliente.getSalon() == null || !cliente.getSalon().getId().equals(salon.getId())) {
@@ -100,9 +103,9 @@ public class AgendamentoService {
 
         // Check if multiple services or single service
         if (request.hasMultipleServices()) {
-            return criarComMultiplosServicos(request, profissional, salon, cliente);
+            return criarComMultiplosServicos(request, profissional, salon, cliente, operador);
         } else {
-            return criarComServicoUnico(request, profissional, salon, cliente);
+            return criarComServicoUnico(request, profissional, salon, cliente, operador);
         }
     }
 
@@ -111,11 +114,12 @@ public class AgendamentoService {
      */
     @SuppressWarnings("deprecation")
     private AgendamentoResponse criarComServicoUnico(AgendamentoRequest request,
-                                                      Profissional profissional, Salon salon, Cliente cliente) {
+                                                      Profissional profissional, Salon salon, Cliente cliente,
+                                                      Usuario operador) {
         Servico servico = servicoService.getServicoEntity(request.getServicoId());
 
         // Validate everything
-        validarAgendamento(salon, profissional, servico, cliente, request.getDataHora());
+        validarAgendamento(salon, profissional, servico, cliente, request.getDataHora(), servico.getDuracaoMinutos());
 
         // Calculate end time
         LocalDateTime fimPrevisto = request.getDataHora().plusMinutes(servico.getDuracaoMinutos());
@@ -150,7 +154,7 @@ public class AgendamentoService {
         enviarNotificacaoConfirmacao(agendamento);
 
         // Criar notificação no sistema + enviar email
-        enviarNotificacoesSistemaConfirmacao(agendamento);
+        enviarNotificacoesSistemaConfirmacao(agendamento, operador);
 
         return AgendamentoResponse.fromEntity(agendamento);
     }
@@ -160,7 +164,8 @@ public class AgendamentoService {
      */
     @SuppressWarnings("deprecation")
     private AgendamentoResponse criarComMultiplosServicos(AgendamentoRequest request,
-                                                           Profissional profissional, Salon salon, Cliente cliente) {
+                                                           Profissional profissional, Salon salon, Cliente cliente,
+                                                           Usuario operador) {
         log.info("Criando agendamento com {} serviços", request.getServicoIds().size());
 
         // Load all services
@@ -187,10 +192,8 @@ public class AgendamentoService {
 
         LocalDateTime fimPrevisto = request.getDataHora().plusMinutes(duracaoTotal);
 
-        // Validate
-        for (Servico servico : servicos) {
-            validarAgendamento(salon, profissional, servico, cliente, request.getDataHora());
-        }
+        // Validate against the whole block (all services + prep time), not each service alone
+        validarAgendamento(salon, profissional, servicos.get(0), cliente, request.getDataHora(), duracaoTotal);
 
         // Check for conflicts
         validarConflitos(profissional.getId(), request.getDataHora(), fimPrevisto);
@@ -237,7 +240,7 @@ public class AgendamentoService {
         enviarNotificacaoConfirmacao(agendamento);
 
         // Criar notificação no sistema + enviar email
-        enviarNotificacoesSistemaConfirmacao(agendamento);
+        enviarNotificacoesSistemaConfirmacao(agendamento, operador);
 
         return AgendamentoResponse.fromEntity(agendamento);
     }
@@ -297,25 +300,62 @@ public class AgendamentoService {
             return;
         }
         enforceStaffTenant(agendamento.getSalon().getId());
+        enforceAgendaDoProfissional(agendamento.getProfissional(), operador);
+    }
+
+    /**
+     * O PROFISSIONAL só vê e altera agendamentos da própria agenda. O isolamento por salão não
+     * basta: sem isto, pelo id ele abria, confirmava e cancelava agendamentos de colegas.
+     */
+    private void enforceAgendaDoProfissional(Profissional profissional, Usuario operador) {
+        if (operador == null || operador.getRole() != Role.PROFISSIONAL) {
+            return;
+        }
+        if (profissional == null || profissional.getUsuario() == null
+                || !profissional.getUsuario().getId().equals(operador.getId())) {
+            throw new AccessDeniedException("Acesso negado: agendamento de outro profissional");
+        }
+    }
+
+    private static boolean isProfissional(Usuario operador) {
+        return operador != null && operador.getRole() == Role.PROFISSIONAL;
     }
 
     @Transactional(readOnly = true)
     public Page<AgendamentoResponse> listarPorSalon(Long salonId, Pageable pageable, boolean restrictSensitiveData) {
+        return listarPorSalon(salonId, pageable, restrictSensitiveData, null);
+    }
+
+    /** PROFISSIONAL recebe só os agendamentos da própria agenda. */
+    @Transactional(readOnly = true)
+    public Page<AgendamentoResponse> listarPorSalon(Long salonId, Pageable pageable, boolean restrictSensitiveData,
+                                                    Usuario operador) {
         tenantIsolationService.assertRequestedSalon(salonId);
-        return agendamentoRepository.findBySalonId(salonId, pageable)
-                .map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
+        Page<Agendamento> pagina = isProfissional(operador)
+                ? agendamentoRepository.findBySalonIdAndProfissionalUsuarioId(salonId, operador.getId(), pageable)
+                : agendamentoRepository.findBySalonId(salonId, pageable);
+        return pagina.map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
     }
 
     @Transactional(readOnly = true)
     public Page<AgendamentoResponse> listarPorCliente(Long clienteId, Pageable pageable, boolean restrictSensitiveData) {
+        return listarPorCliente(clienteId, pageable, restrictSensitiveData, null);
+    }
+
+    /** PROFISSIONAL recebe só o histórico do cliente na própria agenda. */
+    @Transactional(readOnly = true)
+    public Page<AgendamentoResponse> listarPorCliente(Long clienteId, Pageable pageable, boolean restrictSensitiveData,
+                                                      Usuario operador) {
         // SEC-004: valida que o cliente consultado pertence ao estabelecimento do
         // solicitante. Sem isto, a equipe de um salão listava os agendamentos (com
         // telefone e observações) de clientes de outro salão apenas trocando o ID.
         Cliente cliente = clienteRepository.findById(clienteId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", clienteId));
         enforceStaffTenant(cliente.getSalon().getId());
-        return agendamentoRepository.findByClienteId(clienteId, pageable)
-                .map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
+        Page<Agendamento> pagina = isProfissional(operador)
+                ? agendamentoRepository.findByClienteIdAndProfissionalUsuarioId(clienteId, operador.getId(), pageable)
+                : agendamentoRepository.findByClienteId(clienteId, pageable);
+        return pagina.map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
     }
 
     @Transactional(readOnly = true)
@@ -481,6 +521,7 @@ public class AgendamentoService {
     public AgendamentoResponse confirmar(Long id, boolean restrictSensitiveData, Usuario operador) {
         Agendamento agendamento = getAgendamento(id);
         enforceStaffTenant(agendamento.getSalon().getId());
+        enforceAgendaDoProfissional(agendamento.getProfissional(), operador);
 
         if (agendamento.getStatus() != StatusAgendamento.PENDENTE) {
             throw new BusinessException("Apenas agendamentos pendentes podem ser confirmados");
@@ -525,11 +566,7 @@ public class AgendamentoService {
         agendamento = agendamentoRepository.save(agendamento);
         log.info("Agendamento confirmado por token: {}", agendamento.getId());
 
-        try {
-            notificacaoService.notificarEquipeAgendamentoConfirmadoPeloCliente(agendamento);
-        } catch (Exception e) {
-            log.error("Erro ao notificar equipe sobre confirmação do cliente: {}", e.getMessage(), e);
-        }
+        enviarNotificacoesConfirmacaoPeloCliente(agendamento);
 
         // Token flow: caller is the client via an emailed link, not staff — never expose sensitive data.
         return AgendamentoResponse.fromEntityForClient(agendamento);
@@ -559,11 +596,7 @@ public class AgendamentoService {
         agendamento = agendamentoRepository.save(agendamento);
         log.info("Agendamento confirmado pelo cliente via app: {}", agendamentoId);
 
-        try {
-            notificacaoService.notificarEquipeAgendamentoConfirmadoPeloCliente(agendamento);
-        } catch (Exception e) {
-            log.error("Erro ao notificar equipe sobre confirmação do cliente: {}", e.getMessage(), e);
-        }
+        enviarNotificacoesConfirmacaoPeloCliente(agendamento);
 
         return MeuAgendamentoDTO.fromEntity(agendamento);
     }
@@ -613,6 +646,7 @@ public class AgendamentoService {
     public AgendamentoResponse iniciar(Long id, boolean restrictSensitiveData, Usuario operador) {
         Agendamento agendamento = getAgendamento(id);
         enforceStaffTenant(agendamento.getSalon().getId());
+        enforceAgendaDoProfissional(agendamento.getProfissional(), operador);
 
         if (agendamento.getStatus() != StatusAgendamento.CONFIRMADO) {
             throw new BusinessException("Apenas agendamentos confirmados podem ser iniciados");
@@ -660,6 +694,7 @@ public class AgendamentoService {
     public AgendamentoResponse concluir(Long id, boolean restrictSensitiveData, Usuario operador) {
         Agendamento agendamento = getAgendamento(id);
         enforceStaffTenant(agendamento.getSalon().getId());
+        enforceAgendaDoProfissional(agendamento.getProfissional(), operador);
 
         if (agendamento.getStatus() != StatusAgendamento.EM_ANDAMENTO) {
             throw new BusinessException("Apenas agendamentos em andamento podem ser concluídos");
@@ -725,6 +760,7 @@ public class AgendamentoService {
             return;
         }
         enforceStaffTenant(agendamento.getSalon().getId());
+        enforceAgendaDoProfissional(agendamento.getProfissional(), operador);
     }
 
     /**
@@ -834,6 +870,8 @@ public class AgendamentoService {
         Profissional profissional = agendamento.getProfissional();
         if (request.getNovoProfissionalId() != null) {
             profissional = profissionalService.getProfissionalEntity(request.getNovoProfissionalId());
+            // Profissional não repassa o próprio atendimento para a agenda de um colega
+            enforceAgendaDoProfissional(profissional, operador);
         }
 
         Salon salon = agendamento.getSalon();
@@ -875,11 +913,11 @@ public class AgendamentoService {
             throw new BusinessException("Agendamento sem serviço definido — não é possível reagendar");
         }
 
-        // Validate new datetime using the resolved service for salon/hours checks
-        validarAgendamento(salon, profissional, servico, cliente, request.getNovaDataHora());
-
-        // Use total duration across all services (single or multi, possibly just replaced above)
+        // Validate new datetime against the total duration across all services
+        // (single or multi, possibly just replaced above)
         int duracaoTotal = agendamento.getDuracaoTotalMinutos();
+        validarAgendamento(salon, profissional, servico, cliente, request.getNovaDataHora(), duracaoTotal);
+
         LocalDateTime novoFim = request.getNovaDataHora().plusMinutes(duracaoTotal);
         validarConflitos(profissional.getId(), request.getNovaDataHora(), novoFim);
 
@@ -948,6 +986,7 @@ public class AgendamentoService {
     public AgendamentoResponse marcarNoShow(Long id, boolean restrictSensitiveData, Usuario operador) {
         Agendamento agendamento = getAgendamento(id);
         enforceStaffTenant(agendamento.getSalon().getId());
+        enforceAgendaDoProfissional(agendamento.getProfissional(), operador);
 
         if (agendamento.getStatus() != StatusAgendamento.CONFIRMADO) {
             throw new BusinessException("Apenas agendamentos confirmados podem ser marcados como no-show");
@@ -956,16 +995,14 @@ public class AgendamentoService {
         agendamento.setStatus(StatusAgendamento.NO_SHOW);
         agendamento = agendamentoRepository.save(agendamento);
 
-        // Increment client no-show counter
-        clienteRepository.incrementNoShows(agendamento.getCliente().getId());
-
-        // Check if client should be blocked
+        // Increment client no-show counter and block once the salon limit is reached
         Salon salon = agendamento.getSalon();
         Cliente cliente = agendamento.getCliente();
-        if (cliente.getNoShows() + 1 >= salon.getMaxNoShowsPermitidos()) {
-            cliente.setBloqueado(true);
-            clienteRepository.save(cliente);
-            log.warn("Cliente {} bloqueado por excesso de no-shows", cliente.getId());
+        boolean bloqueadoAgora = cliente.registrarNoShow(salon.getMaxNoShowsPermitidos());
+        clienteRepository.save(cliente);
+        if (bloqueadoAgora) {
+            log.warn("Cliente {} bloqueado por excesso de no-shows ({}/{})",
+                    cliente.getId(), cliente.getNoShows(), salon.getMaxNoShowsPermitidos());
         }
 
         log.info("Agendamento marcado como no-show: {}", id);
@@ -984,8 +1021,12 @@ public class AgendamentoService {
 
     // --- Validation Methods ---
 
+    /**
+     * @param duracaoMinutos duração total do atendimento (soma dos serviços e preparos); o fim
+     *                       previsto precisa caber no funcionamento do salão e no expediente.
+     */
     private void validarAgendamento(Salon salon, Profissional profissional, Servico servico,
-                                     Cliente cliente, LocalDateTime dataHora) {
+                                     Cliente cliente, LocalDateTime dataHora, int duracaoMinutos) {
         // 1. Salon accepts online scheduling
         if (!salon.isAceitaAgendamentoOnline()) {
             throw new BusinessException("Este salão não aceita agendamentos online");
@@ -1016,43 +1057,64 @@ public class AgendamentoService {
             throw new BusinessException("Não é possível agendar em horários passados");
         }
 
-        // 7. Within salon business hours
+        // 7. Salon is open on this day and time. Same rules as DisponibilidadeService: the
+        // per-day configuration wins; without it, the salon's global hours apply.
         LocalTime horarioServico = dataHora.toLocalTime();
-        LocalTime fimServico = horarioServico.plusMinutes(servico.getDuracaoMinutos());
-        if (horarioServico.isBefore(salon.getHorarioAbertura()) || fimServico.isAfter(salon.getHorarioFechamento())) {
+        LocalTime fimServico = horarioServico.plusMinutes(duracaoMinutos);
+        DiaSemana diaSemana = toDiaSemana(dataHora.getDayOfWeek());
+        HorarioFuncionamentoSalon horarioSalon = horarioFuncionamentoSalonRepository
+                .findBySalonIdAndDiaSemana(salon.getId(), diaSemana)
+                .orElse(null);
+        if (horarioSalon != null && !horarioSalon.isAtivo()) {
+            throw new BusinessException("O salão não abre neste dia");
+        }
+        LocalTime abertura = salon.getHorarioAbertura();
+        LocalTime fechamento = salon.getHorarioFechamento();
+        if (horarioSalon != null && horarioSalon.getHoraInicio() != null && horarioSalon.getHoraFim() != null) {
+            abertura = horarioSalon.getHoraInicio();
+            fechamento = horarioSalon.getHoraFim();
+        }
+        // LocalTime wraps at midnight: a block ending the next day would look like an early end
+        boolean viraODia = !dataHora.plusMinutes(duracaoMinutos).toLocalDate().equals(dataHora.toLocalDate());
+        if (horarioServico.isBefore(abertura) || fimServico.isAfter(fechamento) || viraODia) {
             throw new BusinessException("Horário fora do funcionamento do salão (" +
-                    salon.getHorarioAbertura() + " - " + salon.getHorarioFechamento() + ")");
+                    abertura + " - " + fechamento + ")");
         }
 
-        // 8. Professional works on this day
-        DiaSemana diaSemana = toDiaSemana(dataHora.getDayOfWeek());
+        // 8. Professional works on this day: no active schedule for the weekday means day off
         HorarioTrabalho horario = horarioTrabalhoRepository
                 .findByProfissionalIdAndDiaSemana(profissional.getId(), diaSemana)
-                .orElse(null);
+                .filter(HorarioTrabalho::isAtivo)
+                .orElseThrow(() -> new BusinessException("O profissional não atende neste dia"));
 
-        if (horario != null && horario.isAtivo()) {
-            if (horarioServico.isBefore(horario.getHoraInicio()) || fimServico.isAfter(horario.getHoraFim())) {
-                throw new BusinessException("Horário fora do expediente do profissional (" +
-                        horario.getHoraInicio() + " - " + horario.getHoraFim() + ")");
-            }
+        if (horarioServico.isBefore(horario.getHoraInicio()) || fimServico.isAfter(horario.getHoraFim())) {
+            throw new BusinessException("Horário fora do expediente do profissional (" +
+                    horario.getHoraInicio() + " - " + horario.getHoraFim() + ")");
+        }
 
-            // Check if appointment overlaps with break (interval fields are optional)
-            if (horario.getIntervaloInicio() != null && horario.getIntervaloFim() != null &&
-                horarioServico.isBefore(horario.getIntervaloFim()) &&
-                fimServico.isAfter(horario.getIntervaloInicio())) {
-                throw new BusinessException("Horário conflita com o intervalo do profissional (" +
-                        horario.getIntervaloInicio() + " - " + horario.getIntervaloFim() + ")");
-            }
+        // Check if appointment overlaps with break (interval fields are optional)
+        if (horario.getIntervaloInicio() != null && horario.getIntervaloFim() != null &&
+            horarioServico.isBefore(horario.getIntervaloFim()) &&
+            fimServico.isAfter(horario.getIntervaloInicio())) {
+            throw new BusinessException("Horário conflita com o intervalo do profissional (" +
+                    horario.getIntervaloInicio() + " - " + horario.getIntervaloFim() + ")");
         }
 
         // 9. No time blocks
-        LocalDateTime fimPrevisto = dataHora.plusMinutes(servico.getDuracaoMinutos());
+        LocalDateTime fimPrevisto = dataHora.plusMinutes(duracaoMinutos);
         if (bloqueioHorarioService.temBloqueio(profissional.getId(), dataHora, fimPrevisto)) {
             throw new BusinessException("Profissional possui bloqueio de horário neste período");
         }
     }
 
+    /**
+     * Verifica sobreposição com outros agendamentos do profissional. Antes da consulta, trava a
+     * linha do profissional (até o commit da transação de criar/reagendar): sem isso, requisições
+     * simultâneas (duplo clique, dois clientes no mesmo horário) passavam juntas pela consulta e
+     * gravavam agendamentos duplicados no mesmo horário.
+     */
     private void validarConflitos(Long profissionalId, LocalDateTime inicio, LocalDateTime fim) {
+        agendamentoRepository.lockProfissional(profissionalId);
         List<Agendamento> conflitos = agendamentoRepository.findConflicts(profissionalId, inicio, fim);
         if (!conflitos.isEmpty()) {
             throw new BusinessException("Profissional já possui agendamento neste horário");
@@ -1079,13 +1141,29 @@ public class AgendamentoService {
     /**
      * Create system notification + send email after appointment creation.
      */
-    private void enviarNotificacoesSistemaConfirmacao(Agendamento agendamento) {
+    private void enviarNotificacoesSistemaConfirmacao(Agendamento agendamento, Usuario operador) {
         try {
             // O agendamento acabou de ser criado com status PENDENTE: notifica o
             // cliente pedindo confirmação, e não que já está confirmado.
             notificacaoService.notificarClienteAgendamentoPendente(agendamento);
         } catch (Exception e) {
             log.error("Erro ao criar notificação de confirmação: {}", e.getMessage(), e);
+        }
+
+        try {
+            // Avisa a equipe (profissional agendado, administrador e recepção) do novo
+            // agendamento — exceto quem o criou, que não precisa ser notificado da própria ação.
+            String nomeCliente = agendamento.getCliente() != null && agendamento.getCliente().getUsuario() != null
+                    ? agendamento.getCliente().getUsuario().getNome() : "Cliente";
+            String mensagem = String.format("%s agendou %s para %s às %s.",
+                    nomeCliente,
+                    resolverNomeServico(agendamento),
+                    agendamento.getDataHora().format(DateTimeFormatter.ofPattern("dd/MM")),
+                    agendamento.getDataHora().format(DateTimeFormatter.ofPattern("HH:mm")));
+            notificacaoService.notificarEquipeMudancaStatusAgendamento(
+                    agendamento, operador, TipoNotificacao.AGENDAMENTO_PENDENTE, "Novo Agendamento", mensagem);
+        } catch (Exception e) {
+            log.error("Erro ao notificar equipe sobre novo agendamento: {}", e.getMessage(), e);
         }
 
         try {
@@ -1107,6 +1185,28 @@ public class AgendamentoService {
                     cliente.getUsuario().getEmail(), nomeCliente, data, hora, servico, profissional, link);
         } catch (Exception e) {
             log.error("Erro ao enviar email de confirmação: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Notificações quando o próprio cliente confirma (pelo app ou pelo link do e-mail): o cliente
+     * recebe o comprovante "Agendamento Confirmado" e a equipe (profissional, administrador e
+     * recepção) é avisada — mesmo padrão da confirmação feita pela equipe.
+     */
+    private void enviarNotificacoesConfirmacaoPeloCliente(Agendamento agendamento) {
+        try {
+            notificacaoService.notificarAgendamentoConfirmado(agendamento);
+        } catch (Exception e) {
+            log.error("Erro ao notificar cliente sobre confirmação do agendamento: {}", e.getMessage(), e);
+        }
+
+        try {
+            notificacaoService.notificarEquipeMudancaStatusAgendamento(
+                    agendamento, null, TipoNotificacao.AGENDAMENTO_CONFIRMADO_CLIENTE,
+                    "Agendamento Confirmado",
+                    mensagemEquipe(agendamento, "foi confirmado pelo cliente"));
+        } catch (Exception e) {
+            log.error("Erro ao notificar equipe sobre confirmação do cliente: {}", e.getMessage(), e);
         }
     }
 

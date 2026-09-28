@@ -24,8 +24,10 @@ public interface PagamentoProfissionalRepository extends JpaRepository<Pagamento
 
     List<PagamentoProfissional> findByProfissionalIdAndStatus(Long profissionalId, StatusPagamentoProfissional status);
 
+    /** Repasses ativos (não cancelados) cujo período se sobrepõe ao informado. */
     @Query("SELECT p FROM PagamentoProfissional p " +
            "WHERE p.profissional.id = :profissionalId " +
+           "AND p.status <> com.belezza.api.entity.StatusPagamentoProfissional.CANCELADO " +
            "AND ((p.periodoInicio <= :inicio AND p.periodoFim >= :inicio) " +
            "OR (p.periodoInicio <= :fim AND p.periodoFim >= :fim) " +
            "OR (p.periodoInicio >= :inicio AND p.periodoFim <= :fim))")

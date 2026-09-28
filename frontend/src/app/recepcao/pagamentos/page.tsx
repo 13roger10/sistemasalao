@@ -3,12 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/services/salon/api";
+import { PagamentoForm, type PagamentoFormState, type PartePagamento } from "@/components/salon/PagamentoForm";
 import { format, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Loader2, AlertCircle,
   CheckCircle2, Clock, User, Scissors, RefreshCw, X,
-  Banknote, QrCode, CreditCard, BadgeDollarSign,
+  BadgeDollarSign,
 } from "lucide-react";
 
 const SALON_ID = "1";
@@ -80,21 +81,6 @@ function canRegisterPayment(appt: AgendamentoBackend): boolean {
          appt.status === "completed" || appt.status === "in_progress";
 }
 
-// ─── Payment Form Options ─────────────────────────────────────────────────────
-
-interface FormaOption {
-  value: string;
-  label: string;
-  icon: React.ReactNode;
-}
-
-const FORMAS: FormaOption[] = [
-  { value: "DINHEIRO",       label: "Dinheiro",         icon: <Banknote className="h-5 w-5" /> },
-  { value: "PIX",            label: "PIX",              icon: <QrCode className="h-5 w-5" /> },
-  { value: "CARTAO_CREDITO", label: "Cartão de Crédito", icon: <CreditCard className="h-5 w-5" /> },
-  { value: "CARTAO_DEBITO",  label: "Cartão de Débito",  icon: <CreditCard className="h-5 w-5" /> },
-];
-
 // ─── Register Payment Modal ───────────────────────────────────────────────────
 
 function RegisterPaymentModal({
@@ -103,33 +89,22 @@ function RegisterPaymentModal({
   onClose,
 }: {
   appointment: AgendamentoBackend;
-  onConfirm: (agendamentoId: number, valor: number, forma: string) => Promise<void>;
+  onConfirm: (agendamentoId: number, partes: PartePagamento[]) => Promise<void>;
   onClose: () => void;
 }) {
-  const [forma, setForma] = useState<string>("");
-  const [valor, setValor] = useState<string>(
-    appointment.valorCobrado != null
-      ? String(appointment.valorCobrado.toFixed ? appointment.valorCobrado.toFixed(2) : appointment.valorCobrado)
-      : ""
-  );
+  const [pagamento, setPagamento] = useState<PagamentoFormState>({ partes: [], valido: false, troco: 0 });
+  const [erro, setErro] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [valorError, setValorError] = useState("");
-
-  const handleValorChange = (v: string) => {
-    setValor(v.replace(",", "."));
-    setValorError("");
-  };
+  const total = appointment.valorCobrado != null ? Number(appointment.valorCobrado) : null;
 
   const handleSubmit = async () => {
-    if (!forma) return;
-    const num = parseFloat(valor);
-    if (isNaN(num) || num <= 0) {
-      setValorError("Informe um valor válido");
-      return;
-    }
+    if (!pagamento.valido) return;
     setSubmitting(true);
+    setErro("");
     try {
-      await onConfirm(appointment.id, num, forma);
+      await onConfirm(appointment.id, pagamento.partes);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message.replace(/^\[HTTP \d+\]\s*/, "") : "Não foi possível registrar o pagamento.");
     } finally {
       setSubmitting(false);
     }
@@ -168,52 +143,20 @@ function RegisterPaymentModal({
             </div>
           </div>
 
-          {/* Valor */}
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">
-              Valor <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-2.5 text-sm text-gray-500">R$</span>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0,00"
-                value={valor}
-                onChange={(e) => handleValorChange(e.target.value)}
-                className={`w-full rounded-lg border py-2 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-violet-500 ${
-                  valorError ? "border-red-400" : "border-gray-200"
-                }`}
-              />
-            </div>
-            {valorError && <p className="mt-1 text-xs text-red-500">{valorError}</p>}
-          </div>
+          {total != null ? (
+            <PagamentoForm total={total} onChange={setPagamento} accent="violet" />
+          ) : (
+            <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              O valor deste atendimento não está disponível. Confira o agendamento antes de registrar o pagamento.
+            </p>
+          )}
 
-          {/* Forma de pagamento */}
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">
-              Forma de pagamento <span className="text-red-500">*</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {FORMAS.map((f) => (
-                <button
-                  key={f.value}
-                  onClick={() => setForma(f.value)}
-                  className={`flex items-center gap-2 rounded-lg border-2 px-3 py-3 text-sm font-medium transition-all ${
-                    forma === f.value
-                      ? "border-violet-500 bg-violet-50 text-violet-700"
-                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  <span className={forma === f.value ? "text-violet-500" : "text-gray-400"}>
-                    {f.icon}
-                  </span>
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          {erro && (
+            <p className="flex items-start gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              {erro}
+            </p>
+          )}
         </div>
 
         {/* Footer */}
@@ -227,7 +170,7 @@ function RegisterPaymentModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={submitting || !forma}
+            disabled={submitting || !pagamento.valido}
             className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-600 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
           >
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -345,13 +288,14 @@ export default function RecepcaoPagamentosPage() {
     load();
   }, [load]);
 
-  const handleRegisterPayment = async (
-    agendamentoId: number,
-    valor: number,
-    forma: string
-  ) => {
-    await api.post("/pagamentos", { agendamentoId, valor, forma });
-    showToast("Pagamento registrado com sucesso");
+  const handleRegisterPayment = async (agendamentoId: number, partes: PartePagamento[]) => {
+    const r = await api.post<{ trocoTotal?: number }>("/pagamentos", { agendamentoId, partes });
+    const troco = Number(r?.trocoTotal ?? 0);
+    showToast(
+      troco > 0
+        ? `Pagamento registrado. Troco: ${troco.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
+        : "Pagamento registrado com sucesso"
+    );
     setRegisterTarget(null);
     load();
   };

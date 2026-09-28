@@ -33,4 +33,8 @@ public interface PushSubscriptionRepository extends JpaRepository<PushSubscripti
 
     @Query("SELECT p FROM PushSubscription p WHERE p.usuario.id IN :usuarioIds AND p.ativo = true")
     List<PushSubscription> findByUsuarioIdsAndAtivoTrue(@Param("usuarioIds") List<Long> usuarioIds);
+
+    @Modifying
+    @Query("DELETE FROM PushSubscription p WHERE p.usuario.id = :usuarioId")
+    void deleteAllByUsuarioId(@Param("usuarioId") Long usuarioId);
 }

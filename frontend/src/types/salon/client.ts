@@ -4,6 +4,9 @@ import { ID, Timestamps, Address, ContactInfo, Status, SoftDelete } from './comm
 
 export type LoyaltyLevel = 'bronze' | 'silver' | 'gold';
 
+/** active | inactive (cadastro desativado) | blocked (bloqueado para agendar, ex.: excesso de no-shows) */
+export type ClientStatus = Status | 'blocked';
+
 export interface Client extends Timestamps, SoftDelete {
   id: ID;
   name: string;
@@ -16,7 +19,8 @@ export interface Client extends Timestamps, SoftDelete {
   avatar?: string;
   address?: Address;
   notes?: string;
-  status: Status;
+  status: ClientStatus;
+  noShows?: number;
 
   // Loyalty
   loyaltyLevel: LoyaltyLevel;
@@ -72,7 +76,7 @@ export interface ClientUpdateInput extends Partial<ClientCreateInput> {
 
 export interface ClientFilters {
   search?: string;
-  status?: Status;
+  status?: ClientStatus;
   loyaltyLevel?: LoyaltyLevel;
   hasVisitedInDays?: number;
   notVisitedInDays?: number;

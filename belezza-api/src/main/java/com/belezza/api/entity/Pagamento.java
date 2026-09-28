@@ -29,13 +29,19 @@ public class Pagamento {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "agendamento_id", nullable = false, unique = true)
+    /** Um atendimento pode ter várias partes de pagamento (pagamento dividido). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "agendamento_id", nullable = false)
     private Agendamento agendamento;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "salon_id", nullable = false)
     private Salon salon;
+
+    /** Caixa em que o pagamento entrou (nulo apenas em pagamentos anteriores ao controle de caixa). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "caixa_id")
+    private Caixa caixa;
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal valor;
@@ -43,6 +49,14 @@ public class Pagamento {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private FormaPagamento forma;
+
+    /** Em dinheiro: quanto o cliente entregou (valor + troco). Nulo nas demais formas. */
+    @Column(name = "valor_recebido", precision = 10, scale = 2)
+    private BigDecimal valorRecebido;
+
+    /** Em dinheiro: troco devolvido ao cliente. Não é receita. */
+    @Column(precision = 10, scale = 2)
+    private BigDecimal troco;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

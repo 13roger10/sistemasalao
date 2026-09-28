@@ -66,6 +66,14 @@ export const userService = {
   },
 
   /**
+   * Exclui um usuário definitivamente. O backend recusa (400) usuários com histórico
+   * (agendamentos, administração de salão etc.) — esses devem ser desativados.
+   */
+  async deletePermanently(id: number): Promise<void> {
+    await api.delete(`/usuarios/${id}/permanente`);
+  },
+
+  /**
    * Reativa um usuário
    */
   async reactivate(id: number): Promise<UsuarioListItem> {

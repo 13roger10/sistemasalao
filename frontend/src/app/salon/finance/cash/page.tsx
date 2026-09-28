@@ -36,6 +36,9 @@ import { DataTable, Column, ActionMenuItem } from "@/components/ui/DataTable";
 import { financeService } from "@/services/salon/financeService";
 import { api } from "@/services/salon/api";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
+import { useToast } from "@/components/ui/Toast";
+import { getSalonIdFromToken } from "@/lib/salon-api";
+import { PagamentoForm, type PagamentoFormState } from "@/components/salon/PagamentoForm";
 import type {
   CashRegister,
   CashRegisterOpenInput,
@@ -64,12 +67,15 @@ interface AgendamentoPendente {
   dataHora: string;
   status: string;
   valorCobrado?: number;
+  /** Já pago (partes aprovadas) — o formulário cobra só o que falta. */
+  valorPago?: number;
 }
 
 interface PagamentoBackend {
   id: number;
   agendamentoId: number;
   status: string;
+  valor: number;
 }
 
 interface AuditLog {
@@ -226,6 +232,11 @@ const PaymentMethodCard = ({
 export default function FinanceCashPage() {
   const { user } = useSalonAuth();
   const isRecepcionist = user?.role === "RECEPCIONIST";
+  const toast = useToast();
+
+  // Mensagem do backend sem o prefixo técnico "[HTTP 400] "
+  const errorMessage = (error: unknown) =>
+    error instanceof Error ? error.message.replace(/^\[HTTP \d+\]\s*/, "") : "Tente novamente.";
 
   // Estados principais
   const [currentCashRegister, setCurrentCashRegister] = useState<CashRegister | null>(null);
@@ -252,12 +263,11 @@ export default function FinanceCashPage() {
   const [pendingAppointments, setPendingAppointments] = useState<AgendamentoPendente[]>([]);
   const [isLoadingPending, setIsLoadingPending] = useState(false);
   const [paymentTarget, setPaymentTarget] = useState<AgendamentoPendente | null>(null);
-  const [paymentValor, setPaymentValor] = useState("");
-  const [paymentForma, setPaymentForma] = useState("");
+  const [paymentState, setPaymentState] = useState<PagamentoFormState>({ partes: [], valido: false, troco: 0 });
 
   // Estados dos formulários
   const [openCashForm, setOpenCashForm] = useState<CashRegisterOpenInput>({
-    unitId: "1",
+    unitId: "",
     openingBalance: 0,
     openingNotes: "",
   });
@@ -298,202 +308,29 @@ export default function FinanceCashPage() {
     });
   };
 
-  // Carregar dados
+  // Carregar dados (sem unitId: o backend usa o salão do token). Em caso de erro a tela fica
+  // vazia e mostra o motivo — antes ela preenchia valores inventados, escondendo a falha.
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Carregar caixa atual
-      const cashRegister = await financeService.cashRegister.getCurrent("1");
+      const [cashRegister, report, transactionsPage] = await Promise.all([
+        financeService.cashRegister.getCurrent(),
+        financeService.reports.daily(selectedDate),
+        financeService.transactions.list({ page: 1, limit: 50 }),
+      ]);
       setCurrentCashRegister(cashRegister);
-
-      // Carregar relatório diário
-      const report = await financeService.reports.daily(selectedDate);
       setDailyReport(report);
-
-      // Carregar transações (pagamentos reais registrados)
-      const transactionsPage = await financeService.transactions.list({
-        unitId: "1",
-        page: 1,
-        limit: 50,
-      });
       setTransactions(transactionsPage.data ?? transactionsPage.items ?? []);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
-
-      // Mock data
-      const mockCashRegister: CashRegister = {
-        id: "1",
-        unitId: "1",
-        openedById: "1",
-        openedByName: user?.name || "Admin",
-        status: "open",
-        openedAt: new Date(),
-        openingBalance: 200,
-        totalIncome: 1850,
-        totalExpenses: 150,
-        totalWithdrawals: 100,
-        cashTotal: 800,
-        pixTotal: 650,
-        creditCardTotal: 300,
-        debitCardTotal: 100,
-        voucherTotal: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      setCurrentCashRegister(mockCashRegister);
-
-      // Mock transactions
-      const mockTransactions: Transaction[] = [
-        {
-          id: "1",
-          cashRegisterId: "1",
-          unitId: "1",
-          type: "income",
-          category: "service",
-          description: "Corte Masculino - João Silva",
-          amount: 50,
-          paymentMethod: "pix",
-          clientId: "1",
-          clientName: "João Silva",
-          createdById: "1",
-          createdByName: "Carlos",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        {
-          id: "2",
-          cashRegisterId: "1",
-          unitId: "1",
-          type: "income",
-          category: "service",
-          description: "Coloração - Maria Santos",
-          amount: 150,
-          paymentMethod: "credit_card",
-          clientId: "2",
-          clientName: "Maria Santos",
-          createdById: "2",
-          createdByName: "Ana",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        {
-          id: "3",
-          cashRegisterId: "1",
-          unitId: "1",
-          type: "income",
-          category: "service",
-          description: "Corte + Barba - Pedro Oliveira",
-          amount: 70,
-          paymentMethod: "cash",
-          clientId: "3",
-          clientName: "Pedro Oliveira",
-          createdById: "1",
-          createdByName: "Carlos",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        {
-          id: "4",
-          cashRegisterId: "1",
-          unitId: "1",
-          type: "expense",
-          category: "supplies",
-          description: "Compra de produtos - Shampoo",
-          amount: 150,
-          paymentMethod: "pix",
-          createdById: "1",
-          createdByName: "Admin",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        {
-          id: "5",
-          cashRegisterId: "1",
-          unitId: "1",
-          type: "withdrawal",
-          category: "other_expense",
-          description: "Sangria - Pagamento fornecedor",
-          amount: 100,
-          paymentMethod: "cash",
-          createdById: "1",
-          createdByName: "Admin",
-          notes: "Pagamento fornecedor de toalhas",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ];
-      setTransactions(mockTransactions);
-
-      // Mock daily report
-      const mockReport: DailyReport = {
-        date: selectedDate,
-        cashRegisterId: "1",
-        status: "open",
-        revenue: {
-          services: 1650,
-          products: 150,
-          packages: 50,
-          tips: 0,
-          other: 0,
-          total: 1850,
-        },
-        expenses: {
-          total: 150,
-          byCategory: [
-            { categoryId: "1", categoryName: "Produtos", amount: 100 },
-            { categoryId: "2", categoryName: "Manutenção", amount: 50 },
-          ],
-        },
-        paymentMethods: {
-          cash: 800,
-          pix: 650,
-          creditCard: 300,
-          debitCard: 100,
-          voucher: 0,
-        },
-        appointments: {
-          total: 15,
-          completed: 12,
-          canceled: 2,
-          noShow: 1,
-        },
-        averageTicket: 154.17,
-        profit: 1700,
-      };
-      setDailyReport(mockReport);
-
-      // Mock audit logs
-      const mockLogs: AuditLog[] = [
-        {
-          id: "1",
-          action: "CASH_OPEN",
-          description: "Caixa aberto com saldo inicial de R$ 200,00",
-          userId: "1",
-          userName: "Admin",
-          timestamp: new Date(Date.now() - 8 * 60 * 60 * 1000),
-        },
-        {
-          id: "2",
-          action: "TRANSACTION_CREATE",
-          description: "Transação criada: Corte Masculino - R$ 50,00",
-          userId: "1",
-          userName: "Carlos",
-          timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000),
-        },
-        {
-          id: "3",
-          action: "WITHDRAWAL",
-          description: "Sangria realizada: R$ 100,00 - Pagamento fornecedor",
-          userId: "1",
-          userName: "Admin",
-          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-        },
-      ];
-      setAuditLogs(mockLogs);
+      setCurrentCashRegister(null);
+      setTransactions([]);
+      toast.error("Não foi possível carregar o caixa", errorMessage(error));
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDate, user?.name]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
 
   useEffect(() => {
     loadData();
@@ -505,10 +342,12 @@ export default function FinanceCashPage() {
     try {
       await financeService.cashRegister.open(openCashForm);
       setIsOpenCashModalOpen(false);
-      setOpenCashForm({ unitId: "1", openingBalance: 0, openingNotes: "" });
+      setOpenCashForm({ unitId: "", openingBalance: 0, openingNotes: "" });
+      toast.success("Caixa aberto");
       loadData();
     } catch (error) {
       console.error("Erro ao abrir caixa:", error);
+      toast.error("Não foi possível abrir o caixa", errorMessage(error));
     } finally {
       setIsSubmitting(false);
     }
@@ -519,12 +358,20 @@ export default function FinanceCashPage() {
 
     setIsSubmitting(true);
     try {
-      await financeService.cashRegister.close(currentCashRegister.id, closeCashForm);
+      const fechado = await financeService.cashRegister.close(currentCashRegister.id, closeCashForm);
       setIsCloseCashModalOpen(false);
       setCloseCashForm({ closingBalance: 0, closingNotes: "" });
+      const diferenca = fechado.difference ?? 0;
+      toast.success(
+        "Caixa fechado",
+        diferenca === 0
+          ? "O dinheiro contado bate com o esperado."
+          : `Esperado ${formatCurrency(fechado.expectedBalance ?? 0)} · ${diferenca > 0 ? "sobra" : "falta"} de ${formatCurrency(Math.abs(diferenca))}.`
+      );
       loadData();
     } catch (error) {
       console.error("Erro ao fechar caixa:", error);
+      toast.error("Não foi possível fechar o caixa", errorMessage(error));
     } finally {
       setIsSubmitting(false);
     }
@@ -534,16 +381,17 @@ export default function FinanceCashPage() {
   const loadPendingAppointments = async () => {
     setIsLoadingPending(true);
     setPaymentTarget(null);
-    setPaymentValor("");
-    setPaymentForma("");
+    setPaymentState({ partes: [], valido: false, troco: 0 });
     try {
+      const salonId = getSalonIdFromToken();
+      if (!salonId) throw new Error("Usuário sem salão vinculado");
       const [apptRes, payRes] = await Promise.all([
         api.get<{ content: AgendamentoPendente[] } | AgendamentoPendente[]>(
-          "/agendamentos/salon/1",
+          `/agendamentos/salon/${salonId}`,
           { size: 300, sort: "dataHora" }
         ),
         api.get<{ content: PagamentoBackend[] } | PagamentoBackend[]>(
-          "/pagamentos/salon/1",
+          `/pagamentos/salon/${salonId}`,
           { size: 300 }
         ),
       ]);
@@ -551,20 +399,22 @@ export default function FinanceCashPage() {
       const appts = Array.isArray(apptRes) ? apptRes : apptRes.content ?? [];
       const pays = Array.isArray(payRes) ? payRes : payRes.content ?? [];
 
-      const pagosIds = new Set(
-        pays.filter((p) => p.status === "APROVADO").map((p) => p.agendamentoId)
-      );
+      // Soma paga por atendimento (pagamento dividido tem várias partes; estornadas não contam)
+      const pagoPorAtendimento = new Map<number, number>();
+      pays
+        .filter((p) => p.status === "APROVADO")
+        .forEach((p) => pagoPorAtendimento.set(p.agendamentoId, (pagoPorAtendimento.get(p.agendamentoId) ?? 0) + Number(p.valor)));
 
-      const pendentes = appts.filter(
-        (a) =>
-          (a.status === "CONCLUIDO" || a.status === "EM_ANDAMENTO") &&
-          !pagosIds.has(a.id)
-      );
+      const pendentes = appts
+        .filter((a) => a.status === "CONCLUIDO" || a.status === "EM_ANDAMENTO")
+        .map((a) => ({ ...a, valorPago: pagoPorAtendimento.get(a.id) ?? 0 }))
+        .filter((a) => a.valorCobrado == null || a.valorPago < Number(a.valorCobrado) - 0.001);
 
       setPendingAppointments(pendentes);
     } catch (error) {
       console.error("Erro ao carregar agendamentos pendentes de pagamento:", error);
       setPendingAppointments([]);
+      toast.error("Não foi possível carregar os atendimentos", errorMessage(error));
     } finally {
       setIsLoadingPending(false);
     }
@@ -577,27 +427,26 @@ export default function FinanceCashPage() {
 
   const handleSelectPaymentTarget = (appt: AgendamentoPendente) => {
     setPaymentTarget(appt);
-    setPaymentValor(appt.valorCobrado != null ? String(appt.valorCobrado) : "");
-    setPaymentForma("");
+    setPaymentState({ partes: [], valido: false, troco: 0 });
   };
 
   const handleConfirmPayment = async () => {
-    if (!paymentTarget || !paymentForma) return;
-    const valor = parseFloat(paymentValor.replace(",", "."));
-    if (isNaN(valor) || valor <= 0) return;
+    if (!paymentTarget || !paymentState.valido) return;
 
     setIsSubmitting(true);
     try {
-      await api.post("/pagamentos", {
+      const r = await api.post<{ trocoTotal?: number }>("/pagamentos", {
         agendamentoId: paymentTarget.id,
-        valor,
-        forma: paymentForma,
+        partes: paymentState.partes,
       });
       setIsRegisterPaymentModalOpen(false);
       setPaymentTarget(null);
+      const troco = Number(r?.trocoTotal ?? 0);
+      toast.success("Pagamento registrado", troco > 0 ? `Troco: ${formatCurrency(troco)}` : undefined);
       loadData();
     } catch (error) {
       console.error("Erro ao registrar pagamento:", error);
+      toast.error("Não foi possível registrar o pagamento", errorMessage(error));
     } finally {
       setIsSubmitting(false);
     }
@@ -617,9 +466,11 @@ export default function FinanceCashPage() {
         amount: 0,
         paymentMethod: "cash",
       });
+      toast.success("Lançamento registrado");
       loadData();
     } catch (error) {
       console.error("Erro ao criar transação:", error);
+      toast.error("Não foi possível registrar o lançamento", errorMessage(error));
     } finally {
       setIsSubmitting(false);
     }
@@ -637,9 +488,11 @@ export default function FinanceCashPage() {
       );
       setIsWithdrawalModalOpen(false);
       setWithdrawalForm({ amount: 0, reason: "" });
+      toast.success("Sangria registrada");
       loadData();
     } catch (error) {
       console.error("Erro ao realizar sangria:", error);
+      toast.error("Não foi possível registrar a sangria", errorMessage(error));
     } finally {
       setIsSubmitting(false);
     }
@@ -678,12 +531,13 @@ export default function FinanceCashPage() {
   };
 
   // Calcular saldo esperado
+  // Dinheiro esperado na gaveta, calculado pelo backend (saldo inicial + dinheiro recebido +
+  // suprimentos − sangrias − despesas em dinheiro) — o mesmo valor usado no fechamento.
   const expectedBalance = useMemo(() => {
     if (!currentCashRegister) return 0;
     return (
-      currentCashRegister.openingBalance +
-      currentCashRegister.cashTotal -
-      currentCashRegister.totalWithdrawals
+      currentCashRegister.expectedBalance ??
+      currentCashRegister.openingBalance + currentCashRegister.cashTotal - currentCashRegister.totalWithdrawals
     );
   }, [currentCashRegister]);
 
@@ -1208,7 +1062,7 @@ export default function FinanceCashPage() {
               <Button
                 onClick={handleConfirmPayment}
                 isLoading={isSubmitting}
-                disabled={!paymentForma || !paymentValor}
+                disabled={!paymentState.valido}
               >
                 Confirmar Pagamento
               </Button>
@@ -1269,49 +1123,18 @@ export default function FinanceCashPage() {
               </p>
             </div>
 
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Valor *
-              </label>
-              <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={paymentValor}
-                  onChange={(e) => setPaymentValor(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 bg-white pl-10 pr-4 py-2.5 text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Forma de Pagamento *
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { value: "DINHEIRO", label: "Dinheiro", icon: <Wallet className="h-4 w-4" /> },
-                  { value: "PIX", label: "PIX", icon: <QrCode className="h-4 w-4" /> },
-                  { value: "CARTAO_CREDITO", label: "Cartão de Crédito", icon: <CreditCard className="h-4 w-4" /> },
-                  { value: "CARTAO_DEBITO", label: "Cartão de Débito", icon: <CreditCard className="h-4 w-4" /> },
-                ].map((f) => (
-                  <button
-                    key={f.value}
-                    onClick={() => setPaymentForma(f.value)}
-                    className={`flex items-center gap-2 rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-all ${
-                      paymentForma === f.value
-                        ? "border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300"
-                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
-                    }`}
-                  >
-                    {f.icon}
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {paymentTarget.valorCobrado != null ? (
+              <PagamentoForm
+                key={paymentTarget.id}
+                total={Number(paymentTarget.valorCobrado) - (paymentTarget.valorPago ?? 0)}
+                onChange={setPaymentState}
+                accent="violet"
+              />
+            ) : (
+              <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                O valor deste atendimento não está disponível. Confira o agendamento antes de registrar o pagamento.
+              </p>
+            )}
           </div>
         )}
       </Modal>

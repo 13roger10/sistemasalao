@@ -23,9 +23,14 @@ const BASE_PATH = '/salon/finance';
 export const financeService = {
   // Cash Register
   cashRegister: {
-    // Get current open cash register
-    getCurrent: (unitId: string): Promise<CashRegister | null> => {
-      return api.get<CashRegister | null>(`${BASE_PATH}/cash-register/current`, { unitId });
+    // Get current open cash register (null quando não há caixa aberto — o backend responde
+    // 200 sem corpo, que o cliente HTTP converte em {}). Sem unitId, o backend usa o salão do token.
+    getCurrent: async (unitId?: string): Promise<CashRegister | null> => {
+      const data = await api.get<CashRegister | Record<string, never>>(
+        `${BASE_PATH}/cash-register/current`,
+        unitId ? { unitId } : undefined
+      );
+      return data && "id" in data && data.id ? (data as CashRegister) : null;
     },
 
     // Get cash register by ID
@@ -52,6 +57,11 @@ export const financeService = {
     // Close cash register
     close: (id: string, data: CashRegisterCloseInput): Promise<CashRegister> => {
       return api.post<CashRegister>(`${BASE_PATH}/cash-register/${id}/close`, data);
+    },
+
+    // Add supply (suprimento: dinheiro colocado na gaveta sem venda)
+    addSupply: (id: string, amount: number, reason: string): Promise<Transaction> => {
+      return api.post<Transaction>(`${BASE_PATH}/cash-register/${id}/supply`, { amount, reason });
     },
 
     // Add withdrawal

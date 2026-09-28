@@ -28,6 +28,16 @@ public interface ComissaoRepository extends JpaRepository<Comissao, Long> {
     List<Comissao> findByProfissionalIdAndStatusAndPagamentoProfissionalIsNull(
             Long profissionalId, StatusComissao status);
 
+    /** Comissões calculadas no período que ainda não estão em nenhum repasse. */
+    @Query("SELECT c FROM Comissao c WHERE c.profissional.id = :profissionalId " +
+           "AND c.status = com.belezza.api.entity.StatusComissao.CALCULADA " +
+           "AND c.pagamentoProfissional IS NULL AND c.criadoEm BETWEEN :inicio AND :fim")
+    List<Comissao> findDisponiveisParaRepasse(
+        @Param("profissionalId") Long profissionalId,
+        @Param("inicio") LocalDateTime inicio,
+        @Param("fim") LocalDateTime fim
+    );
+
     @Query("SELECT c FROM Comissao c WHERE c.profissional.id = :profissionalId " +
            "AND c.status = :status AND c.criadoEm BETWEEN :inicio AND :fim")
     List<Comissao> findByProfissionalIdAndStatusAndPeriod(

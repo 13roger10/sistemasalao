@@ -33,10 +33,6 @@ public interface ClienteRepository extends JpaRepository<Cliente, Long> {
     List<Cliente> findByNoShowsExceeded(@Param("salonId") Long salonId, @Param("maxNoShows") int maxNoShows);
 
     @Modifying
-    @Query("UPDATE Cliente c SET c.noShows = c.noShows + 1 WHERE c.id = :clienteId")
-    void incrementNoShows(@Param("clienteId") Long clienteId);
-
-    @Modifying
     @Query("UPDATE Cliente c SET c.totalAgendamentos = c.totalAgendamentos + 1 WHERE c.id = :clienteId")
     void incrementTotalAgendamentos(@Param("clienteId") Long clienteId);
 

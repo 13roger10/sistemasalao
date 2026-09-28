@@ -49,19 +49,14 @@ public class NoShowScheduler {
             agendamento.setStatus(StatusAgendamento.NO_SHOW);
             agendamentoRepository.save(agendamento);
 
-            // Increment no-show counter
-            clienteRepository.incrementNoShows(agendamento.getCliente().getId());
-
-            // Check if client should be blocked
-            Cliente cliente = clienteRepository.findById(agendamento.getCliente().getId()).orElse(null);
-            if (cliente != null) {
-                int maxNoShows = agendamento.getSalon().getMaxNoShowsPermitidos();
-                if (cliente.getNoShows() + 1 >= maxNoShows) {
-                    cliente.setBloqueado(true);
-                    clienteRepository.save(cliente);
-                    log.warn("Cliente {} bloqueado automaticamente por excesso de no-shows ({}/{})",
-                            cliente.getId(), cliente.getNoShows() + 1, maxNoShows);
-                }
+            // Increment no-show counter and block the client once the salon limit is reached
+            Cliente cliente = agendamento.getCliente();
+            int maxNoShows = agendamento.getSalon().getMaxNoShowsPermitidos();
+            boolean bloqueadoAgora = cliente.registrarNoShow(maxNoShows);
+            clienteRepository.save(cliente);
+            if (bloqueadoAgora) {
+                log.warn("Cliente {} bloqueado automaticamente por excesso de no-shows ({}/{})",
+                        cliente.getId(), cliente.getNoShows(), maxNoShows);
             }
 
             log.info("Agendamento {} marcado como no-show", agendamento.getId());
