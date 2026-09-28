@@ -56,6 +56,9 @@ class AnaCarlosAtendimentoPagamentoFlowIT {
     private ProfissionalRepository profissionalRepository;
 
     @Autowired
+    private HorarioTrabalhoRepository horarioTrabalhoRepository;
+
+    @Autowired
     private ServicoRepository servicoRepository;
 
     @Autowired
@@ -138,6 +141,7 @@ class AnaCarlosAtendimentoPagamentoFlowIT {
         ana.setAceitaAgendamentoOnline(true);
         ana = profissionalRepository.save(ana);
         professionalId = ana.getId();
+        cadastrarExpediente(ana);
 
         Servico servico = servicoRepository.findBySalonId(salonId).stream().findFirst()
                 .orElseGet(() -> {
@@ -335,5 +339,19 @@ class AnaCarlosAtendimentoPagamentoFlowIT {
                 .andExpect(jsonPath("$.registradoPorNome").value("Recepcionista Beatriz"));
 
         assertThat(pagamentoRepository.findByAgendamentoIdOrderByCriadoEmAsc(appointmentId)).hasSize(1);
+    }
+
+    /** Expediente todos os dias (08h-20h): sem ele o profissional está de folga e não recebe agendamentos. */
+    private void cadastrarExpediente(Profissional profissional) {
+        for (DiaSemana dia : DiaSemana.values()) {
+            if (horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(profissional.getId(), dia).isEmpty()) {
+                horarioTrabalhoRepository.save(HorarioTrabalho.builder()
+                        .profissional(profissional)
+                        .diaSemana(dia)
+                        .horaInicio(java.time.LocalTime.of(8, 0))
+                        .horaFim(java.time.LocalTime.of(20, 0))
+                        .build());
+            }
+        }
     }
 }

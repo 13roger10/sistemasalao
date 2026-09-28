@@ -10,6 +10,7 @@ import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.integration.WhatsAppService;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.ClienteRepository;
+import com.belezza.api.repository.HorarioFuncionamentoSalonRepository;
 import com.belezza.api.repository.HorarioTrabalhoRepository;
 import com.belezza.api.security.TenantContext;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +44,7 @@ public class AgendamentoService {
     private final AgendamentoRepository agendamentoRepository;
     private final ClienteRepository clienteRepository;
     private final HorarioTrabalhoRepository horarioTrabalhoRepository;
+    private final HorarioFuncionamentoSalonRepository horarioFuncionamentoSalonRepository;
     private final TenantIsolationService tenantIsolationService;
     private final ProfissionalService profissionalService;
     private final ServicoService servicoService;
@@ -1008,33 +1010,45 @@ public class AgendamentoService {
             throw new BusinessException("Não é possível agendar em horários passados");
         }
 
-        // 7. Within salon business hours
+        // 7. Salon is open on this day and time. Same rules as DisponibilidadeService: the
+        // per-day configuration wins; without it, the salon's global hours apply.
         LocalTime horarioServico = dataHora.toLocalTime();
         LocalTime fimServico = horarioServico.plusMinutes(servico.getDuracaoMinutos());
-        if (horarioServico.isBefore(salon.getHorarioAbertura()) || fimServico.isAfter(salon.getHorarioFechamento())) {
+        DiaSemana diaSemana = toDiaSemana(dataHora.getDayOfWeek());
+        HorarioFuncionamentoSalon horarioSalon = horarioFuncionamentoSalonRepository
+                .findBySalonIdAndDiaSemana(salon.getId(), diaSemana)
+                .orElse(null);
+        if (horarioSalon != null && !horarioSalon.isAtivo()) {
+            throw new BusinessException("O salão não abre neste dia");
+        }
+        LocalTime abertura = salon.getHorarioAbertura();
+        LocalTime fechamento = salon.getHorarioFechamento();
+        if (horarioSalon != null && horarioSalon.getHoraInicio() != null && horarioSalon.getHoraFim() != null) {
+            abertura = horarioSalon.getHoraInicio();
+            fechamento = horarioSalon.getHoraFim();
+        }
+        if (horarioServico.isBefore(abertura) || fimServico.isAfter(fechamento)) {
             throw new BusinessException("Horário fora do funcionamento do salão (" +
-                    salon.getHorarioAbertura() + " - " + salon.getHorarioFechamento() + ")");
+                    abertura + " - " + fechamento + ")");
         }
 
-        // 8. Professional works on this day
-        DiaSemana diaSemana = toDiaSemana(dataHora.getDayOfWeek());
+        // 8. Professional works on this day: no active schedule for the weekday means day off
         HorarioTrabalho horario = horarioTrabalhoRepository
                 .findByProfissionalIdAndDiaSemana(profissional.getId(), diaSemana)
-                .orElse(null);
+                .filter(HorarioTrabalho::isAtivo)
+                .orElseThrow(() -> new BusinessException("O profissional não atende neste dia"));
 
-        if (horario != null && horario.isAtivo()) {
-            if (horarioServico.isBefore(horario.getHoraInicio()) || fimServico.isAfter(horario.getHoraFim())) {
-                throw new BusinessException("Horário fora do expediente do profissional (" +
-                        horario.getHoraInicio() + " - " + horario.getHoraFim() + ")");
-            }
+        if (horarioServico.isBefore(horario.getHoraInicio()) || fimServico.isAfter(horario.getHoraFim())) {
+            throw new BusinessException("Horário fora do expediente do profissional (" +
+                    horario.getHoraInicio() + " - " + horario.getHoraFim() + ")");
+        }
 
-            // Check if appointment overlaps with break (interval fields are optional)
-            if (horario.getIntervaloInicio() != null && horario.getIntervaloFim() != null &&
-                horarioServico.isBefore(horario.getIntervaloFim()) &&
-                fimServico.isAfter(horario.getIntervaloInicio())) {
-                throw new BusinessException("Horário conflita com o intervalo do profissional (" +
-                        horario.getIntervaloInicio() + " - " + horario.getIntervaloFim() + ")");
-            }
+        // Check if appointment overlaps with break (interval fields are optional)
+        if (horario.getIntervaloInicio() != null && horario.getIntervaloFim() != null &&
+            horarioServico.isBefore(horario.getIntervaloFim()) &&
+            fimServico.isAfter(horario.getIntervaloInicio())) {
+            throw new BusinessException("Horário conflita com o intervalo do profissional (" +
+                    horario.getIntervaloInicio() + " - " + horario.getIntervaloFim() + ")");
         }
 
         // 9. No time blocks

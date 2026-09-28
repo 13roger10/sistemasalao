@@ -9,6 +9,7 @@ import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.integration.WhatsAppService;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.ClienteRepository;
+import com.belezza.api.repository.HorarioFuncionamentoSalonRepository;
 import com.belezza.api.repository.HorarioTrabalhoRepository;
 import com.belezza.api.security.TenantContext;
 import org.junit.jupiter.api.AfterEach;
@@ -51,6 +52,9 @@ class AgendamentoServiceTest {
 
     @Mock
     private HorarioTrabalhoRepository horarioTrabalhoRepository;
+
+    @Mock
+    private HorarioFuncionamentoSalonRepository horarioFuncionamentoSalonRepository;
 
     @Mock
     private SalonService salonService;
@@ -556,7 +560,7 @@ class AgendamentoServiceTest {
             when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
             when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
             when(servicoService.getServicoEntity(1L)).thenReturn(servico);
-            when(horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(eq(1L), any())).thenReturn(Optional.empty());
+            when(horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(eq(1L), any())).thenReturn(Optional.of(expediente(true)));
             when(bloqueioHorarioService.temBloqueio(eq(1L), any(), any())).thenReturn(false);
             when(agendamentoRepository.findConflicts(eq(1L), any(), any())).thenReturn(List.of(agendamento));
 
@@ -582,6 +586,92 @@ class AgendamentoServiceTest {
             // Passa pela verificação de salão e segue para a busca do cliente
             assertThatThrownBy(() -> agendamentoService.criar(request(), adminDoSalao))
                     .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
+    private HorarioTrabalho expediente(boolean ativo) {
+        return HorarioTrabalho.builder()
+                .profissional(profissional)
+                .horaInicio(LocalTime.of(9, 0))
+                .horaFim(LocalTime.of(17, 0))
+                .ativo(ativo)
+                .build();
+    }
+
+    @Nested
+    @DisplayName("Criar - dias de folga e salão fechado")
+    class CriarDiaDeAtendimentoTests {
+
+        private final Usuario recepcionista = Usuario.builder().id(14L).role(Role.RECEPCIONISTA).build();
+
+        private AgendamentoRequest request(int hora) {
+            return AgendamentoRequest.builder()
+                    .clienteId(1L)
+                    .profissionalId(1L)
+                    .servicoId(1L)
+                    .dataHora(LocalDateTime.now().plusDays(1).withHour(hora).withMinute(0).withSecond(0).withNano(0))
+                    .build();
+        }
+
+        @BeforeEach
+        void stubs() {
+            when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
+            when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
+            when(servicoService.getServicoEntity(1L)).thenReturn(servico);
+        }
+
+        private void salaoNoDia(HorarioFuncionamentoSalon horario) {
+            when(horarioFuncionamentoSalonRepository.findBySalonIdAndDiaSemana(eq(1L), any()))
+                    .thenReturn(Optional.ofNullable(horario));
+        }
+
+        @Test
+        @DisplayName("Profissional sem expediente cadastrado no dia (folga) não recebe agendamento")
+        void semExpedienteNoDia() {
+            salaoNoDia(null);
+            when(horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(eq(1L), any())).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> agendamentoService.criar(request(10), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("não atende neste dia");
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Expediente do dia desativado conta como folga")
+        void expedienteDesativado() {
+            salaoNoDia(null);
+            when(horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(eq(1L), any())).thenReturn(Optional.of(expediente(false)));
+
+            assertThatThrownBy(() -> agendamentoService.criar(request(10), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("não atende neste dia");
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Salão fechado no dia recusa o agendamento, mesmo com o profissional escalado")
+        void salaoFechadoNoDia() {
+            salaoNoDia(HorarioFuncionamentoSalon.builder().salon(salon).ativo(false).build());
+
+            assertThatThrownBy(() -> agendamentoService.criar(request(10), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("salão não abre neste dia");
+            verifyNoInteractions(horarioTrabalhoRepository);
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Horário do dia configurado no salão prevalece sobre o horário geral")
+        void horarioDoDiaPrevalece() {
+            // Horário geral 08-18, mas neste dia o salão abre só das 13 às 18
+            salaoNoDia(HorarioFuncionamentoSalon.builder().salon(salon)
+                    .horaInicio(LocalTime.of(13, 0)).horaFim(LocalTime.of(18, 0)).build());
+
+            assertThatThrownBy(() -> agendamentoService.criar(request(10), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("fora do funcionamento do salão (13:00 - 18:00)");
+            verify(agendamentoRepository, never()).save(any());
         }
     }
 }

@@ -54,6 +54,9 @@ class AppointmentFlowIT {
     private ProfissionalRepository profissionalRepository;
 
     @Autowired
+    private HorarioTrabalhoRepository horarioTrabalhoRepository;
+
+    @Autowired
     private ServicoRepository servicoRepository;
 
     @Autowired
@@ -133,6 +136,7 @@ class AppointmentFlowIT {
                     return profissionalRepository.save(newProf);
                 });
         professionalId = profissional.getId();
+        cadastrarExpediente(profissional);
 
         // Create or get service
         Servico servico = servicoRepository.findBySalonId(salonId).stream().findFirst()
@@ -449,6 +453,7 @@ class AppointmentFlowIT {
                     newProf.setAceitaAgendamentoOnline(true);
                     return profissionalRepository.save(newProf);
                 });
+        cadastrarExpediente(prof);
 
         // Get service
         Servico servico = servicoRepository.findBySalonId(salao.getId()).stream()
@@ -614,5 +619,19 @@ class AppointmentFlowIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(duplicateRequest))
                 .andExpect(status().isConflict());
+    }
+
+    /** Expediente todos os dias (08h-20h): sem ele o profissional está de folga e não recebe agendamentos. */
+    private void cadastrarExpediente(Profissional profissional) {
+        for (DiaSemana dia : DiaSemana.values()) {
+            if (horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(profissional.getId(), dia).isEmpty()) {
+                horarioTrabalhoRepository.save(HorarioTrabalho.builder()
+                        .profissional(profissional)
+                        .diaSemana(dia)
+                        .horaInicio(java.time.LocalTime.of(8, 0))
+                        .horaFim(java.time.LocalTime.of(20, 0))
+                        .build());
+            }
+        }
     }
 }
