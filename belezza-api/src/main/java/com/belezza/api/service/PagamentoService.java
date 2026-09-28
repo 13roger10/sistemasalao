@@ -54,6 +54,7 @@ public class PagamentoService {
         // SEC-011: só registra pagamento de atendimento do próprio estabelecimento — sem isto,
         // qualquer membro da equipe lançava pagamento no caixa de outro salão pelo agendamentoId.
         assertTenant(agendamento.getSalon() != null ? agendamento.getSalon().getId() : null);
+        assertAtendimentoDoProfissional(agendamento, operador);
 
         if (agendamento.getStatus() != StatusAgendamento.CONCLUIDO &&
             agendamento.getStatus() != StatusAgendamento.EM_ANDAMENTO) {
@@ -210,8 +211,25 @@ public class PagamentoService {
         }
     }
 
+    /** PROFISSIONAL só registra e consulta pagamentos dos próprios atendimentos. */
+    private void assertAtendimentoDoProfissional(Agendamento agendamento, Usuario operador) {
+        if (operador == null || operador.getRole() != Role.PROFISSIONAL) {
+            return;
+        }
+        if (agendamento == null || agendamento.getProfissional() == null
+                || agendamento.getProfissional().getUsuario() == null
+                || !agendamento.getProfissional().getUsuario().getId().equals(operador.getId())) {
+            throw new AccessDeniedException("Acesso negado: atendimento de outro profissional");
+        }
+    }
+
     @Transactional(readOnly = true)
     public PagamentoResponse buscarPorAgendamento(Long agendamentoId) {
+        return buscarPorAgendamento(agendamentoId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PagamentoResponse buscarPorAgendamento(Long agendamentoId, Usuario operador) {
         List<Pagamento> partes = pagamentoRepository.findByAgendamentoIdOrderByCriadoEmAsc(agendamentoId);
         if (partes.isEmpty()) {
             throw new ResourceNotFoundException("Pagamento", "agendamento", agendamentoId.toString());
@@ -219,6 +237,7 @@ public class PagamentoService {
         // SEC-011: bloqueia leitura de pagamento de outro estabelecimento por IDOR no agendamentoId.
         Pagamento ultimo = partes.get(partes.size() - 1);
         assertTenant(ultimo.getSalon() != null ? ultimo.getSalon().getId() : null);
+        assertAtendimentoDoProfissional(ultimo.getAgendamento(), operador);
         PagamentoResponse resposta = PagamentoResponse.fromEntity(ultimo);
         resposta.setPartes(partes.stream().map(PagamentoResponse::fromEntity).toList());
         return resposta;
@@ -227,7 +246,8 @@ public class PagamentoService {
     /**
      * Lista pagamentos do salão.
      * RECEPCIONISTA: somente os pagamentos que ela mesma registrou.
-     * ADMIN / PROFISSIONAL: todos os pagamentos do salão.
+     * PROFISSIONAL: somente os pagamentos dos próprios atendimentos.
+     * ADMIN: todos os pagamentos do salão.
      */
     @Transactional(readOnly = true)
     public Page<PagamentoResponse> listarPorSalon(Long salonId, Pageable pageable, Usuario solicitante) {
@@ -235,6 +255,11 @@ public class PagamentoService {
         if (solicitante.getRole() == Role.RECEPCIONISTA) {
             return pagamentoRepository
                     .findBySalonIdAndRegistradoPorId(salonId, solicitante.getId(), pageable)
+                    .map(PagamentoResponse::fromEntity);
+        }
+        if (solicitante.getRole() == Role.PROFISSIONAL) {
+            return pagamentoRepository
+                    .findBySalonIdAndAgendamentoProfissionalUsuarioId(salonId, solicitante.getId(), pageable)
                     .map(PagamentoResponse::fromEntity);
         }
         return pagamentoRepository.findBySalonId(salonId, pageable)

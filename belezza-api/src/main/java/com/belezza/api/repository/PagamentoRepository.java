@@ -35,6 +35,8 @@ public interface PagamentoRepository extends JpaRepository<Pagamento, Long> {
 
     Page<Pagamento> findBySalonIdAndRegistradoPorId(Long salonId, Long registradoPorId, Pageable pageable);
 
+    Page<Pagamento> findBySalonIdAndAgendamentoProfissionalUsuarioId(Long salonId, Long usuarioId, Pageable pageable);
+
     List<Pagamento> findBySalonIdAndStatus(Long salonId, StatusPagamento status);
 
     @Query("SELECT SUM(p.valor) FROM Pagamento p WHERE p.salon.id = :salonId " +

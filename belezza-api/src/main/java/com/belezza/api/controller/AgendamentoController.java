@@ -126,13 +126,13 @@ public class AgendamentoController {
 
     @GetMapping("/salon/{salonId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
-    @Operation(summary = "Listar por salão", description = "Lista agendamentos de um salão com paginação. Restrito à equipe do salão.")
+    @Operation(summary = "Listar por salão", description = "Lista agendamentos de um salão com paginação. Restrito à equipe do salão; PROFISSIONAL recebe só a própria agenda.")
     public ResponseEntity<Page<AgendamentoResponse>> listarPorSalon(
             @PathVariable Long salonId,
             @PageableDefault(size = 100, sort = "dataHora") Pageable pageable,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        boolean restrictData = shouldRestrictSensitiveData(userDetails);
-        Page<AgendamentoResponse> response = agendamentoService.listarPorSalon(salonId, pageable, restrictData);
+            @AuthenticationPrincipal Usuario operador) {
+        boolean restrictData = shouldRestrictSensitiveData(operador);
+        Page<AgendamentoResponse> response = agendamentoService.listarPorSalon(salonId, pageable, restrictData, operador);
         return ResponseEntity.ok(response);
     }
 
@@ -142,9 +142,9 @@ public class AgendamentoController {
     public ResponseEntity<Page<AgendamentoResponse>> listarPorCliente(
             @PathVariable Long clienteId,
             @PageableDefault(size = 20, sort = "dataHora") Pageable pageable,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        boolean restrictData = shouldRestrictSensitiveData(userDetails);
-        Page<AgendamentoResponse> response = agendamentoService.listarPorCliente(clienteId, pageable, restrictData);
+            @AuthenticationPrincipal Usuario operador) {
+        boolean restrictData = shouldRestrictSensitiveData(operador);
+        Page<AgendamentoResponse> response = agendamentoService.listarPorCliente(clienteId, pageable, restrictData, operador);
         return ResponseEntity.ok(response);
     }
 

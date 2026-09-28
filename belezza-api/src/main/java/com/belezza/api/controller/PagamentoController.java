@@ -41,14 +41,16 @@ public class PagamentoController {
     @GetMapping("/agendamento/{agendamentoId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
     @Operation(summary = "Buscar por agendamento", description = "Busca pagamento de um agendamento")
-    public ResponseEntity<PagamentoResponse> buscarPorAgendamento(@PathVariable Long agendamentoId) {
-        PagamentoResponse response = pagamentoService.buscarPorAgendamento(agendamentoId);
+    public ResponseEntity<PagamentoResponse> buscarPorAgendamento(
+            @PathVariable Long agendamentoId,
+            @AuthenticationPrincipal Usuario operador) {
+        PagamentoResponse response = pagamentoService.buscarPorAgendamento(agendamentoId, operador);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/salon/{salonId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
-    @Operation(summary = "Listar por salão", description = "Lista pagamentos do salão. RECEPCIONISTA recebe apenas os seus próprios registros.")
+    @Operation(summary = "Listar por salão", description = "Lista pagamentos do salão. RECEPCIONISTA recebe apenas os seus próprios registros; PROFISSIONAL, os dos próprios atendimentos.")
     public ResponseEntity<Page<PagamentoResponse>> listarPorSalon(
             @PathVariable Long salonId,
             @PageableDefault(size = 20, sort = "criadoEm") Pageable pageable,

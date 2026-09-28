@@ -185,6 +185,39 @@ class UsuarioServiceTest {
     }
 
     @Test
+    @DisplayName("Profissional não lê os dados pessoais de um colega nem de clientes")
+    void profissionalNaoLeOutrosUsuarios() {
+        Usuario prof = Usuario.builder().id(20L).email("prof@teste.com").role(Role.PROFISSIONAL).salon(salonA).ativo(true).build();
+        Usuario colega = Usuario.builder().id(21L).email("colega@teste.com").role(Role.PROFISSIONAL).salon(salonA).ativo(true).build();
+        Usuario cliente = Usuario.builder().id(22L).email("cli@teste.com").role(Role.CLIENTE).ativo(true).build();
+        when(usuarioRepository.findByEmailAndAtivoTrue("prof@teste.com")).thenReturn(Optional.of(prof));
+        when(usuarioRepository.findById(21L)).thenReturn(Optional.of(colega));
+        when(usuarioRepository.findById(22L)).thenReturn(Optional.of(cliente));
+        when(usuarioRepository.findById(20L)).thenReturn(Optional.of(prof));
+
+        assertThatThrownBy(() -> usuarioService.buscarPorId(21L, "prof@teste.com"))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> usuarioService.buscarPorId(22L, "prof@teste.com"))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThat(usuarioService.buscarPorId(20L, "prof@teste.com").getId()).isEqualTo(20L);
+    }
+
+    @Test
+    @DisplayName("Listagem do profissional traz só o próprio cadastro")
+    void listarProfissionalSoOProprio() {
+        Usuario prof = Usuario.builder().id(20L).email("prof@teste.com").role(Role.PROFISSIONAL).salon(salonA).ativo(true).build();
+        when(usuarioRepository.findByEmailAndAtivoTrue("prof@teste.com")).thenReturn(Optional.of(prof));
+
+        var response = usuarioService.listar("prof@teste.com", null, null, 0, 10);
+        var clientes = usuarioService.listar("prof@teste.com", Role.CLIENTE, null, 0, 10);
+
+        assertThat(response.getContent()).extracting("id").containsExactly(20L);
+        assertThat(clientes.getContent()).isEmpty();
+        verify(usuarioRepository, never()).findBySalonId(any(), any());
+        verify(usuarioRepository, never()).findBySalonIdAndRole(any(), any(), any());
+    }
+
+    @Test
     @DisplayName("Não move usuário do próprio salão para outro salão via salonId")
     void atualizarMoverParaOutroSalao() {
         UpdateUsuarioRequest request = UpdateUsuarioRequest.builder().salonId(2L).build();

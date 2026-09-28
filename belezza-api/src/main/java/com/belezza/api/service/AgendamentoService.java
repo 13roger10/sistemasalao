@@ -90,6 +90,7 @@ public class AgendamentoService {
             log.info("Cliente agendando para si: usuarioId={} clienteId={}", operador.getId(), cliente.getId());
         } else if (request.getClienteId() != null) {
             verificarOperadorDoSalao(operador, salon);
+            enforceAgendaDoProfissional(profissional, operador);
             cliente = clienteRepository.findById(request.getClienteId())
                     .orElseThrow(() -> new ResourceNotFoundException("Cliente", request.getClienteId()));
             if (cliente.getSalon() == null || !cliente.getSalon().getId().equals(salon.getId())) {
@@ -299,25 +300,62 @@ public class AgendamentoService {
             return;
         }
         enforceStaffTenant(agendamento.getSalon().getId());
+        enforceAgendaDoProfissional(agendamento.getProfissional(), operador);
+    }
+
+    /**
+     * O PROFISSIONAL só vê e altera agendamentos da própria agenda. O isolamento por salão não
+     * basta: sem isto, pelo id ele abria, confirmava e cancelava agendamentos de colegas.
+     */
+    private void enforceAgendaDoProfissional(Profissional profissional, Usuario operador) {
+        if (operador == null || operador.getRole() != Role.PROFISSIONAL) {
+            return;
+        }
+        if (profissional == null || profissional.getUsuario() == null
+                || !profissional.getUsuario().getId().equals(operador.getId())) {
+            throw new AccessDeniedException("Acesso negado: agendamento de outro profissional");
+        }
+    }
+
+    private static boolean isProfissional(Usuario operador) {
+        return operador != null && operador.getRole() == Role.PROFISSIONAL;
     }
 
     @Transactional(readOnly = true)
     public Page<AgendamentoResponse> listarPorSalon(Long salonId, Pageable pageable, boolean restrictSensitiveData) {
+        return listarPorSalon(salonId, pageable, restrictSensitiveData, null);
+    }
+
+    /** PROFISSIONAL recebe só os agendamentos da própria agenda. */
+    @Transactional(readOnly = true)
+    public Page<AgendamentoResponse> listarPorSalon(Long salonId, Pageable pageable, boolean restrictSensitiveData,
+                                                    Usuario operador) {
         tenantIsolationService.assertRequestedSalon(salonId);
-        return agendamentoRepository.findBySalonId(salonId, pageable)
-                .map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
+        Page<Agendamento> pagina = isProfissional(operador)
+                ? agendamentoRepository.findBySalonIdAndProfissionalUsuarioId(salonId, operador.getId(), pageable)
+                : agendamentoRepository.findBySalonId(salonId, pageable);
+        return pagina.map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
     }
 
     @Transactional(readOnly = true)
     public Page<AgendamentoResponse> listarPorCliente(Long clienteId, Pageable pageable, boolean restrictSensitiveData) {
+        return listarPorCliente(clienteId, pageable, restrictSensitiveData, null);
+    }
+
+    /** PROFISSIONAL recebe só o histórico do cliente na própria agenda. */
+    @Transactional(readOnly = true)
+    public Page<AgendamentoResponse> listarPorCliente(Long clienteId, Pageable pageable, boolean restrictSensitiveData,
+                                                      Usuario operador) {
         // SEC-004: valida que o cliente consultado pertence ao estabelecimento do
         // solicitante. Sem isto, a equipe de um salão listava os agendamentos (com
         // telefone e observações) de clientes de outro salão apenas trocando o ID.
         Cliente cliente = clienteRepository.findById(clienteId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", clienteId));
         enforceStaffTenant(cliente.getSalon().getId());
-        return agendamentoRepository.findByClienteId(clienteId, pageable)
-                .map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
+        Page<Agendamento> pagina = isProfissional(operador)
+                ? agendamentoRepository.findByClienteIdAndProfissionalUsuarioId(clienteId, operador.getId(), pageable)
+                : agendamentoRepository.findByClienteId(clienteId, pageable);
+        return pagina.map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
     }
 
     @Transactional(readOnly = true)
@@ -483,6 +521,7 @@ public class AgendamentoService {
     public AgendamentoResponse confirmar(Long id, boolean restrictSensitiveData, Usuario operador) {
         Agendamento agendamento = getAgendamento(id);
         enforceStaffTenant(agendamento.getSalon().getId());
+        enforceAgendaDoProfissional(agendamento.getProfissional(), operador);
 
         if (agendamento.getStatus() != StatusAgendamento.PENDENTE) {
             throw new BusinessException("Apenas agendamentos pendentes podem ser confirmados");
@@ -607,6 +646,7 @@ public class AgendamentoService {
     public AgendamentoResponse iniciar(Long id, boolean restrictSensitiveData, Usuario operador) {
         Agendamento agendamento = getAgendamento(id);
         enforceStaffTenant(agendamento.getSalon().getId());
+        enforceAgendaDoProfissional(agendamento.getProfissional(), operador);
 
         if (agendamento.getStatus() != StatusAgendamento.CONFIRMADO) {
             throw new BusinessException("Apenas agendamentos confirmados podem ser iniciados");
@@ -654,6 +694,7 @@ public class AgendamentoService {
     public AgendamentoResponse concluir(Long id, boolean restrictSensitiveData, Usuario operador) {
         Agendamento agendamento = getAgendamento(id);
         enforceStaffTenant(agendamento.getSalon().getId());
+        enforceAgendaDoProfissional(agendamento.getProfissional(), operador);
 
         if (agendamento.getStatus() != StatusAgendamento.EM_ANDAMENTO) {
             throw new BusinessException("Apenas agendamentos em andamento podem ser concluídos");
@@ -719,6 +760,7 @@ public class AgendamentoService {
             return;
         }
         enforceStaffTenant(agendamento.getSalon().getId());
+        enforceAgendaDoProfissional(agendamento.getProfissional(), operador);
     }
 
     /**
@@ -828,6 +870,8 @@ public class AgendamentoService {
         Profissional profissional = agendamento.getProfissional();
         if (request.getNovoProfissionalId() != null) {
             profissional = profissionalService.getProfissionalEntity(request.getNovoProfissionalId());
+            // Profissional não repassa o próprio atendimento para a agenda de um colega
+            enforceAgendaDoProfissional(profissional, operador);
         }
 
         Salon salon = agendamento.getSalon();
@@ -942,6 +986,7 @@ public class AgendamentoService {
     public AgendamentoResponse marcarNoShow(Long id, boolean restrictSensitiveData, Usuario operador) {
         Agendamento agendamento = getAgendamento(id);
         enforceStaffTenant(agendamento.getSalon().getId());
+        enforceAgendaDoProfissional(agendamento.getProfissional(), operador);
 
         if (agendamento.getStatus() != StatusAgendamento.CONFIRMADO) {
             throw new BusinessException("Apenas agendamentos confirmados podem ser marcados como no-show");

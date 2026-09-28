@@ -17,6 +17,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
@@ -138,6 +141,53 @@ class PagamentoServiceTest {
                     .isInstanceOf(AccessDeniedException.class);
 
             verify(pagamentoRepository, never()).save(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("Profissional só acessa pagamentos dos próprios atendimentos (BUG-012)")
+    class ProfissionalProprio {
+
+        private final Usuario prof = Usuario.builder().id(20L).role(Role.PROFISSIONAL).build();
+
+        private Agendamento atendimentoDe(Long usuarioId) {
+            Agendamento a = agendamentoConcluido(salonA);
+            a.setProfissional(Profissional.builder().id(usuarioId + 100)
+                    .usuario(Usuario.builder().id(usuarioId).build()).salon(salonA).build());
+            return a;
+        }
+
+        @Test
+        @DisplayName("Lista só os pagamentos dos próprios atendimentos")
+        void listaSoOsProprios() {
+            Pageable pageable = PageRequest.of(0, 20);
+            when(pagamentoRepository.findBySalonIdAndAgendamentoProfissionalUsuarioId(1L, 20L, pageable))
+                    .thenReturn(Page.empty());
+
+            pagamentoService.listarPorSalon(1L, pageable, prof);
+
+            verify(pagamentoRepository, never()).findBySalonId(any(), any());
+        }
+
+        @Test
+        @DisplayName("Não registra pagamento do atendimento de um colega")
+        void naoRegistraDeColega() {
+            when(agendamentoRepository.findById(100L)).thenReturn(Optional.of(atendimentoDe(21L)));
+
+            assertThatThrownBy(() -> pagamentoService.registrar(request(), prof))
+                    .isInstanceOf(AccessDeniedException.class);
+            verify(pagamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Não consulta o pagamento do atendimento de um colega")
+        void naoConsultaDeColega() {
+            Pagamento pago = Pagamento.builder().id(1L).salon(salonA).agendamento(atendimentoDe(21L))
+                    .valor(new BigDecimal("80.00")).forma(FormaPagamento.PIX).status(StatusPagamento.APROVADO).build();
+            when(pagamentoRepository.findByAgendamentoIdOrderByCriadoEmAsc(100L)).thenReturn(List.of(pago));
+
+            assertThatThrownBy(() -> pagamentoService.buscarPorAgendamento(100L, prof))
+                    .isInstanceOf(AccessDeniedException.class);
         }
     }
 

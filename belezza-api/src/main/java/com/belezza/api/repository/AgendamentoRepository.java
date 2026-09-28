@@ -24,6 +24,10 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long> 
 
     Page<Agendamento> findByProfissionalId(Long profissionalId, Pageable pageable);
 
+    Page<Agendamento> findBySalonIdAndProfissionalUsuarioId(Long salonId, Long usuarioId, Pageable pageable);
+
+    Page<Agendamento> findByClienteIdAndProfissionalUsuarioId(Long clienteId, Long usuarioId, Pageable pageable);
+
     List<Agendamento> findBySalonIdAndStatus(Long salonId, StatusAgendamento status);
 
     /**

@@ -589,6 +589,79 @@ class AgendamentoServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("Profissional só acessa a própria agenda (BUG-012)")
+    class ProfissionalPropriaAgendaTests {
+
+        // O agendamento do setUp é do profissional cujo usuário tem id 2
+        private final Usuario dono = Usuario.builder().id(2L).role(Role.PROFISSIONAL).build();
+        private final Usuario colega = Usuario.builder().id(3L).role(Role.PROFISSIONAL).build();
+
+        @Test
+        @DisplayName("Colega não abre, confirma, inicia, conclui, cancela, reagenda nem marca no-show pelo id")
+        void colegaNaoAgePeloId() {
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+
+            assertThatThrownBy(() -> agendamentoService.buscarPorId(1L, true, false, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            assertThatThrownBy(() -> agendamentoService.confirmar(1L, true, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            assertThatThrownBy(() -> agendamentoService.iniciar(1L, true, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            assertThatThrownBy(() -> agendamentoService.concluir(1L, true, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            assertThatThrownBy(() -> agendamentoService.marcarNoShow(1L, true, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            assertThatThrownBy(() -> agendamentoService.cancelar(1L, CancelamentoRequest.builder().motivo("x").build(), true, false, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            assertThatThrownBy(() -> agendamentoService.reagendar(1L,
+                    com.belezza.api.dto.agendamento.ReagendamentoRequest.builder()
+                            .novaDataHora(LocalDateTime.now().plusDays(2)).build(), true, false, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+
+            assertThat(agendamento.getStatus()).isEqualTo(StatusAgendamento.PENDENTE);
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("O próprio profissional confirma o seu agendamento")
+        void donoConfirma() {
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+            when(agendamentoRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            AgendamentoResponse response = agendamentoService.confirmar(1L, true, dono);
+
+            assertThat(response.getStatus()).isEqualTo(StatusAgendamento.CONFIRMADO);
+        }
+
+        @Test
+        @DisplayName("Lista do salão e histórico do cliente trazem só a agenda do profissional")
+        void listasFiltradas() {
+            Pageable pageable = PageRequest.of(0, 10);
+            when(agendamentoRepository.findBySalonIdAndProfissionalUsuarioId(1L, 3L, pageable)).thenReturn(Page.empty());
+            when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
+            when(agendamentoRepository.findByClienteIdAndProfissionalUsuarioId(1L, 3L, pageable)).thenReturn(Page.empty());
+
+            agendamentoService.listarPorSalon(1L, pageable, true, colega);
+            agendamentoService.listarPorCliente(1L, pageable, true, colega);
+
+            verify(agendamentoRepository, never()).findBySalonId(any(), any());
+            verify(agendamentoRepository, never()).findByClienteId(any(), any());
+        }
+
+        @Test
+        @DisplayName("Profissional não cria agendamento na agenda de um colega")
+        void naoCriaNaAgendaDoColega() {
+            when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
+            AgendamentoRequest request = AgendamentoRequest.builder().clienteId(1L).profissionalId(1L).servicoId(1L)
+                    .dataHora(LocalDateTime.now().plusDays(1).withHour(10).withMinute(0)).build();
+
+            assertThatThrownBy(() -> agendamentoService.criar(request, colega))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            verify(agendamentoRepository, never()).save(any());
+        }
+    }
+
     private HorarioTrabalho expediente(boolean ativo) {
         return HorarioTrabalho.builder()
                 .profissional(profissional)

@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -25,6 +26,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -60,19 +62,12 @@ public class UsuarioService {
         Pageable pageable = PageRequest.of(page, size);
         Page<Usuario> usuarios;
 
-        // Multi-unidade: PROFISSIONAL vê apenas sua unidade
+        // PROFISSIONAL não consulta a equipe nem os clientes por aqui: recebe só o próprio
+        // cadastro (antes listava e-mail e telefone de todos os colegas e clientes do salão)
         if (usuarioLogado.getRole() == Role.PROFISSIONAL) {
-            Optional<Profissional> profissional = profissionalRepository.findByUsuarioIdAndAtivoTrue(usuarioLogado.getId());
-            if (profissional.isEmpty()) {
-                throw new BusinessException("Profissional não encontrado para este usuário");
-            }
-            Long salonId = profissional.get().getSalon().getId();
-
-            if (roleFilter != null) {
-                usuarios = usuarioRepository.findBySalonIdAndRole(salonId, roleFilter, pageable);
-            } else {
-                usuarios = usuarioRepository.findBySalonId(salonId, pageable);
-            }
+            boolean incluiProprio = roleFilter == null || roleFilter == Role.PROFISSIONAL;
+            usuarios = new PageImpl<>(incluiProprio ? List.of(usuarioLogado) : List.of(), pageable,
+                    incluiProprio ? 1 : 0);
         } else if (usuarioLogado.getRole() == Role.RECEPCIONISTA) {
             // Multi-unidade: RECEPCIONISTA vê apenas sua unidade
             if (usuarioLogado.getSalon() == null) {
@@ -510,27 +505,11 @@ public class UsuarioService {
             return;
         }
 
-        // PROFISSIONAL só pode acessar usuários da sua unidade
+        // PROFISSIONAL acessa só o próprio cadastro: dados pessoais de colegas e clientes
+        // (e-mail, telefone) não são expostos a ele por esta rota
         if (usuarioLogado.getRole() == Role.PROFISSIONAL) {
-            Optional<Profissional> profLogado = profissionalRepository.findByUsuarioIdAndAtivoTrue(usuarioLogado.getId());
-            Optional<Profissional> profAlvo = profissionalRepository.findByUsuarioId(usuarioAlvo.getId());
-
-            if (profLogado.isEmpty()) {
-                throw new BusinessException("Você não tem permissão para acessar este recurso");
-            }
-
-            // Se o alvo não é profissional e não é o próprio usuário
-            if (profAlvo.isEmpty() && !usuarioAlvo.getId().equals(usuarioLogado.getId())) {
-                // Permite apenas se o alvo for CLIENTE (sem vínculo específico)
-                if (usuarioAlvo.getRole() != Role.CLIENTE) {
-                    throw new BusinessException("Você não tem permissão para acessar este usuário");
-                }
-            }
-
-            // Se ambos são profissionais, verificar se são do mesmo salão
-            if (profAlvo.isPresent() &&
-                !profLogado.get().getSalon().getId().equals(profAlvo.get().getSalon().getId())) {
-                throw new BusinessException("Você não tem permissão para acessar usuários de outras unidades");
+            if (!usuarioAlvo.getId().equals(usuarioLogado.getId())) {
+                throw new AccessDeniedException("Acesso negado: profissional só acessa o próprio cadastro");
             }
         }
     }
