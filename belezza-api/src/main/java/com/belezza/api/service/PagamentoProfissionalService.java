@@ -79,8 +79,10 @@ public class PagamentoProfissionalService {
         LocalDateTime inicioDateTime = request.getPeriodoInicio().atStartOfDay();
         LocalDateTime fimDateTime = request.getPeriodoFim().atTime(LocalTime.MAX);
 
-        List<Comissao> comissoes = comissaoRepository.findByProfissionalIdAndStatusAndPeriod(
-                request.getProfissionalId(), StatusComissao.CALCULADA, inicioDateTime, fimDateTime);
+        // Só comissões fora de outro repasse: sem isso, dois repasses do mesmo período
+        // incluíam a mesma comissão e o profissional recebia duas vezes
+        List<Comissao> comissoes = comissaoRepository.findDisponiveisParaRepasse(
+                request.getProfissionalId(), inicioDateTime, fimDateTime);
 
         if (comissoes.isEmpty()) {
             throw new BusinessException("Nao ha comissoes pendentes para este periodo");
