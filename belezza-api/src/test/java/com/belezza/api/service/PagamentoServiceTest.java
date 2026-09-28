@@ -369,5 +369,37 @@ class PagamentoServiceTest {
             assertThat(pagamento.getStatus()).isEqualTo(StatusPagamento.APROVADO);
             verify(pagamentoRepository, never()).save(any());
         }
+
+        @Test
+        @DisplayName("Funcionário e recepcionista não estornam, nem pagamento do próprio atendimento (BUG-013)")
+        void soAdminEstorna() {
+            Pagamento pagamento = pagamentoAprovado(salonA);
+            when(pagamentoRepository.findById(50L)).thenReturn(Optional.of(pagamento));
+            Usuario prof = Usuario.builder().id(20L).role(Role.PROFISSIONAL).build();
+            pagamento.getAgendamento().setProfissional(Profissional.builder().id(6L).usuario(prof).salon(salonA).build());
+
+            assertThatThrownBy(() -> pagamentoService.estornar(50L, prof))
+                    .isInstanceOf(AccessDeniedException.class);
+            assertThatThrownBy(() -> pagamentoService.estornar(50L, operador)) // recepcionista
+                    .isInstanceOf(AccessDeniedException.class);
+
+            assertThat(pagamento.getStatus()).isEqualTo(StatusPagamento.APROVADO);
+            verifyNoInteractions(caixaService);
+            verify(pagamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Admin do salão estorna e a devolução passa pelo caixa")
+        void adminEstorna() {
+            Usuario admin = Usuario.builder().id(1L).role(Role.ADMIN).build();
+            Pagamento pagamento = pagamentoAprovado(salonA);
+            when(pagamentoRepository.findById(50L)).thenReturn(Optional.of(pagamento));
+            when(pagamentoRepository.save(any(Pagamento.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            PagamentoResponse response = pagamentoService.estornar(50L, admin);
+
+            assertThat(response.getStatus()).isEqualTo(StatusPagamento.ESTORNADO);
+            verify(caixaService).registrarEstorno(pagamento, admin);
+        }
     }
 }

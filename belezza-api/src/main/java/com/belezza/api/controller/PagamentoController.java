@@ -3,7 +3,7 @@ package com.belezza.api.controller;
 import com.belezza.api.dto.pagamento.PagamentoRequest;
 import com.belezza.api.dto.pagamento.PagamentoResponse;
 import com.belezza.api.entity.Usuario;
-import com.belezza.api.security.annotation.ProfissionalOrAdmin;
+import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.service.PagamentoService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -60,8 +60,8 @@ public class PagamentoController {
     }
 
     @PostMapping("/{id}/estornar")
-    @ProfissionalOrAdmin
-    @Operation(summary = "Estornar pagamento", description = "Estorna um pagamento aprovado. Exclusivo para ADMIN e PROFISSIONAL.")
+    @AdminOnly
+    @Operation(summary = "Estornar pagamento", description = "Estorna um pagamento aprovado do próprio salão. Exclusivo para ADMIN.")
     public ResponseEntity<PagamentoResponse> estornar(
             @PathVariable Long id,
             @AuthenticationPrincipal Usuario operador) {

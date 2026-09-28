@@ -276,6 +276,11 @@ public class PagamentoService {
         Pagamento pagamento = pagamentoRepository.findById(pagamentoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pagamento", pagamentoId));
 
+        // Estorno devolve dinheiro do caixa: só o admin do salão decide (o controller já exige
+        // ADMIN; a checagem aqui cobre qualquer outro chamador do service)
+        if (operador != null && operador.getRole() != Role.ADMIN) {
+            throw new AccessDeniedException("Acesso negado: somente o administrador pode estornar pagamentos");
+        }
         // SEC-011: bloqueia estorno de pagamento de outro estabelecimento por IDOR no pagamentoId.
         assertTenant(pagamento.getSalon() != null ? pagamento.getSalon().getId() : null);
 
