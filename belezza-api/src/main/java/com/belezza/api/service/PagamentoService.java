@@ -42,6 +42,7 @@ public class PagamentoService {
     private final AgendamentoRepository agendamentoRepository;
     private final ClienteRepository clienteRepository;
     private final CaixaService caixaService;
+    private final ComissaoService comissaoService;
 
     private static final java.util.Locale PT_BR = java.util.Locale.forLanguageTag("pt-BR");
 
@@ -106,6 +107,8 @@ public class PagamentoService {
                 agendamento.getId(), gravados.size(), soma, operador.getNome(), operador.getId());
 
         atualizarEstatisticasCliente(agendamento.getCliente(), soma);
+        // Cobrança refeita depois de um estorno: o atendimento volta a estar pago por inteiro
+        comissaoService.reativarAposPagamento(agendamento.getId());
 
         List<PagamentoResponse> respostas = gravados.stream().map(PagamentoResponse::fromEntity).toList();
         BigDecimal trocoTotal = gravados.stream().map(Pagamento::getTroco).filter(Objects::nonNull)
@@ -288,6 +291,17 @@ public class PagamentoService {
             throw new BusinessException("Apenas pagamentos aprovados podem ser estornados");
         }
 
+        // Atendimento deixa de estar pago por inteiro: a comissão deixa de ser devida (comissão já
+        // repassada ao profissional bloqueia o estorno). Vem antes do caixa para nada ser gravado.
+        Agendamento agendamento = pagamento.getAgendamento();
+        if (agendamento != null) {
+            BigDecimal pagoDepois = pagamentoRepository.sumAprovadoByAgendamentoId(agendamento.getId())
+                    .subtract(pagamento.getValor());
+            if (pagoDepois.compareTo(valorDoAtendimento(agendamento)) < 0) {
+                comissaoService.cancelarPorEstorno(agendamento.getId());
+            }
+        }
+
         // Pagamento de caixa já fechado: a devolução sai do caixa aberto (exige caixa aberto)
         caixaService.registrarEstorno(pagamento, operador);
 
@@ -295,6 +309,24 @@ public class PagamentoService {
         pagamento = pagamentoRepository.save(pagamento);
         log.info("Pagamento estornado: {}", pagamentoId);
 
+        if (agendamento != null) {
+            reverterEstatisticasCliente(agendamento.getCliente(), pagamento.getValor());
+        }
+
         return PagamentoResponse.fromEntity(pagamento);
+    }
+
+    /** Desfaz no total gasto (e no ticket médio) do cliente o valor estornado. */
+    private void reverterEstatisticasCliente(Cliente cliente, BigDecimal valorEstornado) {
+        if (cliente == null || cliente.getTotalGasto() == null) {
+            return;
+        }
+        cliente.setTotalGasto(cliente.getTotalGasto().subtract(valorEstornado).max(BigDecimal.ZERO));
+        if (cliente.getTotalAgendamentos() > 0) {
+            cliente.setTicketMedio(
+                    cliente.getTotalGasto().divide(
+                            BigDecimal.valueOf(cliente.getTotalAgendamentos()), 2, RoundingMode.HALF_UP));
+        }
+        clienteRepository.save(cliente);
     }
 }

@@ -48,6 +48,9 @@ class PagamentoServiceTest {
     @Mock
     private CaixaService caixaService;
 
+    @Mock
+    private ComissaoService comissaoService;
+
     @InjectMocks
     private PagamentoService pagamentoService;
 
@@ -350,6 +353,7 @@ class PagamentoServiceTest {
         @DisplayName("Should refund a payment of the operator's salon")
         void shouldRefundOwnSalon() {
             when(pagamentoRepository.findById(50L)).thenReturn(Optional.of(pagamentoAprovado(salonA)));
+            when(pagamentoRepository.sumAprovadoByAgendamentoId(100L)).thenReturn(new BigDecimal("80.00"));
             when(pagamentoRepository.save(any(Pagamento.class))).thenAnswer(inv -> inv.getArgument(0));
 
             PagamentoResponse response = pagamentoService.estornar(50L);
@@ -394,12 +398,64 @@ class PagamentoServiceTest {
             Usuario admin = Usuario.builder().id(1L).role(Role.ADMIN).build();
             Pagamento pagamento = pagamentoAprovado(salonA);
             when(pagamentoRepository.findById(50L)).thenReturn(Optional.of(pagamento));
+            when(pagamentoRepository.sumAprovadoByAgendamentoId(100L)).thenReturn(new BigDecimal("80.00"));
             when(pagamentoRepository.save(any(Pagamento.class))).thenAnswer(inv -> inv.getArgument(0));
 
             PagamentoResponse response = pagamentoService.estornar(50L, admin);
 
             assertThat(response.getStatus()).isEqualTo(StatusPagamento.ESTORNADO);
             verify(caixaService).registrarEstorno(pagamento, admin);
+        }
+
+        @Test
+        @DisplayName("Estorno cancela a comissão e desfaz o total gasto do cliente (BUG-014)")
+        void estornoCancelaComissaoEReverteCliente() {
+            Usuario admin = Usuario.builder().id(1L).role(Role.ADMIN).build();
+            Pagamento pagamento = pagamentoAprovado(salonA);
+            Cliente cliente = pagamento.getAgendamento().getCliente();
+            cliente.setTotalGasto(new BigDecimal("110.00"));
+            cliente.setTotalAgendamentos(2);
+            when(pagamentoRepository.findById(50L)).thenReturn(Optional.of(pagamento));
+            when(pagamentoRepository.sumAprovadoByAgendamentoId(100L)).thenReturn(new BigDecimal("80.00"));
+            when(pagamentoRepository.save(any(Pagamento.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            pagamentoService.estornar(50L, admin);
+
+            verify(comissaoService).cancelarPorEstorno(100L);
+            assertThat(cliente.getTotalGasto()).isEqualByComparingTo("30.00");
+            assertThat(cliente.getTicketMedio()).isEqualByComparingTo("15.00");
+            verify(clienteRepository).save(cliente);
+        }
+
+        @Test
+        @DisplayName("Comissão já paga ao profissional bloqueia o estorno antes de mexer no caixa")
+        void comissaoPagaBloqueiaEstorno() {
+            Usuario admin = Usuario.builder().id(1L).role(Role.ADMIN).build();
+            Pagamento pagamento = pagamentoAprovado(salonA);
+            when(pagamentoRepository.findById(50L)).thenReturn(Optional.of(pagamento));
+            when(pagamentoRepository.sumAprovadoByAgendamentoId(100L)).thenReturn(new BigDecimal("80.00"));
+            doThrow(new BusinessException("A comissão deste atendimento já foi paga ao profissional."))
+                    .when(comissaoService).cancelarPorEstorno(100L);
+
+            assertThatThrownBy(() -> pagamentoService.estornar(50L, admin))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("já foi paga");
+            assertThat(pagamento.getStatus()).isEqualTo(StatusPagamento.APROVADO);
+            verifyNoInteractions(caixaService, clienteRepository);
+            verify(pagamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Cobrar de novo depois do estorno reativa a comissão")
+        void novaCobrancaReativaComissao() {
+            when(agendamentoRepository.findById(100L)).thenReturn(Optional.of(agendamentoConcluido(salonA)));
+            when(pagamentoRepository.sumAprovadoByAgendamentoId(100L)).thenReturn(BigDecimal.ZERO);
+            when(caixaService.exigirAberto(1L)).thenReturn(Caixa.builder().id(7L).salon(salonA).status(StatusCaixa.ABERTO).build());
+            when(pagamentoRepository.save(any(Pagamento.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            pagamentoService.registrar(request(), operador);
+
+            verify(comissaoService).reativarAposPagamento(100L);
         }
     }
 }
