@@ -118,7 +118,7 @@ public class AgendamentoService {
         Servico servico = servicoService.getServicoEntity(request.getServicoId());
 
         // Validate everything
-        validarAgendamento(salon, profissional, servico, cliente, request.getDataHora());
+        validarAgendamento(salon, profissional, servico, cliente, request.getDataHora(), servico.getDuracaoMinutos());
 
         // Calculate end time
         LocalDateTime fimPrevisto = request.getDataHora().plusMinutes(servico.getDuracaoMinutos());
@@ -191,10 +191,8 @@ public class AgendamentoService {
 
         LocalDateTime fimPrevisto = request.getDataHora().plusMinutes(duracaoTotal);
 
-        // Validate
-        for (Servico servico : servicos) {
-            validarAgendamento(salon, profissional, servico, cliente, request.getDataHora());
-        }
+        // Validate against the whole block (all services + prep time), not each service alone
+        validarAgendamento(salon, profissional, servicos.get(0), cliente, request.getDataHora(), duracaoTotal);
 
         // Check for conflicts
         validarConflitos(profissional.getId(), request.getDataHora(), fimPrevisto);
@@ -871,11 +869,11 @@ public class AgendamentoService {
             throw new BusinessException("Agendamento sem serviço definido — não é possível reagendar");
         }
 
-        // Validate new datetime using the resolved service for salon/hours checks
-        validarAgendamento(salon, profissional, servico, cliente, request.getNovaDataHora());
-
-        // Use total duration across all services (single or multi, possibly just replaced above)
+        // Validate new datetime against the total duration across all services
+        // (single or multi, possibly just replaced above)
         int duracaoTotal = agendamento.getDuracaoTotalMinutos();
+        validarAgendamento(salon, profissional, servico, cliente, request.getNovaDataHora(), duracaoTotal);
+
         LocalDateTime novoFim = request.getNovaDataHora().plusMinutes(duracaoTotal);
         validarConflitos(profissional.getId(), request.getNovaDataHora(), novoFim);
 
@@ -978,8 +976,12 @@ public class AgendamentoService {
 
     // --- Validation Methods ---
 
+    /**
+     * @param duracaoMinutos duração total do atendimento (soma dos serviços e preparos); o fim
+     *                       previsto precisa caber no funcionamento do salão e no expediente.
+     */
     private void validarAgendamento(Salon salon, Profissional profissional, Servico servico,
-                                     Cliente cliente, LocalDateTime dataHora) {
+                                     Cliente cliente, LocalDateTime dataHora, int duracaoMinutos) {
         // 1. Salon accepts online scheduling
         if (!salon.isAceitaAgendamentoOnline()) {
             throw new BusinessException("Este salão não aceita agendamentos online");
@@ -1013,7 +1015,7 @@ public class AgendamentoService {
         // 7. Salon is open on this day and time. Same rules as DisponibilidadeService: the
         // per-day configuration wins; without it, the salon's global hours apply.
         LocalTime horarioServico = dataHora.toLocalTime();
-        LocalTime fimServico = horarioServico.plusMinutes(servico.getDuracaoMinutos());
+        LocalTime fimServico = horarioServico.plusMinutes(duracaoMinutos);
         DiaSemana diaSemana = toDiaSemana(dataHora.getDayOfWeek());
         HorarioFuncionamentoSalon horarioSalon = horarioFuncionamentoSalonRepository
                 .findBySalonIdAndDiaSemana(salon.getId(), diaSemana)
@@ -1027,7 +1029,9 @@ public class AgendamentoService {
             abertura = horarioSalon.getHoraInicio();
             fechamento = horarioSalon.getHoraFim();
         }
-        if (horarioServico.isBefore(abertura) || fimServico.isAfter(fechamento)) {
+        // LocalTime wraps at midnight: a block ending the next day would look like an early end
+        boolean viraODia = !dataHora.plusMinutes(duracaoMinutos).toLocalDate().equals(dataHora.toLocalDate());
+        if (horarioServico.isBefore(abertura) || fimServico.isAfter(fechamento) || viraODia) {
             throw new BusinessException("Horário fora do funcionamento do salão (" +
                     abertura + " - " + fechamento + ")");
         }
@@ -1052,7 +1056,7 @@ public class AgendamentoService {
         }
 
         // 9. No time blocks
-        LocalDateTime fimPrevisto = dataHora.plusMinutes(servico.getDuracaoMinutos());
+        LocalDateTime fimPrevisto = dataHora.plusMinutes(duracaoMinutos);
         if (bloqueioHorarioService.temBloqueio(profissional.getId(), dataHora, fimPrevisto)) {
             throw new BusinessException("Profissional possui bloqueio de horário neste período");
         }

@@ -674,4 +674,65 @@ class AgendamentoServiceTest {
             verify(agendamentoRepository, never()).save(any());
         }
     }
+
+    @Nested
+    @DisplayName("Criar - vários serviços validados pela duração total")
+    class CriarVariosServicosTests {
+
+        private final Usuario recepcionista = Usuario.builder().id(14L).role(Role.RECEPCIONISTA).build();
+        private Servico coloracao;
+
+        @BeforeEach
+        void stubs() {
+            coloracao = Servico.builder().id(2L).nome("Coloração").preco(BigDecimal.valueOf(100))
+                    .duracaoMinutos(90).salon(salon).ativo(true).build();
+            when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
+            when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
+            when(servicoService.getServicoEntity(2L)).thenReturn(coloracao);
+            // Expediente 09-17, salão 08-18
+            when(horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(eq(1L), any())).thenReturn(Optional.of(expediente(true)));
+        }
+
+        private AgendamentoRequest duasColoracoes(int hora, int minuto) {
+            return AgendamentoRequest.builder()
+                    .clienteId(1L)
+                    .profissionalId(1L)
+                    .servicoIds(List.of(2L, 2L))
+                    .dataHora(LocalDateTime.now().plusDays(1).withHour(hora).withMinute(minuto).withSecond(0).withNano(0))
+                    .build();
+        }
+
+        @Test
+        @DisplayName("2 × 90 min às 15:00 termina 18:00 e ultrapassa o expediente das 17:00")
+        void blocoUltrapassaExpediente() {
+            assertThatThrownBy(() -> agendamentoService.criar(duasColoracoes(15, 0), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("fora do expediente do profissional (09:00 - 17:00)");
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Bloqueio e conflitos são verificados até o fim do bloco inteiro")
+        void bloqueioVerificadoAteOFimDoBloco() {
+            AgendamentoRequest request = duasColoracoes(14, 0);
+            when(bloqueioHorarioService.temBloqueio(eq(1L), any(), any())).thenReturn(true);
+
+            assertThatThrownBy(() -> agendamentoService.criar(request, recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("bloqueio");
+            verify(bloqueioHorarioService).temBloqueio(1L, request.getDataHora(), request.getDataHora().plusMinutes(180));
+        }
+
+        @Test
+        @DisplayName("Bloco que termina exatamente no fim do expediente é aceito na validação")
+        void blocoTerminaNoFimDoExpediente() {
+            when(bloqueioHorarioService.temBloqueio(eq(1L), any(), any())).thenReturn(false);
+            when(agendamentoRepository.findConflicts(eq(1L), any(), any())).thenReturn(List.of(agendamento));
+
+            // 14:00 + 180 min = 17:00: passa pelo expediente e chega à checagem de conflitos
+            assertThatThrownBy(() -> agendamentoService.criar(duasColoracoes(14, 0), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("já possui agendamento");
+        }
+    }
 }
