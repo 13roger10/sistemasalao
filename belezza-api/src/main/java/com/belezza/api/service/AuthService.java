@@ -52,14 +52,24 @@ public class AuthService {
     /**
      * Registers a new user.
      */
+    /**
+     * SEC-016 (Enumeração de usuários): o auto-cadastro não pode revelar se um e-mail/
+     * telefone já existe. Antes, e-mail existente retornava 409 e novo retornava 201 com
+     * tokens — permitindo enumerar contas. Agora o fluxo é uniforme e não-enumerável:
+     * o método sempre retorna sem lançar erro por duplicidade, e o controller responde
+     * uma mensagem genérica ("se os dados forem válidos, você receberá um e-mail"). Um
+     * e-mail/telefone já cadastrado simplesmente não cria nada (sem vazar essa condição),
+     * e o cadastro deixa de fazer auto-login — a conta é confirmada por e-mail.
+     */
     @Transactional
     @SuppressWarnings("null")
-    public AuthResponse register(RegisterRequest request) {
-        log.info("Registering new user with email: {}", request.getEmail());
+    public void register(RegisterRequest request) {
+        log.info("Register (self-service) solicitado");
 
         // Public self-registration must never grant staff/admin access — only CLIENTE
         // accounts may be created here. ADMIN/RECEPCIONISTA/PROFISSIONAL are provisioned
         // exclusively by an already-authenticated ADMIN via POST /api/usuarios.
+        // (Esta checagem depende só do input, não da existência de conta — não vaza nada.)
         if (request.getRole() != Role.CLIENTE) {
             throw new AccessDeniedException("Auto-cadastro só é permitido para clientes");
         }
@@ -69,17 +79,16 @@ public class AuthService {
             throw new BusinessException("salonId é obrigatório para registro de clientes");
         }
 
-        // Check if email already exists
-        if (usuarioRepository.existsByEmail(request.getEmail())) {
-            throw DuplicateResourceException.email(request.getEmail());
+        // SEC-016: se e-mail ou telefone já existem, retorna silenciosamente (mesma
+        // resposta genérica do caso de sucesso) — sem 409, sem criar, sem enumerar.
+        boolean jaExiste = usuarioRepository.existsByEmail(request.getEmail())
+                || (request.getTelefone() != null && usuarioRepository.existsByTelefone(request.getTelefone()));
+        if (jaExiste) {
+            log.info("Auto-cadastro para e-mail/telefone já existente — resposta genérica (anti-enumeração)");
+            return;
         }
 
-        // Check if phone already exists (if provided)
-        if (request.getTelefone() != null && usuarioRepository.existsByTelefone(request.getTelefone())) {
-            throw DuplicateResourceException.telefone(request.getTelefone());
-        }
-
-        // Create new user
+        // Create new user (não verificado; sem auto-login)
         Usuario usuario = Usuario.builder()
                 .email(request.getEmail().toLowerCase().trim())
                 .password(passwordEncoder.encode(request.getPassword()))
@@ -95,41 +104,25 @@ public class AuthService {
         usuario = usuarioRepository.save(usuario);
         log.info("User registered successfully with id: {}", usuario.getId());
 
-        // If registering as CLIENTE, create the client entry for the salon
-        if (request.getRole() == Role.CLIENTE && request.getSalonId() != null) {
-            var salon = salonService.getSalonEntity(request.getSalonId());
-
-            // Check if already a client of this salon
-            if (!clienteRepository.existsByUsuarioIdAndSalonId(usuario.getId(), request.getSalonId())) {
-                Cliente cliente = Cliente.builder()
-                        .usuario(usuario)
-                        .salon(salon)
-                        .aceitaMarketing(true)
-                        .aceitaWhatsApp(true)
-                        .aceitaEmail(true)
-                        .build();
-                clienteRepository.save(cliente);
-                log.info("Client entry created for user {} in salon {}", usuario.getId(), request.getSalonId());
-            }
+        // Create the client entry for the salon
+        var salon = salonService.getSalonEntity(request.getSalonId());
+        if (!clienteRepository.existsByUsuarioIdAndSalonId(usuario.getId(), request.getSalonId())) {
+            Cliente cliente = Cliente.builder()
+                    .usuario(usuario)
+                    .salon(salon)
+                    .aceitaMarketing(true)
+                    .aceitaWhatsApp(true)
+                    .aceitaEmail(true)
+                    .build();
+            clienteRepository.save(cliente);
+            log.info("Client entry created for user {} in salon {}", usuario.getId(), request.getSalonId());
         }
 
-        // Send email verification
+        // Send email verification (a conta é ativada/confirmada por e-mail, não por auto-login)
         emailService.sendEmailVerificationEmail(
                 usuario.getEmail(),
                 usuario.getEmailVerificationToken(),
                 usuario.getNome()
-        );
-
-        // Generate tokens
-        Long salonId = resolveSalonId(usuario);
-        String accessToken = jwtService.generateAccessToken(usuario, salonId);
-        String refreshToken = jwtService.generateRefreshToken(usuario);
-
-        return AuthResponse.of(
-                buildUserResponse(usuario),
-                accessToken,
-                refreshToken,
-                jwtService.getAccessTokenExpiration()
         );
     }
 

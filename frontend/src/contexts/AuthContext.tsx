@@ -132,7 +132,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Redefine o cookie para garantir sincronização
       if (typeof document !== "undefined") {
         const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toUTCString();
-        document.cookie = `auth_token=${token}; path=/; expires=${expires}; SameSite=Lax`;
+        // SEC-013: cookie endurecido (SameSite=Strict + Secure em HTTPS).
+        const secureFlag = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+        document.cookie = `auth_token=${token}; path=/; expires=${expires}; SameSite=Strict${secureFlag}`;
       }
       setAuth(user, token);
       scheduleRefresh(token);

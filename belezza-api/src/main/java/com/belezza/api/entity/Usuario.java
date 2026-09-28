@@ -1,5 +1,6 @@
 package com.belezza.api.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -36,6 +37,9 @@ public class Usuario implements UserDetails {
     @Column(nullable = false, unique = true, length = 255)
     private String email;
 
+    // SEC-020: nunca serializar a senha (hash) em JSON — evita vazamento em audit logs
+    // e em qualquer serialização acidental da entidade.
+    @JsonIgnore
     @Column(nullable = false)
     private String password;
 
@@ -75,11 +79,14 @@ public class Usuario implements UserDetails {
     @Builder.Default
     private boolean emailVerificado = false;
 
+    // SEC-020: tokens sensíveis nunca devem ser serializados em JSON.
+    @JsonIgnore
     @Column(length = 100)
     private String resetPasswordToken;
 
     private LocalDateTime resetPasswordExpires;
 
+    @JsonIgnore
     @Column(length = 100)
     private String emailVerificationToken;
 
@@ -94,6 +101,8 @@ public class Usuario implements UserDetails {
     private LocalDateTime ultimoLogin;
 
     // 2FA / TOTP fields
+    // SEC-020: o segredo TOTP nunca deve ser serializado em JSON.
+    @JsonIgnore
     @Column(length = 255)
     private String totpSecret;
 

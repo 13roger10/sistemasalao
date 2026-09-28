@@ -43,9 +43,9 @@ async function fetchApi<T>(
       || localStorage.getItem('auth_token')
       || null;
 
-    // Debug log
+    // Debug log — SEC-014: nunca logar (nem parte do) token.
     console.log(`[API] ${options.method || 'GET'} ${url}`);
-    console.log(`[API] Token found: ${token ? 'yes (' + token.substring(0, 20) + '...)' : 'no'}`);
+    console.log(`[API] Token found: ${token ? 'yes' : 'no'}`);
   }
 
   if (token) {
@@ -61,7 +61,7 @@ async function fetchApi<T>(
   });
 
   console.log(`[API] Response: ${response.status} ${response.statusText}`);
-  console.log(`[API] Response headers:`, Object.fromEntries(response.headers.entries()));
+  // SEC-014: não logar headers da resposta (podem conter Authorization/Set-Cookie).
 
   // Handle non-JSON responses
   const contentType = response.headers.get('content-type');
@@ -82,7 +82,7 @@ async function fetchApi<T>(
   let data;
   try {
     const textBody = await response.text();
-    console.log(`[API] Raw response body:`, textBody);
+    // SEC-014: não logar o corpo da resposta (pode conter tokens e PII).
     data = textBody ? JSON.parse(textBody) : {};
   } catch (parseError) {
     console.error(`[API] JSON parse error:`, parseError);

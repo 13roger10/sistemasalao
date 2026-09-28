@@ -3,7 +3,9 @@ package com.belezza.api.controller;
 import com.belezza.api.dto.comissao.ComissaoResumoResponse;
 import com.belezza.api.dto.comissao.ComissaoResponse;
 import com.belezza.api.dto.comissao.ConfiguracaoComissaoRequest;
+import com.belezza.api.entity.Profissional;
 import com.belezza.api.entity.Role;
+import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.entity.Usuario;
 import com.belezza.api.entity.StatusComissao;
 import com.belezza.api.repository.ProfissionalRepository;
@@ -48,9 +50,19 @@ public class ComissaoController {
     private final ProfissionalRepository profissionalRepository;
 
     /**
-     * A PROFISSIONAL may only access their own commissions. ADMIN passes through
-     * unconditionally (tenant isolation for ADMIN is enforced separately, by salonId).
+     * Access to a professional's commissions: the professional must belong to the caller's salon
+     * (strict — a staff token without salon is denied) and a PROFISSIONAL may only access their
+     * own. Before, ADMIN passed through unconditionally on the /profissional/{id} routes and could
+     * read and reconfigure commissions of professionals from other salons.
      */
+    private void verificarAcessoProfissional(Long profissionalId, Usuario operador) {
+        Profissional profissional = profissionalRepository.findById(profissionalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Profissional", profissionalId));
+        tenantIsolationService.assertStaffTenant(profissional.getSalon().getId());
+        enforceProfissionalOwnership(profissionalId, operador);
+    }
+
+    /** A PROFISSIONAL may only access their own commissions. */
     private void enforceProfissionalOwnership(Long profissionalId, Usuario operador) {
         if (operador == null || operador.getRole() != Role.PROFISSIONAL) {
             return;
@@ -68,7 +80,7 @@ public class ComissaoController {
     @Operation(summary = "Buscar comissao", description = "Busca uma comissao pelo ID. Profissional só vê as próprias.")
     public ResponseEntity<ComissaoResponse> buscarPorId(@PathVariable Long id, @AuthenticationPrincipal Usuario operador) {
         ComissaoResponse response = comissaoService.buscarPorId(id);
-        tenantIsolationService.assertCurrentTenant(response.getSalonId());
+        tenantIsolationService.assertStaffTenant(response.getSalonId());
         enforceProfissionalOwnership(response.getProfissionalId(), operador);
         return ResponseEntity.ok(response);
     }
@@ -79,7 +91,7 @@ public class ComissaoController {
     public ResponseEntity<Page<ComissaoResponse>> listarPorSalon(
             @PathVariable Long salonId,
             @PageableDefault(size = 20, sort = "criadoEm") Pageable pageable) {
-        tenantIsolationService.assertRequestedSalon(salonId);
+        tenantIsolationService.assertStaffTenant(salonId);
         Page<ComissaoResponse> response = comissaoService.listarPorSalon(salonId, pageable);
         return ResponseEntity.ok(response);
     }
@@ -92,7 +104,7 @@ public class ComissaoController {
             @RequestParam(required = false) StatusComissao status,
             @PageableDefault(size = 20, sort = "criadoEm") Pageable pageable,
             @AuthenticationPrincipal Usuario operador) {
-        enforceProfissionalOwnership(profissionalId, operador);
+        verificarAcessoProfissional(profissionalId, operador);
         Page<ComissaoResponse> response;
         if (status != null) {
             response = comissaoService.listarPorProfissionalEStatus(profissionalId, status, pageable);
@@ -109,7 +121,7 @@ public class ComissaoController {
             @PathVariable Long salonId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fim) {
-        tenantIsolationService.assertRequestedSalon(salonId);
+        tenantIsolationService.assertStaffTenant(salonId);
         List<ComissaoResumoResponse> response = comissaoService.resumoPorSalon(salonId, inicio, fim);
         return ResponseEntity.ok(response);
     }
@@ -118,7 +130,7 @@ public class ComissaoController {
     @ProfissionalOrAdmin
     @Operation(summary = "Total pendente", description = "Retorna total de comissoes pendentes de um profissional. Profissional só vê o próprio.")
     public ResponseEntity<BigDecimal> totalPendentes(@PathVariable Long profissionalId, @AuthenticationPrincipal Usuario operador) {
-        enforceProfissionalOwnership(profissionalId, operador);
+        verificarAcessoProfissional(profissionalId, operador);
         BigDecimal total = comissaoService.totalComissoesPendentes(profissionalId);
         return ResponseEntity.ok(total);
     }
@@ -128,7 +140,9 @@ public class ComissaoController {
     @Operation(summary = "Configurar comissao", description = "Configura tipo e valor de comissao de um profissional. Restrito ao Admin — um profissional nunca pode definir a própria taxa.")
     public ResponseEntity<Void> configurarComissao(
             @PathVariable Long profissionalId,
-            @Valid @RequestBody ConfiguracaoComissaoRequest request) {
+            @Valid @RequestBody ConfiguracaoComissaoRequest request,
+            @AuthenticationPrincipal Usuario operador) {
+        verificarAcessoProfissional(profissionalId, operador);
         comissaoService.configurarComissaoProfissional(profissionalId, request);
         return ResponseEntity.ok().build();
     }

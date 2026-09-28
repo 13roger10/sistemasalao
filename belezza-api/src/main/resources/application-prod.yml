@@ -2,6 +2,11 @@
 # Active with: --spring.profiles.active=prod
 
 spring:
+  # SEC-010: console H2 SEMPRE desabilitado em produção (defense-in-depth).
+  h2:
+    console:
+      enabled: false
+
   # Database Configuration
   datasource:
     url: ${DATABASE_URL}
@@ -82,9 +87,14 @@ logging:
 
 # Production security settings
 belezza:
-  # JWT must use strong secret in production
+  # SEC-012: segredos obrigatórios em produção — SEM default. O boot falha se ausentes,
+  # e o SecretsValidator recusa valores default/fracos.
   jwt:
     secret: ${JWT_SECRET}
+
+  # AES-256-GCM (criptografia de tokens OAuth em repouso) — obrigatório em produção.
+  encryption:
+    aes-key: ${AES_SECRET_KEY}
 
   # RabbitMQ enabled in production
   rabbitmq:
@@ -95,9 +105,13 @@ belezza:
     allowed-origins: ${CORS_ALLOWED_ORIGINS}
 
   # Rate limiting enabled
+  # SEC-015: limite restrito para autenticação e confiança no X-Forwarded-For apenas
+  # aqui (produção fica atrás do nginx/ingress, que define o header de forma confiável).
   rate-limit:
     enabled: true
     requests-per-minute: 60
+    auth-requests-per-minute: 10
+    trust-forward-header: true
 
 # Swagger disabled in production (or protected)
 springdoc:

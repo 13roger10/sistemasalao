@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     nextResponse.cookies.set("salon_auth_token", backendData.accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: "strict",
       // Cookie maxAge is in SECONDS; backendData.expiresIn comes from the backend in
       // MILLISECONDS (900000 = 15 min). Without the conversion this cookie would live
       // ~250 hours instead of 15 minutes.

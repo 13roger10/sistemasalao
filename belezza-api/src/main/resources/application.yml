@@ -13,9 +13,11 @@ spring:
     driver-class-name: org.h2.Driver
 
   # H2 Console
+  # SEC-010: desabilitado por padrão. Só é ligado explicitamente no perfil local/dev.
+  # Nunca deve ficar habilitado em produção (o driver H2 está no classpath em runtime).
   h2:
     console:
-      enabled: true
+      enabled: ${H2_CONSOLE_ENABLED:false}
       path: /h2-console
 
   # JPA / Hibernate

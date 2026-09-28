@@ -1,11 +1,16 @@
 package com.belezza.api.service;
 
 import com.belezza.api.dto.auth.*;
+import com.belezza.api.entity.Cliente;
 import com.belezza.api.entity.Plano;
 import com.belezza.api.entity.Role;
+import com.belezza.api.entity.Salon;
 import com.belezza.api.entity.Usuario;
 import com.belezza.api.exception.AuthenticationException;
-import com.belezza.api.exception.DuplicateResourceException;
+import com.belezza.api.exception.BusinessException;
+import com.belezza.api.repository.ClienteRepository;
+import com.belezza.api.repository.ProfissionalRepository;
+import com.belezza.api.repository.SalonRepository;
 import com.belezza.api.repository.UsuarioRepository;
 import com.belezza.api.security.JwtService;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -45,6 +51,21 @@ class AuthServiceTest {
     @Mock
     private AuthenticationManager authenticationManager;
 
+    @Mock
+    private ClienteRepository clienteRepository;
+
+    @Mock
+    private SalonService salonService;
+
+    @Mock
+    private EmailService emailService;
+
+    @Mock
+    private SalonRepository salonRepository;
+
+    @Mock
+    private ProfissionalRepository profissionalRepository;
+
     @InjectMocks
     private AuthService authService;
 
@@ -59,7 +80,8 @@ class AuthServiceTest {
                 .password("Password123")
                 .nome("Test User")
                 .telefone("+5511999999999")
-                .role(Role.ADMIN)
+                .role(Role.CLIENTE)
+                .salonId(1L)
                 .build();
 
         loginRequest = LoginRequest.builder()
@@ -85,54 +107,77 @@ class AuthServiceTest {
     class RegisterTests {
 
         @Test
-        @DisplayName("Should register user successfully")
+        @DisplayName("Should register client, create salon link and send verification email")
         void shouldRegisterUserSuccessfully() {
             // Given
+            Salon salon = Salon.builder().id(1L).nome("Salão Teste").build();
             when(usuarioRepository.existsByEmail(anyString())).thenReturn(false);
             when(usuarioRepository.existsByTelefone(anyString())).thenReturn(false);
             when(passwordEncoder.encode(anyString())).thenReturn("encodedPassword");
             when(usuarioRepository.save(any(Usuario.class))).thenReturn(usuario);
-            when(jwtService.generateAccessToken(any())).thenReturn("accessToken");
-            when(jwtService.generateRefreshToken(any())).thenReturn("refreshToken");
-            when(jwtService.getAccessTokenExpiration()).thenReturn(900000L);
+            when(salonService.getSalonEntity(1L)).thenReturn(salon);
+            when(clienteRepository.existsByUsuarioIdAndSalonId(1L, 1L)).thenReturn(false);
 
             // When
-            AuthResponse response = authService.register(registerRequest);
+            authService.register(registerRequest);
 
-            // Then
-            assertThat(response).isNotNull();
-            assertThat(response.getAccessToken()).isEqualTo("accessToken");
-            assertThat(response.getRefreshToken()).isEqualTo("refreshToken");
-            assertThat(response.getUser().getEmail()).isEqualTo("test@example.com");
-
-            verify(usuarioRepository).save(any(Usuario.class));
+            // Then — conta criada não verificada, sem auto-login (nenhum token emitido)
+            verify(usuarioRepository).save(argThat(u -> !u.isEmailVerificado()
+                    && u.getRole() == Role.CLIENTE
+                    && u.getEmailVerificationToken() != null));
+            verify(clienteRepository).save(any(Cliente.class));
+            verify(emailService).sendEmailVerificationEmail(eq("test@example.com"), any(), eq("Test User"));
+            verifyNoInteractions(jwtService);
         }
 
         @Test
-        @DisplayName("Should throw exception when email already exists")
-        void shouldThrowExceptionWhenEmailExists() {
+        @DisplayName("Should silently return (no enumeration) when email already exists")
+        void shouldReturnSilentlyWhenEmailExists() {
             // Given
             when(usuarioRepository.existsByEmail(anyString())).thenReturn(true);
 
-            // When/Then
+            // When
+            authService.register(registerRequest);
+
+            // Then
+            verify(usuarioRepository, never()).save(any());
+            verifyNoInteractions(emailService, jwtService);
+        }
+
+        @Test
+        @DisplayName("Should silently return (no enumeration) when phone already exists")
+        void shouldReturnSilentlyWhenPhoneExists() {
+            // Given
+            when(usuarioRepository.existsByEmail(anyString())).thenReturn(false);
+            when(usuarioRepository.existsByTelefone(anyString())).thenReturn(true);
+
+            // When
+            authService.register(registerRequest);
+
+            // Then
+            verify(usuarioRepository, never()).save(any());
+            verifyNoInteractions(emailService, jwtService);
+        }
+
+        @Test
+        @DisplayName("Should reject self-registration with a staff role")
+        void shouldRejectStaffRole() {
+            registerRequest.setRole(Role.ADMIN);
+
             assertThatThrownBy(() -> authService.register(registerRequest))
-                    .isInstanceOf(DuplicateResourceException.class)
-                    .hasMessageContaining("Email já cadastrado");
+                    .isInstanceOf(AccessDeniedException.class);
 
             verify(usuarioRepository, never()).save(any());
         }
 
         @Test
-        @DisplayName("Should throw exception when phone already exists")
-        void shouldThrowExceptionWhenPhoneExists() {
-            // Given
-            when(usuarioRepository.existsByEmail(anyString())).thenReturn(false);
-            when(usuarioRepository.existsByTelefone(anyString())).thenReturn(true);
+        @DisplayName("Should require salonId for client registration")
+        void shouldRequireSalonId() {
+            registerRequest.setSalonId(null);
 
-            // When/Then
             assertThatThrownBy(() -> authService.register(registerRequest))
-                    .isInstanceOf(DuplicateResourceException.class)
-                    .hasMessageContaining("Telefone já cadastrado");
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("salonId");
 
             verify(usuarioRepository, never()).save(any());
         }
@@ -150,7 +195,8 @@ class AuthServiceTest {
                     new UsernamePasswordAuthenticationToken(usuario, null)
             );
             when(usuarioRepository.findByEmailAndAtivoTrue(anyString())).thenReturn(Optional.of(usuario));
-            when(jwtService.generateAccessToken(any())).thenReturn("accessToken");
+            when(salonRepository.findByAdminId(1L)).thenReturn(Optional.of(Salon.builder().id(10L).build()));
+            when(jwtService.generateAccessToken(usuario, 10L)).thenReturn("accessToken");
             when(jwtService.generateRefreshToken(any())).thenReturn("refreshToken");
             when(jwtService.getAccessTokenExpiration()).thenReturn(900000L);
 
@@ -193,7 +239,8 @@ class AuthServiceTest {
             when(jwtService.isRefreshToken(anyString())).thenReturn(true);
             when(jwtService.extractUsername(anyString())).thenReturn("test@example.com");
             when(usuarioRepository.findByEmailAndAtivoTrue(anyString())).thenReturn(Optional.of(usuario));
-            when(jwtService.generateAccessToken(any())).thenReturn("newAccessToken");
+            when(salonRepository.findByAdminId(1L)).thenReturn(Optional.of(Salon.builder().id(10L).build()));
+            when(jwtService.generateAccessToken(usuario, 10L)).thenReturn("newAccessToken");
             when(jwtService.generateRefreshToken(any())).thenReturn("newRefreshToken");
             when(jwtService.getAccessTokenExpiration()).thenReturn(900000L);
 

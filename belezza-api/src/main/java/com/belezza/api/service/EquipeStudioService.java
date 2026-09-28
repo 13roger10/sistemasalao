@@ -9,6 +9,7 @@ import com.belezza.api.repository.SalonRepository;
 import com.belezza.api.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,11 +45,38 @@ public class EquipeStudioService {
     // ─── Read ────────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public List<MembroStudioResponse> listarMembros(Long salonId) {
+    public List<MembroStudioResponse> listarMembros(Long salonId, String requesterEmail) {
+        // SEC-006: a listagem da equipe vazava nomes/e-mails/funções de qualquer salão
+        // para qualquer usuário autenticado (incl. CLIENTE). Agora o solicitante precisa
+        // ser o ADMIN dono deste salão ou um membro da própria equipe.
+        assertPodeVerEquipe(salonId, requesterEmail);
         return membroStudioRepository.findBySalonId(salonId)
                 .stream()
                 .map(MembroStudioResponse::fromEntity)
                 .toList();
+    }
+
+    /**
+     * SEC-006: valida que o solicitante pode ver a equipe deste salão.
+     * ADMIN do sistema só acessa o próprio estabelecimento (isolamento de tenant);
+     * demais usuários precisam ser membros da equipe do salão.
+     */
+    @Transactional(readOnly = true)
+    public void assertPodeVerEquipe(Long salonId, String email) {
+        Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(email).orElse(null);
+        if (usuario == null) {
+            throw new AccessDeniedException("Autenticação necessária");
+        }
+        if (usuario.getRole() == Role.ADMIN) {
+            Salon salon = getSalon(salonId);
+            if (salon.getAdmin() == null || !salon.getAdmin().getId().equals(usuario.getId())) {
+                throw new AccessDeniedException("Acesso negado: estabelecimento de outro administrador");
+            }
+            return;
+        }
+        if (getFuncao(salonId, email) == null) {
+            throw new AccessDeniedException("Acesso negado: você não pertence à equipe deste estabelecimento");
+        }
     }
 
     @Transactional(readOnly = true)

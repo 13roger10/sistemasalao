@@ -128,7 +128,11 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
 
       // Define cookie para o servidor
       const expires = new Date(Date.now() + (expiresIn || 86400000)).toUTCString();
-      document.cookie = `salon_auth_token=${token}; path=/; expires=${expires}; SameSite=Lax`;
+      // SEC-013: cookie endurecido — SameSite=Strict e Secure em HTTPS (reduz exposição
+      // a CSRF e a vazamento em canal inseguro). O token continua acessível em JS por
+      // exigência do WebSocket/STOMP; a mitigação principal de XSS é a CSP (next.config).
+      const secureFlag = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+      document.cookie = `salon_auth_token=${token}; path=/; expires=${expires}; SameSite=Strict${secureFlag}`;
     }
 
     setState({
@@ -326,7 +330,9 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
       const expires = expiryStr
         ? new Date(parseInt(expiryStr, 10)).toUTCString()
         : new Date(Date.now() + 24 * 60 * 60 * 1000).toUTCString();
-      document.cookie = `salon_auth_token=${token}; path=/; expires=${expires}; SameSite=Lax`;
+      // SEC-013: cookie endurecido (SameSite=Strict + Secure em HTTPS).
+      const secureFlag = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+      document.cookie = `salon_auth_token=${token}; path=/; expires=${expires}; SameSite=Strict${secureFlag}`;
 
       setState({
         user: { ...user, permissions },

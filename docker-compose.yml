@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: belezza
       POSTGRES_USER: belezza
-      POSTGRES_PASSWORD: belezza123
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-belezza123}
     ports:
       - "5432:5432"
     volumes:
@@ -37,7 +37,7 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/belezza
       SPRING_DATASOURCE_USERNAME: belezza
-      SPRING_DATASOURCE_PASSWORD: belezza123
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-belezza123}
       SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
       SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.PostgreSQLDialect
       SPRING_JPA_HIBERNATE_DDL_AUTO: none

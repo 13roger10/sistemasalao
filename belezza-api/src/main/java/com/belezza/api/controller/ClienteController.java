@@ -5,6 +5,7 @@ import com.belezza.api.dto.cliente.ClienteRequest;
 import com.belezza.api.dto.cliente.ClienteResponse;
 import com.belezza.api.entity.Role;
 import com.belezza.api.entity.Usuario;
+import com.belezza.api.security.TenantContext;
 import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.service.ClienteService;
 import com.belezza.api.service.TenantIsolationService;
@@ -42,16 +43,17 @@ public class ClienteController {
     }
 
     @PostMapping
-    @Operation(summary = "Criar cliente", description = "Cria um novo cliente no salão. RECEPCIONISTA usa salonId do request.")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
+    @Operation(summary = "Criar cliente", description = "Cria um novo cliente no salão de quem cadastra.")
     public ResponseEntity<ClienteResponse> criar(
             @Valid @RequestBody ClienteRequest request,
             @AuthenticationPrincipal Usuario operador) {
         ClienteResponse response;
         if (operador.getRole() == Role.RECEPCIONISTA) {
-            Long salonId = request.getSalonId();
-            if (salonId == null) {
-                return ResponseEntity.badRequest().build();
-            }
+            // Salão de quem cadastra; um salonId de outro salão no corpo é negado (antes era aceito
+            // e a recepcionista cadastrava clientes dentro de outro estabelecimento).
+            Long salonId = request.getSalonId() != null ? request.getSalonId() : TenantContext.getCurrentTenant();
+            tenantIsolationService.assertStaffTenant(salonId);
             response = clienteService.criarComSalonId(request, salonId);
         } else {
             response = clienteService.criar(request, operador.getUsername());
@@ -67,7 +69,7 @@ public class ClienteController {
             @AuthenticationPrincipal UserDetails userDetails) {
         boolean restrictData = shouldRestrictSensitiveData(userDetails);
         ClienteResponse response = clienteService.buscarPorId(id, restrictData);
-        tenantIsolationService.assertCurrentTenant(response.getSalonId());
+        tenantIsolationService.assertStaffTenant(response.getSalonId());
         return ResponseEntity.ok(response);
     }
 
@@ -75,6 +77,7 @@ public class ClienteController {
     @AdminOnly
     @Operation(summary = "Recalcular estatísticas", description = "Recalcula totalGasto/ticketMedio/visitas de todos os clientes a partir dos pagamentos reais")
     public ResponseEntity<Map<String, Object>> recalcularEstatisticas(@PathVariable Long salonId) {
+        tenantIsolationService.assertStaffTenant(salonId);
         int atualizados = clienteService.recalcularEstatisticas(salonId);
         return ResponseEntity.ok(Map.of("clientesAtualizados", atualizados));
     }
@@ -83,6 +86,8 @@ public class ClienteController {
     @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA', 'PROFISSIONAL')")
     @Operation(summary = "Histórico do cliente", description = "Retorna o histórico de atendimentos e gastos reais do cliente. Restrito à equipe do salão.")
     public ResponseEntity<ClienteHistoryResponse> buscarHistorico(@PathVariable Long id) {
+        // Histórico só de cliente do próprio salão (antes não havia nenhuma verificação)
+        tenantIsolationService.assertStaffTenant(clienteService.buscarPorId(id).getSalonId());
         ClienteHistoryResponse response = clienteService.buscarHistorico(id);
         return ResponseEntity.ok(response);
     }
@@ -96,7 +101,7 @@ public class ClienteController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String loyaltyLevel,
             @AuthenticationPrincipal UserDetails userDetails) {
-        tenantIsolationService.assertRequestedSalon(salonId);
+        tenantIsolationService.assertStaffTenant(salonId);
         boolean restrictData = shouldRestrictSensitiveData(userDetails);
         List<ClienteResponse> response = clienteService.listarPorSalon(salonId, search, status, loyaltyLevel, restrictData);
         return ResponseEntity.ok(response);

@@ -37,4 +37,18 @@ public class TenantIsolationService {
     public void assertRequestedSalon(Long requestedSalonId) {
         assertCurrentTenant(requestedSalonId);
     }
+
+    /**
+     * Strict variant for staff-only routes (ADMIN/PROFISSIONAL/RECEPCIONISTA): unlike
+     * {@link #assertCurrentTenant}, a missing tenant is a denial, not an allow — a staff token
+     * without a salonId (e.g. an ADMIN who has not created a salon yet) must not read or change
+     * any salon's data.
+     */
+    public void assertStaffTenant(Long salonId) {
+        Long currentTenant = TenantContext.getCurrentTenant();
+        if (currentTenant == null || salonId == null || !currentTenant.equals(salonId)) {
+            log.warn("Tenant isolation violation (staff): current={}, entity={}", currentTenant, salonId);
+            throw new AccessDeniedException("Acesso negado: recurso pertence a outro estabelecimento");
+        }
+    }
 }

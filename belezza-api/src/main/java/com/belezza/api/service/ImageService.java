@@ -88,7 +88,7 @@ public class ImageService {
                 .urlOriginal(urlOriginal)
                 .urlAtual(urlOriginal)
                 .thumbnailUrl(thumbnailUrl)
-                .nomeArquivo(file.getOriginalFilename())
+                .nomeArquivo(sanitizeFilename(file.getOriginalFilename()))
                 .tamanhoBytes(file.getSize())
                 .tipoMime(file.getContentType())
                 .largura(largura)
@@ -423,6 +423,8 @@ public class ImageService {
             throw new BusinessException("File is required");
         }
 
+        // SEC-019: o Content-Type declarado pelo cliente é falsificável — usado só como
+        // primeira barreira. A validação decisiva é decodificar o conteúdo abaixo.
         if (!ALLOWED_TYPES.contains(file.getContentType())) {
             throw new BusinessException("Invalid file type. Allowed: JPEG, PNG, WebP");
         }
@@ -430,6 +432,35 @@ public class ImageService {
         if (file.getSize() > MAX_FILE_SIZE) {
             throw new BusinessException("File size exceeds maximum of 10MB");
         }
+
+        // SEC-019: valida o CONTEÚDO real — só aceita se os bytes decodificam como imagem.
+        // Impede que um arquivo arbitrário (ex.: script/HTML) passe apenas mentindo o MIME.
+        try {
+            BufferedImage decoded = ImageIO.read(file.getInputStream());
+            if (decoded == null) {
+                throw new BusinessException("Arquivo não é uma imagem válida (conteúdo não reconhecido)");
+            }
+        } catch (IOException e) {
+            throw new BusinessException("Não foi possível ler o arquivo de imagem enviado");
+        }
+    }
+
+    /**
+     * SEC-019: sanitiza o nome de arquivo enviado pelo cliente antes de persistir como
+     * metadado — remove componentes de caminho (path traversal) e caracteres perigosos.
+     */
+    private String sanitizeFilename(String original) {
+        if (original == null || original.isBlank()) {
+            return "upload";
+        }
+        // Mantém apenas o nome do arquivo (sem diretórios) e um conjunto seguro de chars.
+        String base = original.replace("\\", "/");
+        base = base.substring(base.lastIndexOf('/') + 1);
+        base = base.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (base.isBlank() || base.equals(".") || base.equals("..")) {
+            return "upload";
+        }
+        return base.length() > 150 ? base.substring(base.length() - 150) : base;
     }
 
     private void checkStorageLimits(Salon salon) {

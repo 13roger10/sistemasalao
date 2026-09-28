@@ -352,8 +352,11 @@ public class WhatsAppServiceImpl implements WhatsAppService {
         // Remove all non-numeric characters except +
         String normalized = telefone.replaceAll("[^+\\d]", "");
 
-        // Ensure it starts with +
+        // Ensure it starts with +; a Brazilian local number (DDD + 8/9 digits, no DDI) gets +55
         if (!normalized.startsWith("+")) {
+            if (normalized.length() == 10 || normalized.length() == 11) {
+                normalized = "55" + normalized;
+            }
             normalized = "+" + normalized;
         }
 

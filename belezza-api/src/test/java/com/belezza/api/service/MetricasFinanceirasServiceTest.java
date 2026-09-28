@@ -162,9 +162,10 @@ class MetricasFinanceirasServiceTest {
         assertThat(response.getTotalAtendimentos()).isEqualTo(5);
         assertThat(response.getPeriodo()).contains("2024-01");
 
-        verify(pagamentoRepository).sumFaturamentoBySalonIdAndPeriod(
+        // Both are also invoked by calcularEvolucaoMensal (monthly evolution), hence atLeastOnce
+        verify(pagamentoRepository, atLeastOnce()).sumFaturamentoBySalonIdAndPeriod(
                 eq(salonId), any(LocalDateTime.class), any(LocalDateTime.class));
-        verify(pagamentoRepository).avgTicketMedioBySalonIdAndPeriod(
+        verify(pagamentoRepository, atLeastOnce()).avgTicketMedioBySalonIdAndPeriod(
                 eq(salonId), any(LocalDateTime.class), any(LocalDateTime.class));
     }
 

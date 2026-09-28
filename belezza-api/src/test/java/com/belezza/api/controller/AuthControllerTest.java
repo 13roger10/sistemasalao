@@ -15,9 +15,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -25,6 +27,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+// Web-layer test with AuthService mocked: uses plain H2 schema instead of the Postgres-only
+// Flyway migrations (the "test" profile targets Testcontainers Postgres).
+@TestPropertySource(properties = {
+        "spring.flyway.enabled=false",
+        "spring.jpa.hibernate.ddl-auto=create-drop",
+        "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect"
+})
 @DisplayName("AuthController Tests")
 @SuppressWarnings("null")
 class AuthControllerTest {
@@ -74,17 +83,17 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("Should register user and return 201")
+    @DisplayName("Should accept registration with a generic response (no auto-login)")
     @SuppressWarnings("null")
     void shouldRegisterUserSuccessfully() throws Exception {
-        when(authService.register(any(RegisterRequest.class))).thenReturn(authResponse);
-
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(registerRequest)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.accessToken").value("accessToken"))
-                .andExpect(jsonPath("$.user.email").value("test@example.com"));
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.message").exists())
+                .andExpect(jsonPath("$.accessToken").doesNotExist());
+
+        verify(authService).register(any(RegisterRequest.class));
     }
 
     @Test
