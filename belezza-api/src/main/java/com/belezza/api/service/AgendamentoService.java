@@ -1044,7 +1044,14 @@ public class AgendamentoService {
         }
     }
 
+    /**
+     * Verifica sobreposição com outros agendamentos do profissional. Antes da consulta, trava a
+     * linha do profissional (até o commit da transação de criar/reagendar): sem isso, requisições
+     * simultâneas (duplo clique, dois clientes no mesmo horário) passavam juntas pela consulta e
+     * gravavam agendamentos duplicados no mesmo horário.
+     */
     private void validarConflitos(Long profissionalId, LocalDateTime inicio, LocalDateTime fim) {
+        agendamentoRepository.lockProfissional(profissionalId);
         List<Agendamento> conflitos = agendamentoRepository.findConflicts(profissionalId, inicio, fim);
         if (!conflitos.isEmpty()) {
             throw new BusinessException("Profissional já possui agendamento neste horário");

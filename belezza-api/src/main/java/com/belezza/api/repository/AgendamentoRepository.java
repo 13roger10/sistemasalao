@@ -26,6 +26,15 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long> 
 
     List<Agendamento> findBySalonIdAndStatus(Long salonId, StatusAgendamento status);
 
+    /**
+     * Trava a linha do profissional até o fim da transação. Chamado antes de verificar conflitos:
+     * duas marcações simultâneas para o mesmo profissional passam a ser feitas uma de cada vez,
+     * e a segunda já enxerga o agendamento gravado pela primeira. SQL nativo com FOR UPDATE
+     * (funciona no PostgreSQL e no H2; o @Lock do Hibernate gera FOR NO KEY UPDATE, que o H2 recusa).
+     */
+    @Query(value = "SELECT id FROM profissionais WHERE id = :profId FOR UPDATE", nativeQuery = true)
+    Long lockProfissional(@Param("profId") Long profissionalId);
+
     // Check for scheduling conflicts
     @Query("SELECT a FROM Agendamento a WHERE a.profissional.id = :profId " +
            "AND a.status NOT IN ('CANCELADO', 'NO_SHOW') " +

@@ -550,6 +550,27 @@ class AgendamentoServiceTest {
         }
 
         @Test
+        @DisplayName("Trava o profissional antes de procurar conflitos (evita agendamento duplicado em requisições simultâneas)")
+        void travaProfissionalAntesDeVerificarConflitos() {
+            Usuario recepcionistaDoSalao = Usuario.builder().id(14L).role(Role.RECEPCIONISTA).build();
+            when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
+            when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
+            when(servicoService.getServicoEntity(1L)).thenReturn(servico);
+            when(horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(eq(1L), any())).thenReturn(Optional.empty());
+            when(bloqueioHorarioService.temBloqueio(eq(1L), any(), any())).thenReturn(false);
+            when(agendamentoRepository.findConflicts(eq(1L), any(), any())).thenReturn(List.of(agendamento));
+
+            assertThatThrownBy(() -> agendamentoService.criar(request(), recepcionistaDoSalao))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("já possui agendamento");
+
+            var ordem = inOrder(agendamentoRepository);
+            ordem.verify(agendamentoRepository).lockProfissional(1L);
+            ordem.verify(agendamentoRepository).findConflicts(eq(1L), any(), any());
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
         @DisplayName("API pública (sem token): admin do próprio salão passa pela verificação")
         void apiPublicaMesmoSalao() {
             TenantContext.clear();
