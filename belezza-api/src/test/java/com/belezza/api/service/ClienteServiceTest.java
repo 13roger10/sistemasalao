@@ -120,6 +120,105 @@ class ClienteServiceTest {
     }
 
     @Nested
+    @DisplayName("Excluir e reativar (BUG-026)")
+    class ExcluirReativar {
+
+        @BeforeEach
+        void salaoDoAdmin() {
+            usuario.setAtivo(true);
+        }
+
+        @Test
+        @DisplayName("Excluir desativa o cadastro e o login de quem só é cliente deste salão")
+        void excluiDesativaLogin() {
+            when(clienteRepository.findById(10L)).thenReturn(Optional.of(cliente));
+            when(salonService.getSalonByAdminEmail("admin@teste.com")).thenReturn(salon);
+            when(clienteRepository.existsByUsuarioIdAndAtivoTrueAndIdNot(5L, 10L)).thenReturn(false);
+
+            clienteService.excluir(10L, "admin@teste.com");
+
+            assertThat(cliente.isAtivo()).isFalse();
+            assertThat(usuario.isAtivo()).isFalse();
+            verify(usuarioRepository).save(usuario);
+        }
+
+        @Test
+        @DisplayName("Cliente ativo em outro salão continua entrando no app")
+        void clienteDeOutroSalaoMantemLogin() {
+            when(clienteRepository.findById(10L)).thenReturn(Optional.of(cliente));
+            when(salonService.getSalonByAdminEmail("admin@teste.com")).thenReturn(salon);
+            when(clienteRepository.existsByUsuarioIdAndAtivoTrueAndIdNot(5L, 10L)).thenReturn(true);
+
+            clienteService.excluir(10L, "admin@teste.com");
+
+            assertThat(cliente.isAtivo()).isFalse();
+            assertThat(usuario.isAtivo()).isTrue();
+            verify(usuarioRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Conta da equipe cadastrada como cliente não perde o login")
+        void equipeMantemLogin() {
+            usuario.setRole(Role.RECEPCIONISTA);
+            when(clienteRepository.findById(10L)).thenReturn(Optional.of(cliente));
+            when(salonService.getSalonByAdminEmail("admin@teste.com")).thenReturn(salon);
+
+            clienteService.excluir(10L, "admin@teste.com");
+
+            assertThat(usuario.isAtivo()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Cliente excluído não agenda sozinho pelo app")
+        void excluidoNaoAgenda() {
+            cliente.setAtivo(false);
+            when(usuarioRepository.findByEmailAndAtivoTrue("maria@teste.com")).thenReturn(Optional.of(usuario));
+            when(salonService.getSalonEntity(1L)).thenReturn(salon);
+            when(clienteRepository.findByUsuarioIdAndSalonId(5L, 1L)).thenReturn(Optional.of(cliente));
+
+            assertThatThrownBy(() -> clienteService.getOrCreateCliente(1L, "maria@teste.com"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("cadastro neste salão foi desativado");
+            verify(clienteRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Filtro \"Inativos\" traz os clientes excluídos")
+        void filtroInativos() {
+            cliente.setAtivo(false);
+            when(clienteRepository.findBySalonIdAndAtivoFalse(1L)).thenReturn(List.of(cliente));
+
+            List<ClienteResponse> r = clienteService.listarPorSalon(1L, null, "inactive", null, false);
+
+            assertThat(r).extracting(ClienteResponse::getStatus).containsExactly("inactive");
+        }
+
+        @Test
+        @DisplayName("Reativar devolve o cadastro e o login")
+        void reativa() {
+            cliente.setAtivo(false);
+            usuario.setAtivo(false);
+            when(clienteRepository.findById(10L)).thenReturn(Optional.of(cliente));
+            when(clienteRepository.save(any(Cliente.class))).thenReturn(cliente);
+            when(fidelidadeRepository.findByClienteIdAndAtivoTrue(10L)).thenReturn(List.of());
+
+            clienteService.reativar(10L, 1L);
+
+            assertThat(cliente.isAtivo()).isTrue();
+            assertThat(usuario.isAtivo()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Reativar cliente de outro salão é negado")
+        void reativarOutroSalao() {
+            cliente.setAtivo(false);
+            when(clienteRepository.findById(10L)).thenReturn(Optional.of(cliente));
+
+            assertThatThrownBy(() -> clienteService.reativar(10L, 2L)).isInstanceOf(AccessDeniedException.class);
+        }
+    }
+
+    @Nested
     @DisplayName("Buscar por telefone")
     class Buscar {
 

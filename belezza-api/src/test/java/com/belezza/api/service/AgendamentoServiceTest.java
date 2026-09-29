@@ -525,6 +525,17 @@ class AgendamentoServiceTest {
         }
 
         @Test
+        @DisplayName("Cliente excluído do salão não recebe agendamento da equipe (BUG-026)")
+        void clienteExcluido() {
+            cliente.setAtivo(false);
+
+            assertThatThrownBy(() -> agendamentoService.criar(em(LocalDateTime.now().plusDays(1).withHour(10).withMinute(0)), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("excluído do salão");
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
         @DisplayName("Data além do prazo máximo de antecedência é recusada")
         void alemDoPrazoMaximo() {
             assertThatThrownBy(() -> agendamentoService.criar(em(LocalDateTime.now().plusDays(31)), recepcionista))

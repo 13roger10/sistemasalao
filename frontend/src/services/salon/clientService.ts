@@ -57,6 +57,11 @@ export const clientService = {
     return api.patch<Client>(`${BASE_PATH}/${id}`, data);
   },
 
+  // Reactivate a deleted (inactive) client — admin only
+  reactivate: (id: string): Promise<Client> => {
+    return api.post<Client>(`${BASE_PATH}/${id}/reativar`);
+  },
+
   // Delete client (soft delete)
   delete: (id: string): Promise<void> => {
     return api.delete(`${BASE_PATH}/${id}`);

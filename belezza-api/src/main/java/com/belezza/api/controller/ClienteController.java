@@ -132,6 +132,15 @@ public class ClienteController {
         return ResponseEntity.ok(Map.of("message", "Cliente excluído com sucesso"));
     }
 
+    @PostMapping("/{id}/reativar")
+    @AdminOnly
+    @Operation(summary = "Reativar cliente", description = "Desfaz a exclusão: o cadastro no salão e o login voltam a valer")
+    public ResponseEntity<ClienteResponse> reativar(@PathVariable Long id) {
+        Long salonId = TenantContext.getCurrentTenant();
+        tenantIsolationService.assertStaffTenant(salonId);
+        return ResponseEntity.ok(clienteService.reativar(id, salonId));
+    }
+
     @PatchMapping("/{id}/observacoes")
     @AdminOnly
     @Operation(summary = "Atualizar observações", description = "Atualiza observações de um cliente")

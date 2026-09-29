@@ -359,7 +359,10 @@ public class ClienteService {
     public List<ClienteResponse> listarPorSalon(Long salonId, String search, String status, String loyaltyLevel, boolean restrictSensitiveData) {
         // Lista apenas quem tem cadastro de cliente neste salão. (Antes, listar "sincronizava"
         // todo usuário CLIENTE da plataforma, cadastrando no salão os clientes de todos os outros.)
-        List<Cliente> clientes = clienteRepository.findBySalonIdAndAtivoTrue(salonId);
+        // O filtro "Inativos" busca os excluídos; antes a lista só carregava ativos e vinha vazia.
+        List<Cliente> clientes = "inactive".equals(status)
+                ? clienteRepository.findBySalonIdAndAtivoFalse(salonId)
+                : clienteRepository.findBySalonIdAndAtivoTrue(salonId);
 
         // Aplicar filtros
         return clientes.stream()
@@ -486,7 +489,44 @@ public class ClienteService {
 
         cliente.setAtivo(false);
         clienteRepository.save(cliente);
-        log.info("Cliente excluído (soft delete): {}", id);
+
+        // Antes só o cadastro no salão era desativado e a pessoa continuava entrando no app. O
+        // login é desativado quando ela é só cliente (não equipe) e não é cliente ativa em outro
+        // salão; como toda requisição confere se o usuário está ativo, a sessão aberta cai também.
+        Usuario usuario = cliente.getUsuario();
+        if (usuario.getRole() == Role.CLIENTE && usuario.isAtivo()
+                && !clienteRepository.existsByUsuarioIdAndAtivoTrueAndIdNot(usuario.getId(), cliente.getId())) {
+            usuario.setAtivo(false);
+            usuarioRepository.save(usuario);
+            log.info("Cliente excluído (soft delete): {} — login do usuário {} desativado", id, usuario.getId());
+        } else {
+            log.info("Cliente excluído (soft delete): {}", id);
+        }
+    }
+
+    /** Desfaz a exclusão: o cadastro no salão e o login voltam a valer. */
+    @Transactional
+    @Auditable(action = "REACTIVATE", entityType = "Cliente", captureNewState = true)
+    @SuppressWarnings("null")
+    public ClienteResponse reativar(Long id, Long salonIdOperador) {
+        Cliente cliente = clienteRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Cliente", id));
+        if (salonIdOperador == null || !cliente.getSalon().getId().equals(salonIdOperador)) {
+            throw new AccessDeniedException("Acesso negado: cliente pertence a outro estabelecimento");
+        }
+        if (cliente.isAtivo()) {
+            throw new BusinessException("Este cliente já está ativo");
+        }
+        cliente.setAtivo(true);
+        cliente = clienteRepository.save(cliente);
+        Usuario usuario = cliente.getUsuario();
+        if (!usuario.isAtivo()) {
+            usuario.setAtivo(true);
+            usuarioRepository.save(usuario);
+        }
+        log.info("Cliente reativado: {}", id);
+        var fidelidade = fidelidadeRepository.findByClienteIdAndAtivoTrue(id).stream().findFirst().orElse(null);
+        return ClienteResponse.fromEntity(cliente, fidelidade);
     }
 
     @Transactional
@@ -548,6 +588,13 @@ public class ClienteService {
         Salon salon = salonService.getSalonEntity(salonId);
 
         return clienteRepository.findByUsuarioIdAndSalonId(usuario.getId(), salonId)
+                .map(existente -> {
+                    // Cadastro excluído pelo salão: antes era reaproveitado e o agendamento passava
+                    if (!existente.isAtivo()) {
+                        throw new BusinessException("Seu cadastro neste salão foi desativado. Entre em contato com o salão.");
+                    }
+                    return existente;
+                })
                 .orElseGet(() -> {
                     Cliente cliente = Cliente.builder()
                             .usuario(usuario)

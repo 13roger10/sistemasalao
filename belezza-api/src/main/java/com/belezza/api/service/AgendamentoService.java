@@ -1093,6 +1093,11 @@ public class AgendamentoService {
             throw new BusinessException("Cliente bloqueado. Entre em contato com o salão.");
         }
 
+        // 5b. Cliente excluído do salão (cadastro desativado) não recebe agendamento novo
+        if (!cliente.isAtivo()) {
+            throw new BusinessException("Este cliente foi excluído do salão. Reative o cadastro para agendar.");
+        }
+
         // 6. Cannot schedule in the past
         if (dataHora.isBefore(LocalDateTime.now())) {
             throw new BusinessException("Não é possível agendar em horários passados");

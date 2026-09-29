@@ -22,6 +22,13 @@ public interface ClienteRepository extends JpaRepository<Cliente, Long> {
     @Query("SELECT c FROM Cliente c JOIN FETCH c.usuario JOIN FETCH c.salon WHERE c.salon.id = :salonId AND c.ativo = true")
     List<Cliente> findBySalonIdAndAtivoTrue(@Param("salonId") Long salonId);
 
+    /** Clientes excluídos (desativados) do salão, para o filtro "Inativos". */
+    @Query("SELECT c FROM Cliente c JOIN FETCH c.usuario JOIN FETCH c.salon WHERE c.salon.id = :salonId AND c.ativo = false")
+    List<Cliente> findBySalonIdAndAtivoFalse(@Param("salonId") Long salonId);
+
+    /** A pessoa continua cliente ativa em algum outro salão? (decide se o login pode ser desativado) */
+    boolean existsByUsuarioIdAndAtivoTrueAndIdNot(Long usuarioId, Long id);
+
     List<Cliente> findByUsuarioId(Long usuarioId);
 
     boolean existsByUsuarioIdAndSalonId(Long usuarioId, Long salonId);

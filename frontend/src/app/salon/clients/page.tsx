@@ -32,6 +32,7 @@ import { DataTable, ActionMenuItem, Column } from "@/components/ui/DataTable";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
 import { clientService } from "@/services/salon/clientService";
 import { api } from "@/services/salon/api";
 import { userService } from "@/services/user";
@@ -175,6 +176,9 @@ const LoyaltyProgress = ({ current, total = 10 }: { current: number; total?: num
 
 export default function ClientsPage() {
   const { user } = useSalonAuth();
+  const toast = useToast();
+  const mensagemErro = (error: unknown) =>
+    error instanceof Error ? error.message.replace(/^\[HTTP \d+\]\s*/, "") : "Tente novamente.";
   const { selectedUnitId } = useUnit();
   const isProfessional = user?.role === 'PROFESSIONAL';
 
@@ -497,13 +501,25 @@ export default function ClientsPage() {
     setIsSubmitting(true);
     try {
       await clientService.delete(selectedClient.id);
+      toast.success("Cliente excluído", "O cadastro e o acesso ao app foram desativados. Dá para reativar pelo filtro \"Inativos\".");
       setIsDeleteModalOpen(false);
       setSelectedClient(null);
       loadClients();
     } catch (error) {
       console.error("Erro ao desativar cliente:", error);
+      toast.error("Não foi possível excluir o cliente", mensagemErro(error));
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleReactivate = async (client: Client) => {
+    try {
+      await clientService.reactivate(client.id);
+      toast.success("Cliente reativado", `${client.name} volta a poder entrar e agendar.`);
+      loadClients();
+    } catch (error) {
+      toast.error("Não foi possível reativar o cliente", mensagemErro(error));
     }
   };
 
@@ -1030,7 +1046,16 @@ export default function ClientsPage() {
                     Desbloquear
                   </ActionMenuItem>
                 )}
-                {!isProfessional && (
+                {user?.role === "ADMIN" && item.status === "inactive" && (
+                  <ActionMenuItem
+                    onClick={() => handleReactivate(item)}
+                    icon={<LockOpen className="h-4 w-4" />}
+                  >
+                    Reativar
+                  </ActionMenuItem>
+                )}
+                {/* Excluir é só do admin no backend; para a recepção o botão falhava sem aviso */}
+                {user?.role === "ADMIN" && item.status !== "inactive" && (
                   <ActionMenuItem
                     onClick={() => openDeleteModal(item)}
                     icon={<Trash2 className="h-4 w-4" />}
@@ -1888,7 +1913,7 @@ export default function ClientsPage() {
         }}
         onConfirm={handleDelete}
         title="Excluir Cliente"
-        message={`Tem certeza que deseja excluir o cliente "${selectedClient?.name}"? Esta ação não pode ser desfeita.`}
+        message={`Excluir o cliente "${selectedClient?.name}"? Ele deixa de aparecer na lista, não pode mais agendar e perde o acesso ao app (se não for cliente de outro salão). Você pode reativá-lo depois pelo filtro "Inativos".`}
         confirmText="Excluir"
         cancelText="Cancelar"
         variant="danger"
