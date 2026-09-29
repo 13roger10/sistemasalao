@@ -36,20 +36,20 @@ export interface ApiKeyRequest {
 
 export const apiKeysService = {
   async listar(salonId: number): Promise<ApiKeyResponse[]> {
-    const r = await api.get<ApiKeyResponse[]>(`/api/salons/${salonId}/api-keys`);
+    const r = await api.get<ApiKeyResponse[]>(`/salons/${salonId}/api-keys`);
     return r.data;
   },
 
   async criar(salonId: number, req: ApiKeyRequest): Promise<ApiKeyCreatedResponse> {
-    const r = await api.post<ApiKeyCreatedResponse>(`/api/salons/${salonId}/api-keys`, req);
+    const r = await api.post<ApiKeyCreatedResponse>(`/salons/${salonId}/api-keys`, req);
     return r.data;
   },
 
   async revogar(salonId: number, keyId: number): Promise<void> {
-    await api.delete(`/api/salons/${salonId}/api-keys/${keyId}/revogar`);
+    await api.delete(`/salons/${salonId}/api-keys/${keyId}/revogar`);
   },
 
   async excluir(salonId: number, keyId: number): Promise<void> {
-    await api.delete(`/api/salons/${salonId}/api-keys/${keyId}`);
+    await api.delete(`/salons/${salonId}/api-keys/${keyId}`);
   },
 };

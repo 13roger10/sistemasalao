@@ -82,7 +82,7 @@ export function UnitProvider({ children }: UnitProviderProps) {
       // so the unit list comes from the real salon instead of mock units.
       let cancelled = false;
       api
-        .get<{ id: number; nome: string }>("/api/salons/meu")
+        .get<{ id: number; nome: string }>("/salons/meu")
         .then(({ data }) => {
           if (cancelled) return;
           const unit: UnitOption = { id: String(data.id), name: data.nome, isHeadquarters: true };

@@ -50,7 +50,7 @@ export const FUNCOES_ASSIGNING: FuncaoStudio[] = [
 export const equipeStudioService = {
   async listar(salonId: number): Promise<MembroStudio[]> {
     const response = await api.get<MembroStudio[]>(
-      `/api/salons/${salonId}/equipe`
+      `/salons/${salonId}/equipe`
     );
     return response.data;
   },
@@ -61,7 +61,7 @@ export const equipeStudioService = {
     funcao: FuncaoStudio
   ): Promise<MembroStudio> {
     const response = await api.post<MembroStudio>(
-      `/api/salons/${salonId}/equipe`,
+      `/salons/${salonId}/equipe`,
       { email, funcao }
     );
     return response.data;
@@ -73,19 +73,19 @@ export const equipeStudioService = {
     funcao: FuncaoStudio
   ): Promise<MembroStudio> {
     const response = await api.patch<MembroStudio>(
-      `/api/salons/${salonId}/equipe/${membroId}/funcao`,
+      `/salons/${salonId}/equipe/${membroId}/funcao`,
       { funcao }
     );
     return response.data;
   },
 
   async remover(salonId: number, membroId: number): Promise<void> {
-    await api.delete(`/api/salons/${salonId}/equipe/${membroId}`);
+    await api.delete(`/salons/${salonId}/equipe/${membroId}`);
   },
 
   async minhaFuncao(salonId: number): Promise<FuncaoStudio | null> {
     const response = await api.get<MinhaFuncaoResponse>(
-      `/api/salons/${salonId}/equipe/minha-funcao`
+      `/salons/${salonId}/equipe/minha-funcao`
     );
     return response.data.funcao;
   },

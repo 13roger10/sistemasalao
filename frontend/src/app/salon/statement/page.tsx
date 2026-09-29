@@ -188,7 +188,7 @@ export default function StatementPage() {
       const [commRes, paymRes] = await Promise.allSettled([
         commissionService.getByProfessional(user.professionalId, { page: 0, limit: 500 }),
         api.get<{ content: ProfessionalPayment[]; totalElements: number }>(
-          `/api/pagamentos-profissional/profissional/${user.professionalId}`,
+          `/pagamentos-profissional/profissional/${user.professionalId}`,
           { page: 0, size: 200 }
         ),
       ]);

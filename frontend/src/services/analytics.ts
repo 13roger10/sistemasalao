@@ -174,21 +174,21 @@ function buildParams(salonId: number, range: DateRange) {
 
 export const analyticsService = {
   async agendamentos(salonId: number, range: DateRange): Promise<MetricasAgendamento> {
-    const r = await api.get<MetricasAgendamento>("/api/metricas/agendamentos", {
+    const r = await api.get<MetricasAgendamento>("/metricas/agendamentos", {
       params: buildParams(salonId, range),
     });
     return r.data;
   },
 
   async financeiro(salonId: number, range: DateRange): Promise<MetricasFinanceiras> {
-    const r = await api.get<MetricasFinanceiras>("/api/metricas/faturamento", {
+    const r = await api.get<MetricasFinanceiras>("/metricas/faturamento", {
       params: buildParams(salonId, range),
     });
     return r.data;
   },
 
   async social(salonId: number, range: DateRange): Promise<MetricasSocial> {
-    const r = await api.get<MetricasSocial>("/api/metricas/social", {
+    const r = await api.get<MetricasSocial>("/metricas/social", {
       params: buildParams(salonId, range),
     });
     return r.data;

@@ -48,7 +48,7 @@ interface NotificacaoContextType {
 const NotificacaoContext = createContext<NotificacaoContextType | undefined>(undefined);
 
 const MAX_RECENTES = 20;
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api";
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
