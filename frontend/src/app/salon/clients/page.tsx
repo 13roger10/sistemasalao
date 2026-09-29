@@ -432,7 +432,7 @@ export default function ClientsPage() {
   };
 
   const handleUpdate = async () => {
-    if (!selectedClient || !validateForm()) return;
+    if (!selectedClient || !validateForm(false)) return;
 
     setIsSubmitting(true);
     try {
@@ -479,9 +479,12 @@ export default function ClientsPage() {
       resetForm();
       loadClients();
     } catch (error: unknown) {
+      // O cliente HTTP (fetch) lança Error com a mensagem do backend, prefixada por "[HTTP nnn]"
       const err = error as { response?: { data?: { message?: string } } };
+      const mensagem = err.response?.data?.message
+        || (error instanceof Error ? error.message.replace(/^\[HTTP \d+\]\s*/, "") : "");
       setFormErrors({
-        submit: err.response?.data?.message || "Erro ao atualizar cliente",
+        submit: mensagem || "Erro ao atualizar cliente",
       });
     } finally {
       setIsSubmitting(false);
@@ -570,7 +573,9 @@ export default function ClientsPage() {
   };
 
   // Validação do formulário
-  const validateForm = () => {
+  // Na edição a data de nascimento é opcional: clientes antigos não têm e ficavam impossíveis de
+  // editar; o backend só grava a data quando vem preenchida, então deixar em branco não apaga nada.
+  const validateForm = (exigirNascimento = true) => {
     const errors: Record<string, string> = {};
 
     if (!formData.name.trim()) {
@@ -581,7 +586,7 @@ export default function ClientsPage() {
       errors.phone = "Telefone é obrigatório";
     }
 
-    if (!formData.birthDate) {
+    if (exigirNascimento && !formData.birthDate) {
       errors.birthDate = "Data de nascimento é obrigatória";
     }
 
@@ -1478,7 +1483,7 @@ export default function ClientsPage() {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input
-              label="Data de Nascimento *"
+              label="Data de Nascimento"
               type="date"
               value={formData.birthDate ? new Date(formData.birthDate).toISOString().split("T")[0] : ""}
               onChange={(e) =>

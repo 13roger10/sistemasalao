@@ -14,6 +14,7 @@ import com.belezza.api.entity.StatusAgendamento;
 import com.belezza.api.entity.StatusPagamento;
 import com.belezza.api.entity.Usuario;
 import com.belezza.api.exception.BusinessException;
+import org.springframework.security.access.AccessDeniedException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.ClienteRepository;
@@ -344,6 +345,16 @@ public class ClienteService {
         return listarPorSalon(salonId, search, status, loyaltyLevel, false);
     }
 
+    /**
+     * Compara só os dígitos: "(11) 99999-1234", "11999991234" e "+55 11 99999-1234" batem entre si.
+     * Exige ao menos 3 dígitos na busca, para "Ana" ou um único número não casar com todo mundo.
+     */
+    private static boolean telefoneContem(String telefone, String busca) {
+        if (telefone == null) return false;
+        String digitosBusca = busca.replaceAll("\\D", "");
+        return digitosBusca.length() >= 3 && telefone.replaceAll("\\D", "").contains(digitosBusca);
+    }
+
     @Transactional(readOnly = true)
     public List<ClienteResponse> listarPorSalon(Long salonId, String search, String status, String loyaltyLevel, boolean restrictSensitiveData) {
         // Lista apenas quem tem cadastro de cliente neste salão. (Antes, listar "sincronizava"
@@ -357,7 +368,8 @@ public class ClienteService {
                     if (search != null && !search.isEmpty()) {
                         String searchLower = search.toLowerCase();
                         return c.getUsuario().getNome().toLowerCase().contains(searchLower)
-                                || (!restrictSensitiveData && c.getUsuario().getTelefone() != null && c.getUsuario().getTelefone().contains(search))
+                                || (!restrictSensitiveData && (telefoneContem(c.getUsuario().getTelefone(), search)
+                                        || telefoneContem(c.getWhatsapp(), search)))
                                 || (!restrictSensitiveData && c.getUsuario().getEmail() != null && c.getUsuario().getEmail().toLowerCase().contains(searchLower));
                     }
                     return true;
@@ -401,13 +413,16 @@ public class ClienteService {
 
     @Transactional
     @SuppressWarnings("null")
-    public ClienteResponse atualizar(Long id, ClienteRequest request, String emailAdmin) {
+    /**
+     * Atualiza o cliente pelo salão de quem edita (admin ou recepção). Antes o salão era buscado
+     * pelo e-mail do admin, e a recepcionista recebia erro ao salvar qualquer cliente.
+     */
+    public ClienteResponse atualizar(Long id, ClienteRequest request, Long salonIdOperador) {
         Cliente cliente = clienteRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", id));
 
-        Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
-        if (!cliente.getSalon().getId().equals(salon.getId())) {
-            throw new BusinessException("Cliente não pertence a este salão");
+        if (salonIdOperador == null || !cliente.getSalon().getId().equals(salonIdOperador)) {
+            throw new AccessDeniedException("Acesso negado: cliente pertence a outro estabelecimento");
         }
 
         // Atualizar dados do usuário se necessário
@@ -418,7 +433,12 @@ public class ClienteService {
         if (request.getPhone() != null) {
             usuario.setTelefone(request.getPhone());
         }
-        if (request.getEmail() != null && !request.getEmail().endsWith("@cliente.belezza.ai")) {
+        if (request.getEmail() != null && !request.getEmail().endsWith("@cliente.belezza.ai")
+                && !request.getEmail().equalsIgnoreCase(usuario.getEmail())) {
+            // E-mail de outra conta: antes estourava na restrição única do banco (erro 500)
+            if (usuarioRepository.existsByEmail(request.getEmail())) {
+                throw new BusinessException("Já existe uma conta com este e-mail");
+            }
             usuario.setEmail(request.getEmail());
         }
         usuarioRepository.save(usuario);

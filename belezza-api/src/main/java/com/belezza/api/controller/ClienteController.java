@@ -34,12 +34,15 @@ public class ClienteController {
     private final ClienteService clienteService;
     private final TenantIsolationService tenantIsolationService;
 
+    /**
+     * Telefone e e-mail do cliente ficam ocultos só para o profissional. A recepção precisa deles
+     * para atender (buscar por telefone, ligar, confirmar) — mesma regra da agenda.
+     */
     private boolean shouldRestrictSensitiveData(UserDetails userDetails) {
         if (userDetails == null) return true;
-        boolean isAdmin = userDetails.getAuthorities().stream()
+        return userDetails.getAuthorities().stream()
                 .map(a -> a.getAuthority())
-                .anyMatch(auth -> auth.equals("ROLE_ADMIN"));
-        return !isAdmin;
+                .noneMatch(auth -> auth.equals("ROLE_ADMIN") || auth.equals("ROLE_RECEPCIONISTA"));
     }
 
     @PostMapping
@@ -108,12 +111,14 @@ public class ClienteController {
     }
 
     @PatchMapping("/{id}")
-    @Operation(summary = "Atualizar cliente", description = "Atualiza os dados de um cliente")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
+    @Operation(summary = "Atualizar cliente", description = "Atualiza os dados de um cliente do salão de quem edita.")
     public ResponseEntity<ClienteResponse> atualizar(
             @PathVariable Long id,
-            @Valid @RequestBody ClienteRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        ClienteResponse response = clienteService.atualizar(id, request, userDetails.getUsername());
+            @Valid @RequestBody ClienteRequest request) {
+        Long salonId = TenantContext.getCurrentTenant();
+        tenantIsolationService.assertStaffTenant(salonId);
+        ClienteResponse response = clienteService.atualizar(id, request, salonId);
         return ResponseEntity.ok(response);
     }
 
