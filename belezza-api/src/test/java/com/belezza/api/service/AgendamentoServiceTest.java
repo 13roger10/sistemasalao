@@ -142,6 +142,8 @@ class AgendamentoServiceTest {
                 .salon(salon)
                 .ativo(true)
                 .build();
+        // o profissional realiza o Corte (BUG-022: só é agendado para os serviços vinculados a ele)
+        profissional.getServicos().add(servico);
 
         cliente = Cliente.builder()
                 .id(1L)
@@ -846,6 +848,71 @@ class AgendamentoServiceTest {
     }
 
     @Nested
+    @DisplayName("Profissional só é agendado para os serviços que realiza (BUG-022)")
+    class ServicosDoProfissionalTests {
+
+        private final Usuario recepcionista = Usuario.builder().id(14L).role(Role.RECEPCIONISTA).build();
+        private Servico coloracao;
+
+        @BeforeEach
+        void stubs() {
+            coloracao = Servico.builder().id(2L).nome("Coloração").preco(BigDecimal.valueOf(100))
+                    .duracaoMinutos(60).salon(salon).ativo(true).build();
+            // usados só nos testes de criação
+            lenient().when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
+            lenient().when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
+        }
+
+        private LocalDateTime amanha10h() {
+            return LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0);
+        }
+
+        @Test
+        @DisplayName("Serviço que o profissional não realiza é recusado")
+        void servicoUnicoNaoRealizado() {
+            when(servicoService.getServicoEntity(2L)).thenReturn(coloracao);
+            AgendamentoRequest req = AgendamentoRequest.builder().clienteId(1L).profissionalId(1L)
+                    .servicoId(2L).dataHora(amanha10h()).build();
+
+            assertThatThrownBy(() -> agendamentoService.criar(req, recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("Profissional Teste não realiza o serviço Coloração");
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Vários serviços: basta um que ele não faça para recusar")
+        void variosServicosUmNaoRealizado() {
+            when(servicoService.getServicoEntity(1L)).thenReturn(servico);
+            when(servicoService.getServicoEntity(2L)).thenReturn(coloracao);
+            AgendamentoRequest req = AgendamentoRequest.builder().clienteId(1L).profissionalId(1L)
+                    .servicoIds(List.of(1L, 2L)).dataHora(amanha10h()).build();
+
+            assertThatThrownBy(() -> agendamentoService.criar(req, recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("não realiza o serviço Coloração");
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Reagendar para um profissional que não faz o serviço é recusado")
+        void reagendarParaQuemNaoFaz() {
+            Profissional outro = Profissional.builder().id(3L).salon(salon)
+                    .usuario(Usuario.builder().id(30L).nome("Barbeiro").build()).build();
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+            when(profissionalService.getProfissionalEntity(3L)).thenReturn(outro);
+            ReagendamentoRequest req = new ReagendamentoRequest();
+            req.setNovaDataHora(amanha10h());
+            req.setNovoProfissionalId(3L);
+
+            assertThatThrownBy(() -> agendamentoService.reagendar(1L, req, false, false, recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("Barbeiro não realiza o serviço Corte Masculino");
+            verify(agendamentoRepository, never()).save(any());
+        }
+    }
+
+    @Nested
     @DisplayName("Reagendar para horário que cruza o antigo (BUG-021)")
     class ReagendarSobreposicaoTests {
 
@@ -989,6 +1056,7 @@ class AgendamentoServiceTest {
         void stubs() {
             coloracao = Servico.builder().id(2L).nome("Coloração").preco(BigDecimal.valueOf(100))
                     .duracaoMinutos(90).salon(salon).ativo(true).build();
+            profissional.getServicos().add(coloracao);
             when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
             when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
             when(servicoService.getServicoEntity(2L)).thenReturn(coloracao);

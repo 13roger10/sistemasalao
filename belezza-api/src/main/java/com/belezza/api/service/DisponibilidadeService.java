@@ -91,10 +91,17 @@ public class DisponibilidadeService {
             if (!profissional.getSalon().getId().equals(request.getSalonId())) {
                 throw new BusinessException("Profissional não pertence a este salão");
             }
+            // BUG-022: só oferece horários de quem realiza os serviços pedidos
+            if (!realizaTodos(profissional, request.getServicoIds())) {
+                throw new BusinessException(profissional.getUsuario().getNome()
+                        + " não realiza o(s) serviço(s) selecionado(s)");
+            }
             profissionais = List.of(profissional);
         } else {
-            // Buscar todos os profissionais ativos do salão que aceitam agendamento online
-            profissionais = profissionalRepository.findOnlineAvailableBySalonId(request.getSalonId());
+            // Profissionais ativos do salão que aceitam agendamento online e realizam os serviços
+            profissionais = profissionalRepository.findOnlineAvailableBySalonId(request.getSalonId()).stream()
+                    .filter(p -> realizaTodos(p, request.getServicoIds()))
+                    .toList();
         }
 
         // 6. Calcular disponibilidade para cada profissional
@@ -118,6 +125,14 @@ public class DisponibilidadeService {
                 .slotIntervalMinutes(intervalo)
                 .professionals(disponibilidadeProfissionais)
                 .build();
+    }
+
+    /** O profissional tem todos os serviços vinculados ao seu cadastro? */
+    private static boolean realizaTodos(Profissional profissional, List<Long> servicoIds) {
+        java.util.Set<Long> doProfissional = profissional.getServicos().stream()
+                .map(Servico::getId)
+                .collect(java.util.stream.Collectors.toSet());
+        return doProfissional.containsAll(servicoIds);
     }
 
     /**

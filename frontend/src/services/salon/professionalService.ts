@@ -127,10 +127,12 @@ export const professionalService = {
   // List professionals by services (for booking flow)
   // Usa /profissionais/servico/{servicoId}
   listByServices: (serviceIds: string[], unitId?: string): Promise<Professional[]> => {
-    // Para múltiplos serviços, busca do primeiro (backend não suporta múltiplos)
+    // Busca quem faz o primeiro serviço e filtra os que fazem TODOS os escolhidos (BUG-022: antes
+    // aparecia quem fazia só o primeiro, e o agendamento com vários serviços saía errado)
     if (serviceIds.length > 0) {
       return api.get<ProfissionalBackend[]>(`${BASE_PATH}/servico/${serviceIds[0]}`)
-        .then((profissionais) => profissionais.map(mapProfessional));
+        .then((profissionais) => profissionais.map(mapProfessional)
+          .filter((p) => serviceIds.every((id) => p.serviceIds.includes(String(id)))));
     }
     return Promise.resolve([]);
   },

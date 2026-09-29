@@ -385,7 +385,10 @@ function CreateModal({
                 className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               >
                 <option value="">Selecione…</option>
-                {professionals.map((p) => (
+                {/* Só quem realiza todos os serviços escolhidos (BUG-022) */}
+                {professionals
+                  .filter((p) => selectedSvcs.every((id) => p.serviceIds?.includes(id)))
+                  .map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>

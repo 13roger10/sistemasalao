@@ -121,6 +121,7 @@ public class AgendamentoService {
         Servico servico = servicoService.getServicoEntity(request.getServicoId());
 
         // Validate everything
+        validarServicosDoProfissional(profissional, List.of(servico));
         validarAgendamento(salon, profissional, servico, cliente, request.getDataHora(), servico.getDuracaoMinutos());
 
         // Calculate end time
@@ -181,6 +182,7 @@ public class AgendamentoService {
         if (!allFromSameSalon) {
             throw new BusinessException("Todos os serviços devem pertencer ao mesmo salão");
         }
+        validarServicosDoProfissional(profissional, servicos);
 
         // Calculate total duration
         int tempoPreparacao = request.getTempoPreparacaoEntreServicosMinutos() != null
@@ -938,6 +940,17 @@ public class AgendamentoService {
             throw new BusinessException("Agendamento sem serviço definido — não é possível reagendar");
         }
 
+        // Trocou o profissional ou os serviços: o profissional precisa realizar todos (BUG-022).
+        // Só a data mudou: mantém o que já estava combinado.
+        boolean trocouProfissionalOuServicos = request.getNovoProfissionalId() != null
+                || (request.getServicoIds() != null && !request.getServicoIds().isEmpty());
+        if (trocouProfissionalOuServicos) {
+            List<Servico> servicosDoAgendamento = agendamento.getServicos().isEmpty()
+                    ? List.of(servico)
+                    : agendamento.getServicos().stream().map(as -> as.getServico()).toList();
+            validarServicosDoProfissional(profissional, servicosDoAgendamento);
+        }
+
         // Validate new datetime against the total duration across all services
         // (single or multi, possibly just replaced above)
         int duracaoTotal = agendamento.getDuracaoTotalMinutos();
@@ -1174,6 +1187,27 @@ public class AgendamentoService {
         LocalDateTime fimPrevisto = dataHora.plusMinutes(duracaoMinutos);
         if (bloqueioHorarioService.temBloqueio(profissional.getId(), dataHora, fimPrevisto)) {
             throw new BusinessException("Profissional possui bloqueio de horário neste período");
+        }
+    }
+
+    /**
+     * O profissional precisa realizar todos os serviços do agendamento (serviços vinculados a ele no
+     * cadastro). BUG-022: antes qualquer profissional podia ser agendado para qualquer serviço do
+     * salão — um barbeiro recebia uma coloração.
+     */
+    private void validarServicosDoProfissional(Profissional profissional, List<Servico> servicos) {
+        java.util.Set<Long> doProfissional = profissional.getServicos().stream()
+                .map(Servico::getId)
+                .collect(java.util.stream.Collectors.toSet());
+        List<String> naoRealiza = servicos.stream()
+                .filter(s -> !doProfissional.contains(s.getId()))
+                .map(Servico::getNome)
+                .distinct()
+                .toList();
+        if (!naoRealiza.isEmpty()) {
+            String nome = profissional.getUsuario() != null ? profissional.getUsuario().getNome() : "O profissional";
+            throw new BusinessException(nome + " não realiza " + (naoRealiza.size() == 1 ? "o serviço " : "os serviços ")
+                    + String.join(", ", naoRealiza));
         }
     }
 

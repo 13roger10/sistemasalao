@@ -2278,7 +2278,10 @@ function AppointmentsPageContent() {
               } bg-white dark:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-70`}
             >
               <option value="">Selecione um profissional</option>
-              {professionals.map((prof) => (
+              {/* Só quem realiza todos os serviços escolhidos (BUG-022) */}
+              {professionals
+                .filter((prof) => formData.serviceIds.every((id) => prof.serviceIds?.includes(id)))
+                .map((prof) => (
                 <option key={prof.id} value={prof.id}>
                   {prof.name}
                 </option>
