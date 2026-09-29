@@ -225,7 +225,8 @@ const mapAgendamentoToFrontend = (agendamento: AgendamentoBackendResponse): Appo
     clientNotes: agendamento.observacoes,
     internalNotes: agendamento.notasInternas,
     cancellationReason: agendamento.motivoCancelamento,
-    unitId: '1',
+    // salão do agendamento (antes fixo em '1': quem é de outro salão consultava o salão errado)
+    unitId: agendamento.salonId != null ? String(agendamento.salonId) : '1',
     createdAt: agendamento.criadoEm ? new Date(agendamento.criadoEm) : new Date(),
     updatedAt: agendamento.atualizadoEm ? new Date(agendamento.atualizadoEm) : new Date(),
   };
@@ -665,6 +666,10 @@ export const appointmentService = {
     data.serviceIds.forEach(id => params.append('servicoIds', String(id)));
     if (data.professionalId) {
       params.append('profissionalId', String(data.professionalId));
+    }
+    // Reagendamento: o próprio horário não conta como ocupado (BUG-021)
+    if (data.ignoreAppointmentId) {
+      params.append('ignorarAgendamentoId', String(data.ignoreAppointmentId));
     }
 
     interface BackendTimeSlot {

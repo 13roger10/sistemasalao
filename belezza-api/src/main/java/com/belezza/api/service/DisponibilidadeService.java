@@ -102,7 +102,7 @@ public class DisponibilidadeService {
 
         for (Profissional profissional : profissionais) {
             List<TimeSlotDTO> slots = calcularSlotsDisponiveisParaProfissional(
-                    profissional, salon, request.getData(), duracaoTotal, intervalo);
+                    profissional, salon, request.getData(), duracaoTotal, intervalo, request.getIgnorarAgendamentoId());
 
             disponibilidadeProfissionais.add(ProfissionalDisponibilidadeDTO.builder()
                     .professionalId(profissional.getId())
@@ -146,7 +146,8 @@ public class DisponibilidadeService {
             Salon salon,
             LocalDate data,
             int duracaoServico,
-            int intervalo) {
+            int intervalo,
+            Long ignorarAgendamentoId) {
 
         List<TimeSlotDTO> slots = new ArrayList<>();
 
@@ -211,8 +212,11 @@ public class DisponibilidadeService {
         List<BloqueioHorario> bloqueios = bloqueioHorarioRepository.findByProfissionalIdAndPeriod(
                 profissional.getId(), inicioDia, fimDia);
 
+        // O agendamento que está sendo reagendado não ocupa o próprio horário (BUG-021)
         List<Agendamento> agendamentos = agendamentoRepository.findDailyByProfissional(
-                profissional.getId(), inicioDia, fimDia);
+                profissional.getId(), inicioDia, fimDia).stream()
+                .filter(a -> ignorarAgendamentoId == null || !ignorarAgendamentoId.equals(a.getId()))
+                .toList();
 
         int bufferMinutos = salon.getBufferEntreAgendamentosMinutos();
 

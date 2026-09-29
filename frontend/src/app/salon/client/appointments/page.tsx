@@ -104,17 +104,20 @@ export default function ClientAppointmentsPage() {
   const [rescheduleErrors, setRescheduleErrors] = useState<Record<string, string>>({});
   const [isRescheduling, setIsRescheduling] = useState(false);
 
-  // Carrega profissionais e serviços (para o modal de reagendamento)
-  useEffect(() => {
-    if (authLoading || !user) return;
+  // Salão do agendamento em reagendamento (antes fixo no salão 1)
+  const salaoDoReagendamento = appointmentToReschedule?.unitId || "";
 
-    professionalService.getAll({ salonId: "1" }).then(setProfessionals).catch((err) => {
+  // Carrega profissionais e serviços do salão do agendamento (para o modal de reagendamento)
+  useEffect(() => {
+    if (authLoading || !user || !salaoDoReagendamento) return;
+
+    professionalService.getAll({ salonId: salaoDoReagendamento }).then(setProfessionals).catch((err) => {
       console.error("Erro ao carregar profissionais:", err);
     });
-    serviceService.getAll({ salonId: "1" }).then(setServices).catch((err) => {
+    serviceService.getAll({ salonId: salaoDoReagendamento }).then(setServices).catch((err) => {
       console.error("Erro ao carregar serviços:", err);
     });
-  }, [user, authLoading]);
+  }, [user, authLoading, salaoDoReagendamento]);
 
   // Verifica disponibilidade de horários para o profissional/serviços/data escolhidos
   useEffect(() => {
@@ -129,7 +132,9 @@ export default function ClientAppointmentsPage() {
         professionalId: rescheduleForm.professionalId,
         serviceIds: rescheduleForm.serviceIds,
         date: new Date(year, month - 1, day),
-        unitId: "1",
+        unitId: salaoDoReagendamento || "1",
+        // o horário atual deste agendamento fica livre para ele mesmo (BUG-021)
+        ignoreAppointmentId: appointmentToReschedule?.id,
       })
       .then((response) => {
         if (response.professionals && response.professionals.length > 0) {
@@ -145,7 +150,7 @@ export default function ClientAppointmentsPage() {
         console.error("Erro ao verificar disponibilidade:", err);
         setAvailableSlots(FALLBACK_WORKING_HOURS.map((time) => ({ time, available: true })));
       });
-  }, [rescheduleForm.professionalId, rescheduleForm.serviceIds, rescheduleForm.date]);
+  }, [rescheduleForm.professionalId, rescheduleForm.serviceIds, rescheduleForm.date, salaoDoReagendamento, appointmentToReschedule?.id]);
 
   // Load appointments
   useEffect(() => {

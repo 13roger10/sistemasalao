@@ -45,4 +45,10 @@ public class DisponibilidadeRequest {
      * Intervalo entre slots em minutos (padrão: usa configuração do salão)
      */
     private Integer intervaloMinutos;
+
+    /**
+     * Agendamento sendo reagendado: o horário atual dele não conta como ocupado, para poder
+     * mover para um horário que cruza o antigo (BUG-021). Opcional.
+     */
+    private Long ignorarAgendamentoId;
 }

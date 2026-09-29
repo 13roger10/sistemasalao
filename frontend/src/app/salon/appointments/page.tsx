@@ -1112,7 +1112,7 @@ function AppointmentsPageContent() {
         professionalId: formData.professionalId,
         serviceIds: formData.serviceIds,
         date: new Date(year, month - 1, day),
-        unitId: "1",
+        unitId: selectedUnitId || "1",
       });
 
       if (response.professionals && response.professionals.length > 0) {
@@ -1133,7 +1133,7 @@ function AppointmentsPageContent() {
         }))
       );
     }
-  }, [formData.professionalId, formData.serviceIds, formData.date, appointments, WORKING_HOURS]);
+  }, [formData.professionalId, formData.serviceIds, formData.date, appointments, WORKING_HOURS, selectedUnitId]);
 
   // Para PROFESSIONAL: pré-preencher o campo profissional e travar o filtro do calendário
   useEffect(() => {

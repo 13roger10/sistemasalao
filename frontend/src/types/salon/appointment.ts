@@ -135,6 +135,8 @@ export interface AvailabilityRequest {
   serviceIds: ID[];
   date: Date;
   unitId: ID;
+  /** Agendamento sendo reagendado: o horário atual dele não conta como ocupado */
+  ignoreAppointmentId?: ID;
 }
 
 export interface AvailabilityResponse {

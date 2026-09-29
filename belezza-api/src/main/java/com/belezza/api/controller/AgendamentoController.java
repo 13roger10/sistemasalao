@@ -265,7 +265,8 @@ public class AgendamentoController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate data,
             @RequestParam List<Long> servicoIds,
             @RequestParam(required = false) Long profissionalId,
-            @RequestParam(required = false) Integer intervaloMinutos) {
+            @RequestParam(required = false) Integer intervaloMinutos,
+            @RequestParam(required = false) Long ignorarAgendamentoId) {
 
         DisponibilidadeRequest request = DisponibilidadeRequest.builder()
                 .salonId(salonId)
@@ -273,6 +274,7 @@ public class AgendamentoController {
                 .servicoIds(servicoIds)
                 .profissionalId(profissionalId)
                 .intervaloMinutos(intervaloMinutos)
+                .ignorarAgendamentoId(ignorarAgendamentoId)
                 .build();
 
         DisponibilidadeResponse response = disponibilidadeService.consultarDisponibilidade(request);

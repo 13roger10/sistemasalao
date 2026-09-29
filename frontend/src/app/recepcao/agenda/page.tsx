@@ -926,8 +926,10 @@ export default function RecepcaoAgendaPage() {
       showToast("Agendamento reagendado com sucesso!");
       setActiveModal(null);
       loadAppointments();
-    } catch {
-      showToast("Erro ao reagendar.", "err");
+    } catch (e) {
+      // mostra o motivo do backend (horário ocupado, fora do expediente, antecedência...)
+      const motivo = e instanceof Error ? e.message.replace(/^\[HTTP \d+\]\s*/, "") : "";
+      showToast(motivo ? `Erro ao reagendar: ${motivo}` : "Erro ao reagendar.", "err");
     } finally {
       setSubmitting(false);
     }

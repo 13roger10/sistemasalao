@@ -944,7 +944,7 @@ public class AgendamentoService {
         validarAgendamento(salon, profissional, servico, cliente, request.getNovaDataHora(), duracaoTotal);
 
         LocalDateTime novoFim = request.getNovaDataHora().plusMinutes(duracaoTotal);
-        validarConflitos(profissional.getId(), request.getNovaDataHora(), novoFim);
+        validarConflitos(profissional.getId(), request.getNovaDataHora(), novoFim, agendamento.getId());
 
         agendamento.setDataHora(request.getNovaDataHora());
         agendamento.setFimPrevisto(novoFim);
@@ -1218,8 +1218,19 @@ public class AgendamentoService {
      * gravavam agendamentos duplicados no mesmo horário.
      */
     private void validarConflitos(Long profissionalId, LocalDateTime inicio, LocalDateTime fim) {
+        validarConflitos(profissionalId, inicio, fim, null);
+    }
+
+    /**
+     * @param ignorarId agendamento que está sendo reagendado: não conta como conflito com ele
+     *                  mesmo (BUG-021 — antes, mover 10:00→10:30 num serviço de 1 h era recusado
+     *                  porque o novo horário cruzava o antigo, do próprio agendamento).
+     */
+    private void validarConflitos(Long profissionalId, LocalDateTime inicio, LocalDateTime fim, Long ignorarId) {
         agendamentoRepository.lockProfissional(profissionalId);
-        List<Agendamento> conflitos = agendamentoRepository.findConflicts(profissionalId, inicio, fim);
+        List<Agendamento> conflitos = agendamentoRepository.findConflicts(profissionalId, inicio, fim).stream()
+                .filter(a -> ignorarId == null || !ignorarId.equals(a.getId()))
+                .toList();
         if (!conflitos.isEmpty()) {
             throw new BusinessException("Profissional já possui agendamento neste horário");
         }

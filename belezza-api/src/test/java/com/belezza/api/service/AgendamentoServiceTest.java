@@ -845,6 +845,53 @@ class AgendamentoServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("Reagendar para horário que cruza o antigo (BUG-021)")
+    class ReagendarSobreposicaoTests {
+
+        private final Usuario recepcionista = Usuario.builder().id(14L).role(Role.RECEPCIONISTA).build();
+
+        @BeforeEach
+        void stubs() {
+            // agendamento de amanhã 10:00–10:30 (Corte de 30 min), expediente 09–17
+            agendamento.setDataHora(LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0));
+            agendamento.setStatus(StatusAgendamento.CONFIRMADO);
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+            when(horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(eq(1L), any())).thenReturn(Optional.of(expediente(true)));
+        }
+
+        private ReagendamentoRequest para(int hora, int minuto) {
+            ReagendamentoRequest r = new ReagendamentoRequest();
+            r.setNovaDataHora(agendamento.getDataHora().withHour(hora).withMinute(minuto));
+            return r;
+        }
+
+        @Test
+        @DisplayName("10:00 → 10:15 passa: o único \"conflito\" é o próprio agendamento")
+        void conflitoComEleMesmoNaoConta() {
+            when(agendamentoRepository.findConflicts(eq(1L), any(), any())).thenReturn(List.of(agendamento));
+            when(agendamentoRepository.save(any(Agendamento.class))).thenAnswer(i -> i.getArgument(0));
+
+            agendamentoService.reagendar(1L, para(10, 15), false, false, recepcionista);
+
+            assertThat(agendamento.getDataHora().getHour()).isEqualTo(10);
+            assertThat(agendamento.getDataHora().getMinute()).isEqualTo(15);
+            verify(agendamentoRepository).save(agendamento);
+        }
+
+        @Test
+        @DisplayName("Cruzar OUTRO agendamento continua recusado")
+        void conflitoComOutroContinua() {
+            Agendamento outro = Agendamento.builder().id(2L).profissional(profissional).build();
+            when(agendamentoRepository.findConflicts(eq(1L), any(), any())).thenReturn(List.of(agendamento, outro));
+
+            assertThatThrownBy(() -> agendamentoService.reagendar(1L, para(10, 15), false, false, recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("já possui agendamento neste horário");
+            verify(agendamentoRepository, never()).save(any());
+        }
+    }
+
     private HorarioTrabalho expediente(boolean ativo) {
         return HorarioTrabalho.builder()
                 .profissional(profissional)
