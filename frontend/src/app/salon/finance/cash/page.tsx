@@ -385,14 +385,20 @@ export default function FinanceCashPage() {
     try {
       const salonId = getSalonIdFromToken();
       if (!salonId) throw new Error("Usuário sem salão vinculado");
+      // Atendimentos dos últimos 60 dias até hoje, filtrados no backend, e pagamentos do mais recente
+      // para o mais antigo (BUG-036: antes vinham os 300 mais antigos de cada, e num salão com
+      // histórico os atendimentos recentes a cobrar não apareciam)
+      const hoje = new Date();
+      const inicio = new Date(hoje);
+      inicio.setDate(inicio.getDate() - 60);
       const [apptRes, payRes] = await Promise.all([
         api.get<{ content: AgendamentoPendente[] } | AgendamentoPendente[]>(
           `/agendamentos/salon/${salonId}`,
-          { size: 300, sort: "dataHora" }
+          { size: 2000, sort: "dataHora", de: dataLocal(inicio), ate: dataLocal(hoje) }
         ),
         api.get<{ content: PagamentoBackend[] } | PagamentoBackend[]>(
           `/pagamentos/salon/${salonId}`,
-          { size: 300 }
+          { size: 2000, sort: "criadoEm,desc" }
         ),
       ]);
 

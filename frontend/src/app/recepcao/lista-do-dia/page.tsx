@@ -235,11 +235,13 @@ function ListaDoDialContent() {
       const [apptRes, payRes] = await Promise.all([
         api.get<{ content: Appointment[] } | Appointment[]>(
           `/agendamentos/salon/${SALON_ID}`,
-          { params: { size: 300, sort: "dataHora" } }
+          // só o dia, filtrado no backend (BUG-036: antes vinham os 300 mais antigos do salão)
+          { params: { size: 1000, sort: "dataHora", de: today, ate: today } }
         ),
         api.get<{ content: Payment[] } | Payment[]>(
           `/pagamentos/salon/${SALON_ID}`,
-          { params: { size: 300 } }
+          // mais recentes primeiro: os pagamentos de hoje vêm antes dos antigos
+          { params: { size: 500, sort: "criadoEm,desc" } }
         ),
       ]);
 
@@ -247,7 +249,7 @@ function ListaDoDialContent() {
       const pays = "content" in payRes.data ? payRes.data.content : payRes.data;
 
       const payMap = new Map<number, Payment>();
-      pays.forEach((p) => payMap.set(p.agendamentoId, p));
+      pays.forEach((p) => { if (!payMap.has(p.agendamentoId)) payMap.set(p.agendamentoId, p); });
 
       const todayAppts = appts
         .filter((a) => a.dataHora.startsWith(today))

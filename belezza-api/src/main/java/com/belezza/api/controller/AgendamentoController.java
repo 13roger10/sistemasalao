@@ -129,10 +129,12 @@ public class AgendamentoController {
     @Operation(summary = "Listar por salão", description = "Lista agendamentos de um salão com paginação. Restrito à equipe do salão; PROFISSIONAL recebe só a própria agenda.")
     public ResponseEntity<Page<AgendamentoResponse>> listarPorSalon(
             @PathVariable Long salonId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate de,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate ate,
             @PageableDefault(size = 100, sort = "dataHora") Pageable pageable,
             @AuthenticationPrincipal Usuario operador) {
         boolean restrictData = shouldRestrictSensitiveData(operador);
-        Page<AgendamentoResponse> response = agendamentoService.listarPorSalon(salonId, pageable, restrictData, operador);
+        Page<AgendamentoResponse> response = agendamentoService.listarPorSalon(salonId, de, ate, pageable, restrictData, operador);
         return ResponseEntity.ok(response);
     }
 

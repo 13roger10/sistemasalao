@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/services/salon/api";
+import { dataLocal } from "@/services/salon/financeService";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -31,8 +32,9 @@ interface AgendamentoBackend {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Data local (toISOString usa UTC: depois das 21h já seria o dia seguinte). */
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return dataLocal(new Date());
 }
 
 function toTime(iso: string): string {
@@ -350,7 +352,8 @@ export default function AtendimentoPage() {
     try {
       const res = await api.get<{ content: AgendamentoBackend[] } | AgendamentoBackend[]>(
         `/agendamentos/salon/${SALON_ID}`,
-        { size: 300, sort: "dataHora" }
+        // só o dia, filtrado no backend (BUG-036: antes vinham os 300 mais antigos do salão)
+        { size: 1000, sort: "dataHora", de: today, ate: today }
       );
       const all = Array.isArray(res)
         ? res

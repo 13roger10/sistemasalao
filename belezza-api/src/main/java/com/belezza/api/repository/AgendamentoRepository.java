@@ -26,6 +26,21 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long> 
 
     Page<Agendamento> findBySalonIdAndProfissionalUsuarioId(Long salonId, Long usuarioId, Pageable pageable);
 
+    /** Agendamentos do salão num intervalo de datas (BUG-036: as telas pediam os N primeiros e filtravam o dia). */
+    @Query("SELECT a FROM Agendamento a WHERE a.salon.id = :salonId AND a.dataHora >= :inicio AND a.dataHora < :fim")
+    Page<Agendamento> findPaginaBySalonIdAndPeriodo(@Param("salonId") Long salonId,
+                                                   @Param("inicio") LocalDateTime inicio,
+                                                   @Param("fim") LocalDateTime fim,
+                                                   Pageable pageable);
+
+    @Query("SELECT a FROM Agendamento a WHERE a.salon.id = :salonId AND a.profissional.usuario.id = :usuarioId " +
+           "AND a.dataHora >= :inicio AND a.dataHora < :fim")
+    Page<Agendamento> findPaginaBySalonIdAndProfissionalUsuarioIdAndPeriodo(@Param("salonId") Long salonId,
+                                                                           @Param("usuarioId") Long usuarioId,
+                                                                           @Param("inicio") LocalDateTime inicio,
+                                                                           @Param("fim") LocalDateTime fim,
+                                                                           Pageable pageable);
+
     Page<Agendamento> findByClienteIdAndProfissionalUsuarioId(Long clienteId, Long usuarioId, Pageable pageable);
 
     List<Agendamento> findBySalonIdAndStatus(Long salonId, StatusAgendamento status);

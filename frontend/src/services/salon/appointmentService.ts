@@ -1,6 +1,7 @@
 // Appointment Service - API calls for appointment management
 
 import { api } from './api';
+import { dataLocal } from './financeService';
 import type {
   Appointment,
   AppointmentCreateInput,
@@ -317,10 +318,15 @@ export const appointmentService = {
     const salonId = params.salonId || '1';
     try {
       // Convert frontend pagination params to Spring Boot format
-      const backendParams = {
+      const backendParams: Record<string, string | number> = {
         page: (params.page || 1) - 1, // Spring Boot uses 0-indexed pages
         size: params.limit || 100,    // Spring Boot uses 'size' not 'limit'
+        sort: 'dataHora',
       };
+      // Período filtrado no backend (BUG-036): sem ele vinham os N primeiros agendamentos do
+      // salão — os mais antigos — e o dia/semana/mês pedido ficava de fora num salão grande
+      if (params.dateFrom) backendParams.de = dataLocal(new Date(params.dateFrom));
+      if (params.dateTo) backendParams.ate = dataLocal(new Date(params.dateTo));
       console.log('Buscando agendamentos - URL:', `${BASE_PATH}/salon/${salonId}`, 'Params:', backendParams);
       const response = await api.get<{ content: AgendamentoBackendResponse[], totalElements: number, totalPages: number, number: number }>(`${BASE_PATH}/salon/${salonId}`, backendParams);
       console.log('Resposta da API de agendamentos:', response);

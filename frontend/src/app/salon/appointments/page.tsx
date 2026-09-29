@@ -972,30 +972,7 @@ function AppointmentsPageContent() {
     try {
       let allAppointments;
 
-      if (user?.role === 'PROFESSIONAL' && user?.professionalId) {
-        if (calendarView === 'day') {
-          // Visualização diária: endpoint dedicado retorna apenas os agendamentos do dia
-          allAppointments = await appointmentService.getDailyAgenda(user.professionalId, currentDate);
-        } else {
-          // Visualização semanal/mensal: endpoint paginado com filtro client-side por período
-          const response = await appointmentService.getByProfessional(user.professionalId, {
-            salonId: selectedUnitId || '1',
-            page: 1,
-            limit: 100,
-          });
-          allAppointments = response.data || response.items || [];
-        }
-      } else {
-        // ADMIN / RECEPCIONIST: busca todos os agendamentos do salão
-        const response = await appointmentService.list({
-          salonId: selectedUnitId || '1',
-          page: 1,
-          limit: 100,
-        });
-        allAppointments = response.data || response.items || [];
-      }
-
-      // Filtrar por período conforme a visualização
+      // Período da visualização (dia, semana ou mês)
       const startDate = new Date(currentDate);
       const endDate = new Date(currentDate);
 
@@ -1014,6 +991,23 @@ function AppointmentsPageContent() {
         endDate.setMonth(endDate.getMonth() + 1);
         endDate.setDate(0);
         endDate.setHours(23, 59, 59, 999);
+      }
+
+      if (user?.role === 'PROFESSIONAL' && user?.professionalId && calendarView === 'day') {
+        // Visualização diária do profissional: endpoint dedicado retorna apenas os agendamentos do dia
+        allAppointments = await appointmentService.getDailyAgenda(user.professionalId, currentDate);
+      } else {
+        // Só o período visível, filtrado no backend (BUG-036). Antes vinham os 100 primeiros
+        // agendamentos do salão — os mais antigos — e a semana/mês atual aparecia vazia num salão
+        // com histórico. O backend já restringe o PROFISSIONAL à própria agenda.
+        const response = await appointmentService.list({
+          salonId: selectedUnitId || '1',
+          dateFrom: startDate,
+          dateTo: endDate,
+          page: 1,
+          limit: 1000,
+        });
+        allAppointments = response.data || response.items || [];
       }
 
       const filteredAppointments = allAppointments.filter(appointment => {

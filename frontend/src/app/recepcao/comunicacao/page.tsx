@@ -385,12 +385,13 @@ function ComunicacaoContent() {
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
     try {
+      const dateStr = toISODate(selectedDate);
       const res = await api.get<{ content: Appointment[] } | Appointment[]>(
         `/agendamentos/salon/${SALON_ID}`,
-        { params: { size: 300, sort: "dataHora" } }
+        // só o dia escolhido, filtrado no backend (BUG-036: antes vinham os 300 mais antigos)
+        { params: { size: 1000, sort: "dataHora", de: dateStr, ate: dateStr } }
       );
       const list = "content" in res.data ? res.data.content : res.data;
-      const dateStr = toISODate(selectedDate);
       const filtered = list.filter(
         (a) =>
           a.dataHora.startsWith(dateStr) && a.status !== "CANCELADO" && a.status !== "NO_SHOW"
@@ -401,7 +402,7 @@ function ComunicacaoContent() {
     } finally {
       setLoading(false);
     }
-  }, [selectedDate]);
+  }, [SALON_ID, selectedDate]);
 
   useEffect(() => {
     fetchAppointments();

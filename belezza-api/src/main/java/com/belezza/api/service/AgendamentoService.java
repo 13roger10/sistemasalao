@@ -332,10 +332,30 @@ public class AgendamentoService {
     @Transactional(readOnly = true)
     public Page<AgendamentoResponse> listarPorSalon(Long salonId, Pageable pageable, boolean restrictSensitiveData,
                                                     Usuario operador) {
+        return listarPorSalon(salonId, null, null, pageable, restrictSensitiveData, operador);
+    }
+
+    /**
+     * Agendamentos do salão, opcionalmente só entre as datas {@code de} e {@code ate} (inclusive).
+     * Com o período o filtro é feito no banco: antes as telas pediam os primeiros N agendamentos
+     * (os mais antigos) e filtravam o dia no navegador, e num salão grande os de hoje nem vinham.
+     */
+    @Transactional(readOnly = true)
+    public Page<AgendamentoResponse> listarPorSalon(Long salonId, LocalDate de, LocalDate ate, Pageable pageable,
+                                                    boolean restrictSensitiveData, Usuario operador) {
         tenantIsolationService.assertRequestedSalon(salonId);
-        Page<Agendamento> pagina = isProfissional(operador)
-                ? agendamentoRepository.findBySalonIdAndProfissionalUsuarioId(salonId, operador.getId(), pageable)
-                : agendamentoRepository.findBySalonId(salonId, pageable);
+        Page<Agendamento> pagina;
+        if (de != null || ate != null) {
+            LocalDateTime inicio = (de != null ? de : LocalDate.of(1970, 1, 1)).atStartOfDay();
+            LocalDateTime fim = (ate != null ? ate : LocalDate.of(9999, 12, 31)).plusDays(1).atStartOfDay();
+            pagina = isProfissional(operador)
+                    ? agendamentoRepository.findPaginaBySalonIdAndProfissionalUsuarioIdAndPeriodo(salonId, operador.getId(), inicio, fim, pageable)
+                    : agendamentoRepository.findPaginaBySalonIdAndPeriodo(salonId, inicio, fim, pageable);
+        } else {
+            pagina = isProfissional(operador)
+                    ? agendamentoRepository.findBySalonIdAndProfissionalUsuarioId(salonId, operador.getId(), pageable)
+                    : agendamentoRepository.findBySalonId(salonId, pageable);
+        }
         return pagina.map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
     }
 

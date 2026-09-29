@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/services/salon/api";
+import { dataLocal } from "@/services/salon/financeService";
 import { PagamentoForm, type PagamentoFormState, type PartePagamento } from "@/components/salon/PagamentoForm";
 import { format, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -72,8 +73,9 @@ function addDays(dateStr: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Data local (toISOString usa UTC: depois das 21h já seria o dia seguinte). */
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return dataLocal(new Date());
 }
 
 function canRegisterPayment(appt: AgendamentoBackend): boolean {
@@ -258,11 +260,13 @@ export default function RecepcaoPagamentosPage() {
       const [apptRes, payRes] = await Promise.all([
         api.get<{ content: AgendamentoBackend[] } | AgendamentoBackend[]>(
           `/agendamentos/salon/${SALON_ID}`,
-          { size: 300, sort: "dataHora" }
+          // só o dia escolhido, filtrado no backend (BUG-036: antes vinham os 300 mais antigos)
+          { size: 1000, sort: "dataHora", de: selectedDate, ate: selectedDate }
         ),
         api.get<{ content: PagamentoBackend[] } | PagamentoBackend[]>(
           `/pagamentos/salon/${SALON_ID}`,
-          { size: 300, sort: "criadoEm" }
+          // mais recentes primeiro (antes os 300 mais antigos: pagamentos de hoje ficavam de fora)
+          { size: 500, sort: "criadoEm,desc" }
         ),
       ]);
 
@@ -275,7 +279,8 @@ export default function RecepcaoPagamentosPage() {
         : (payRes as { content: PagamentoBackend[] }).content ?? [];
 
       const map = new Map<number, PagamentoBackend>();
-      pays.forEach((p) => map.set(p.agendamentoId, p));
+      // lista vem do mais recente para o mais antigo: fica a parte mais recente de cada atendimento
+      pays.forEach((p) => { if (!map.has(p.agendamentoId)) map.set(p.agendamentoId, p); });
 
       setAppointments(appts);
       setPaymentMap(map);
@@ -284,7 +289,7 @@ export default function RecepcaoPagamentosPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [SALON_ID, selectedDate]);
 
   useEffect(() => {
     load();

@@ -20,7 +20,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.belezza.api.repository.PagamentoRepository;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -52,10 +54,12 @@ public class ReceptionController {
     private final ClienteService clienteService;
     private final PagamentoService pagamentoService;
     private final TenantIsolationService tenantIsolationService;
+    private final PagamentoRepository pagamentoRepository;
 
     // ─── Appointments ──────────────────────────────────────────────────────────
 
     @GetMapping("/appointments")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     @Operation(
         summary = "Listar agendamentos do dia",
         description = "Retorna os agendamentos de um salão na data informada (padrão: hoje), " +
@@ -71,21 +75,24 @@ public class ReceptionController {
         LocalDateTime dayStart = targetDate.atStartOfDay();
         LocalDateTime dayEnd = targetDate.plusDays(1).atStartOfDay();
 
-        // Fetch all appointments for the salon (large page to get full day)
+        // Agendamentos do dia filtrados no banco (BUG-036: antes vinham os 500 primeiros do salão —
+        // os mais antigos — e o dia era filtrado aqui; num salão grande os de hoje ficavam de fora)
         List<AgendamentoResponse> allAppts = agendamentoService
-                .listarPorSalon(salonId, PageRequest.of(0, 500), false)
-                .getContent()
-                .stream()
-                .filter(a -> !a.getDataHora().isBefore(dayStart) && a.getDataHora().isBefore(dayEnd))
-                .collect(Collectors.toList());
+                .listarPorSalon(salonId, targetDate, targetDate,
+                        PageRequest.of(0, 1000, Sort.by("dataHora")), false, operador)
+                .getContent();
 
-        // Fetch all payments for the salon and build lookup map
-        // Um atendimento pode ter várias partes (pagamento dividido): agrega por agendamento
+        // Status de pagamento de cada atendimento do dia, pelos próprios atendimentos. Antes vinha
+        // dos 500 primeiros pagamentos do salão (e, para a recepcionista, só dos que ela registrou):
+        // atendimento pago aparecia como pendente. Pagamento dividido tem várias partes: agrega.
         Map<Long, PagamentoResponse> payMap = new HashMap<>();
-        pagamentoService.listarPorSalon(salonId, PageRequest.of(0, 500), operador)
-                .getContent().stream()
-                .collect(Collectors.groupingBy(PagamentoResponse::getAgendamentoId))
-                .forEach((agendamentoId, partes) -> payMap.put(agendamentoId, agregarPartes(partes)));
+        List<Long> ids = allAppts.stream().map(AgendamentoResponse::getId).toList();
+        if (!ids.isEmpty()) {
+            pagamentoRepository.findByAgendamentoIdIn(ids).stream()
+                    .map(PagamentoResponse::fromEntity)
+                    .collect(Collectors.groupingBy(PagamentoResponse::getAgendamentoId))
+                    .forEach((agendamentoId, partes) -> payMap.put(agendamentoId, agregarPartes(partes)));
+        }
 
         List<ReceptionAppointmentResponse> result = allAppts.stream()
                 .map(a -> ReceptionAppointmentResponse.from(a, payMap.get(a.getId())))
@@ -198,8 +205,9 @@ public class ReceptionController {
         LocalDateTime dayStart = targetDate.atStartOfDay();
         LocalDateTime dayEnd = targetDate.plusDays(1).atStartOfDay();
 
+        // Mais recentes primeiro: os do dia pedido vêm antes (antes a página trazia os 500 mais antigos)
         List<PagamentoResponse> pagamentos = pagamentoService
-                .listarPorSalon(salonId, PageRequest.of(0, 500), operador)
+                .listarPorSalon(salonId, PageRequest.of(0, 500, Sort.by(Sort.Direction.DESC, "criadoEm")), operador)
                 .getContent()
                 .stream()
                 .filter(p -> {

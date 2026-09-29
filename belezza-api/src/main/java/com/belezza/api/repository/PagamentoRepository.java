@@ -19,6 +19,9 @@ public interface PagamentoRepository extends JpaRepository<Pagamento, Long> {
     /** Partes de pagamento de um atendimento (pagamento dividido gera várias), mais antigas primeiro. */
     List<Pagamento> findByAgendamentoIdOrderByCriadoEmAsc(Long agendamentoId);
 
+    /** Partes de pagamento de vários atendimentos (status de pagamento da lista do dia). */
+    List<Pagamento> findByAgendamentoIdIn(java.util.Collection<Long> agendamentoIds);
+
     /** Total já pago (aprovado, sem estornos) de um atendimento. */
     @Query("SELECT COALESCE(SUM(p.valor), 0) FROM Pagamento p WHERE p.agendamento.id = :agendamentoId " +
            "AND p.status = 'APROVADO'")

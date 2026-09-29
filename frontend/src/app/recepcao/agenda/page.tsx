@@ -819,14 +819,23 @@ export default function RecepcaoAgendaPage() {
     setLoading(true);
     setError(null);
     try {
-      const result = await appointmentService.list({ salonId: SALON_ID, limit: 200, page: 1 });
+      // Período da grade do mês (cobre também o dia e a semana abertos), filtrado no backend
+      // (BUG-036). Antes vinham os 200 primeiros agendamentos do salão — os mais antigos — e a
+      // agenda de hoje aparecia vazia num salão com histórico.
+      const result = await appointmentService.list({
+        salonId: SALON_ID,
+        dateFrom: startOfWeek(startOfMonth(currentDate), { locale: ptBR }),
+        dateTo: endOfWeek(endOfMonth(currentDate), { locale: ptBR }),
+        limit: 2000,
+        page: 1,
+      });
       setAppointments(result.data ?? []);
     } catch {
       setError("Não foi possível carregar os agendamentos.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [SALON_ID, currentDate]);
 
   // Load professionals for modals
   useEffect(() => {

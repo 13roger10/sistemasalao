@@ -187,7 +187,8 @@ function CheckInContent() {
       const today = toISODate(new Date());
       const res = await api.get<{ content: Appointment[] } | Appointment[]>(
         `/agendamentos/salon/${SALON_ID}`,
-        { params: { size: 300, sort: "dataHora" } }
+        // só o dia, filtrado no backend (BUG-036: antes vinham os 300 mais antigos do salão)
+        { params: { size: 1000, sort: "dataHora", de: today, ate: today } }
       );
       const list = "content" in res.data ? res.data.content : res.data;
       const todayList = list.filter(
