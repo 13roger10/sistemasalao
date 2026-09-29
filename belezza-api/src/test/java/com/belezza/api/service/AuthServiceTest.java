@@ -66,6 +66,9 @@ class AuthServiceTest {
     @Mock
     private ProfissionalRepository profissionalRepository;
 
+    @Mock
+    private LoginAttemptService loginAttemptService;
+
     @InjectMocks
     private AuthService authService;
 

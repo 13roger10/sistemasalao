@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createLogger } from "@/lib/logger";
+import { cabecalhosComIp } from "@/lib/client-ip";
 
 const logger = createLogger("API:Login");
 
@@ -17,9 +18,7 @@ export async function POST(request: NextRequest) {
 
     const response = await fetch(`${backendUrl}/api/auth/login`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: cabecalhosComIp(request, { "Content-Type": "application/json" }),
       body: JSON.stringify({ email, password }),
     });
 
@@ -28,10 +27,14 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       const error = await response.text();
       logger.error("Backend login failed", new Error(error), { status: response.status });
-      return NextResponse.json(
-        { message: "Login failed" },
-        { status: response.status }
-      );
+      // Repassa a mensagem do backend (já genérica, sem revelar se o e-mail existe): senha errada
+      // ou e-mail bloqueado por excesso de tentativas. Antes a tela mostrava sempre "Login failed".
+      let message = "Email ou senha inválidos";
+      try {
+        const parsed = JSON.parse(error) as { message?: string };
+        if (parsed.message) message = parsed.message;
+      } catch { /* corpo sem JSON: fica a mensagem padrão */ }
+      return NextResponse.json({ message }, { status: response.status });
     }
 
     const data = await response.json();

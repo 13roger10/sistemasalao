@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SalonAuthUser, AuthUserRole, AUTH_ROLE_PERMISSIONS, AuthLoginResponse } from "@/types/salon/auth";
+import { cabecalhosComIp } from "@/lib/client-ip";
 
 // Backend API URL (adiciona /api se não estiver presente)
 const RAW_BACKEND_URL = process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
@@ -69,9 +70,7 @@ export async function POST(request: NextRequest) {
     // Chama o backend Java
     const backendResponse = await fetch(`${BACKEND_URL}/auth/login`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: cabecalhosComIp(request, { "Content-Type": "application/json" }),
       body: JSON.stringify({ email, password }),
     });
 

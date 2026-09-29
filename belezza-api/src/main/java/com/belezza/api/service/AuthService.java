@@ -48,6 +48,7 @@ public class AuthService {
     private final EmailService emailService;
     private final TokenBlacklistService tokenBlacklistService;
     private final TwoFactorService twoFactorService;
+    private final LoginAttemptService loginAttemptService;
 
     /**
      * Registers a new user.
@@ -132,6 +133,8 @@ public class AuthService {
     @Transactional
     public AuthResponse login(LoginRequest request) {
         log.info("Login attempt for email: {}", request.getEmail());
+        // BUG-029: e-mail com muitas senhas erradas fica bloqueado por um tempo
+        loginAttemptService.verificarBloqueio(request.getEmail());
 
         try {
             authenticationManager.authenticate(
@@ -142,6 +145,7 @@ public class AuthService {
             );
         } catch (BadCredentialsException e) {
             log.warn("Invalid credentials for email: {}", request.getEmail());
+            loginAttemptService.registrarFalha(request.getEmail());
             throw AuthenticationException.invalidCredentials();
         } catch (DisabledException e) {
             log.warn("Disabled account for email: {}", request.getEmail());
@@ -159,9 +163,12 @@ public class AuthService {
             }
             if (!twoFactorService.validateLoginCode(usuario, request.getTotpCode())) {
                 log.warn("Invalid 2FA code for user: {}", usuario.getId());
+                // Código 2FA errado também conta, senão o código de 6 dígitos podia ser testado à vontade
+                loginAttemptService.registrarFalha(request.getEmail());
                 throw new AuthenticationException("Código 2FA inválido. Verifique o app autenticador.");
             }
         }
+        loginAttemptService.registrarSucesso(request.getEmail());
 
         // Update last login
         usuarioRepository.updateLastLogin(usuario.getId(), LocalDateTime.now());
