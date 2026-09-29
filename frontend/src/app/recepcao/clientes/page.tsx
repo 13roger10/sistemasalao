@@ -12,8 +12,8 @@ import {
   MessageSquare, FileText, Edit2, Loader2, AlertCircle,
   History, Clock, Scissors, ChevronRight,
 } from "lucide-react";
+import { useSalaoAtual } from "@/hooks/useSalaoAtual";
 
-const SALON_ID = "1";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -483,6 +483,7 @@ function ClientCard({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function RecepcaoClientesPage() {
+  const SALON_ID = useSalaoAtual();
   const router = useRouter();
   const [clients, setClients] = useState<Client[]>([]);
   const [search, setSearch] = useState("");

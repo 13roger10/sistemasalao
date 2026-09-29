@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
 import { appointmentService } from "@/services/salon/appointmentService";
 import { clientService }       from "@/services/salon/clientService";
 import { professionalService } from "@/services/salon/professionalService";
@@ -20,12 +19,12 @@ import {
   isSameDay, isSameMonth, isToday, eachDayOfInterval,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useSalaoAtual } from "@/hooks/useSalaoAtual";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 type ViewMode = "dia" | "semana" | "mes";
 
-const SALON_ID = "1";
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
   pending:     { label: "Pendente",       cls: "bg-yellow-100 text-yellow-700" },
@@ -252,6 +251,7 @@ function CreateModal({
   onClose: () => void;
   submitting: boolean;
 }) {
+  const SALON_ID = useSalaoAtual();
   const [clients,       setClients]       = useState<Client[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [services,      setServices]      = useState<Service[]>([]);
@@ -791,8 +791,8 @@ type ActiveModal =
   | null;
 
 export default function RecepcaoAgendaPage() {
+  const SALON_ID = useSalaoAtual();
   const router                          = useRouter();
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
 
   const [view,         setView]         = useState<ViewMode>("dia");
   const [currentDate,  setCurrentDate]  = useState(new Date());
@@ -805,12 +805,8 @@ export default function RecepcaoAgendaPage() {
   const [submitting,   setSubmitting]   = useState(false);
   const [toast,        setToast]        = useState<{ msg: string; type: "ok" | "err" } | null>(null);
 
-  // ── Route protection ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!authLoading && (!isAuthenticated || user?.role !== "receptionist")) {
-      router.push("/login");
-    }
-  }, [authLoading, isAuthenticated, user, router]);
+  // Acesso protegido pelo layout de /recepcao (login do salão, recepção e admin). Antes esta tela
+  // conferia o login antigo e mandava a recepcionista para /login.
 
   // ── Toast ────────────────────────────────────────────────────────────────────
   const showToast = useCallback((msg: string, type: "ok" | "err" = "ok") => {
@@ -840,8 +836,8 @@ export default function RecepcaoAgendaPage() {
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated && user?.role === "receptionist") loadAppointments();
-  }, [isAuthenticated, user, loadAppointments]);
+    loadAppointments();
+  }, [loadAppointments]);
 
   // ── Navigation ───────────────────────────────────────────────────────────────
   const navigate = (dir: "prev" | "next") => {
@@ -956,14 +952,6 @@ export default function RecepcaoAgendaPage() {
   };
 
   // ── Render ────────────────────────────────────────────────────────────────────
-  if (authLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Toast */}

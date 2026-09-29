@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import {
   ArrowLeft,
   Search,
@@ -13,8 +12,8 @@ import {
   Loader2,
   MessageCircle,
 } from "lucide-react";
+import { useSalaoAtual } from "@/hooks/useSalaoAtual";
 
-const SALON_ID = "1";
 
 type StatusAgendamento =
   | "PENDENTE"
@@ -175,6 +174,7 @@ function AppointmentCard({ appt, checkInState, onCheckIn }: AppointmentCardProps
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 function CheckInContent() {
+  const SALON_ID = useSalaoAtual();
   const router = useRouter();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(false);
@@ -392,8 +392,8 @@ function CheckInContent() {
 
 export default function CheckInPage() {
   return (
-    <ProtectedRoute requiredRole="receptionist">
+    <>{/* acesso protegido pelo layout de /recepcao (login do salão) */}
       <CheckInContent />
-    </ProtectedRoute>
+    </>
   );
 }

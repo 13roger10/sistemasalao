@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import {
   ArrowLeft,
   Clock,
@@ -17,8 +16,8 @@ import {
   Loader2,
   Users,
 } from "lucide-react";
+import { useSalaoAtual } from "@/hooks/useSalaoAtual";
 
-const SALON_ID = "1";
 const STORAGE_KEY = "belezza_fila_espera";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -101,6 +100,7 @@ interface AddPanelProps {
 }
 
 function AddPanel({ onAdd }: AddPanelProps) {
+  const SALON_ID = useSalaoAtual();
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<ClienteResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -261,6 +261,7 @@ interface BookingModalProps {
 }
 
 function BookingModal({ entry, onClose, onBooked }: BookingModalProps) {
+  const SALON_ID = useSalaoAtual();
   const [profissionais, setProfissionais] = useState<Profissional[]>([]);
   const [servicos, setServicos] = useState<Servico[]>([]);
   const [profId, setProfId] = useState("");
@@ -482,6 +483,7 @@ function QueueCard({ entry, position, onRemove, onNotify, onBook, notifyState }:
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 function FilaContent() {
+  const SALON_ID = useSalaoAtual();
   const router = useRouter();
   const [fila, setFila] = useState<FilaEntry[]>([]);
   const [bookingEntry, setBookingEntry] = useState<FilaEntry | null>(null);
@@ -580,8 +582,8 @@ function FilaContent() {
 
 export default function FilaPage() {
   return (
-    <ProtectedRoute requiredRole="receptionist">
+    <>{/* acesso protegido pelo layout de /recepcao (login do salão) */}
       <FilaContent />
-    </ProtectedRoute>
+    </>
   );
 }

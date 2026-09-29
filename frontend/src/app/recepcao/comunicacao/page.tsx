@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -17,8 +16,8 @@ import {
   X,
   Phone,
 } from "lucide-react";
+import { useSalaoAtual } from "@/hooks/useSalaoAtual";
 
-const SALON_ID = "1";
 
 type StatusAgendamento =
   | "PENDENTE"
@@ -184,6 +183,7 @@ interface SendModalProps {
 }
 
 function SendModal({ appt, messageType, onClose }: SendModalProps) {
+  const SALON_ID = useSalaoAtual();
   const action = MESSAGE_ACTIONS.find((a) => a.type === messageType)!;
   const [telefone, setTelefone] = useState(
     appt.clienteTelefone ? normalizePhone(appt.clienteTelefone) : ""
@@ -372,6 +372,7 @@ function AppointmentCard({ appt, onAction }: AppointmentCardProps) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 function ComunicacaoContent() {
+  const SALON_ID = useSalaoAtual();
   const router = useRouter();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -502,8 +503,8 @@ function ComunicacaoContent() {
 
 export default function ComunicacaoPage() {
   return (
-    <ProtectedRoute requiredRole="receptionist">
+    <>{/* acesso protegido pelo layout de /recepcao (login do salão) */}
       <ComunicacaoContent />
-    </ProtectedRoute>
+    </>
   );
 }

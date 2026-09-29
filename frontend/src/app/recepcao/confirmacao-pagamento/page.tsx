@@ -11,8 +11,8 @@ import {
   CheckCircle2, Clock, User, Scissors, CalendarCheck,
   X,
 } from "lucide-react";
+import { useSalaoAtual } from "@/hooks/useSalaoAtual";
 
-const SALON_ID = "1";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -285,6 +285,7 @@ function AppointmentRow({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ConfirmacaoPagamentoPage() {
+  const SALON_ID = useSalaoAtual();
   const router = useRouter();
   const today = todayStr();
 

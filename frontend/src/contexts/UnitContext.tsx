@@ -41,12 +41,17 @@ interface UnitContextType {
 // ===== Context =====
 const UnitContext = createContext<UnitContextType | undefined>(undefined);
 
-// ===== Mock units - replace with API call =====
-const MOCK_UNITS: UnitOption[] = [
-  { id: "1", name: "Belezza Centro", color: "#8B5CF6", isHeadquarters: true },
-  { id: "2", name: "Belezza Jardins", color: "#10B981" },
-  { id: "3", name: "Belezza Moema", color: "#F59E0B" },
-];
+/** Salão do usuário gravado no token de acesso (claim "salonId"). Só leitura: quem valida é o backend. */
+function salaoDoToken(token: string | null | undefined): string | null {
+  if (!token) return null;
+  try {
+    const payload = token.split(".")[1];
+    const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+    return json.salonId != null ? String(json.salonId) : null;
+  } catch {
+    return null;
+  }
+}
 
 // ===== Storage key =====
 const SELECTED_UNIT_KEY = "salon_selected_unit";
@@ -57,7 +62,7 @@ interface UnitProviderProps {
 }
 
 export function UnitProvider({ children }: UnitProviderProps) {
-  const { user, isAuthenticated, isRole } = useSalonAuth();
+  const { user, isAuthenticated, isRole, token } = useSalonAuth();
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [availableUnits, setAvailableUnits] = useState<UnitOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -109,25 +114,14 @@ export function UnitProvider({ children }: UnitProviderProps) {
       };
     }
 
-    setTimeout(() => {
-      if (user.unitId) {
-        // Other roles see only their assigned unit
-        const userUnit = MOCK_UNITS.find(u => u.id === user.unitId);
-        setAvailableUnits(userUnit ? [userUnit] : []);
-      } else if (user.unitIds && user.unitIds.length > 0) {
-        // Multiple units assigned
-        const userUnits = MOCK_UNITS.filter(u => user.unitIds?.includes(u.id));
-        setAvailableUnits(userUnits);
-      } else {
-        setAvailableUnits([]);
-      }
-
-      // Non-admin: set to their unit
-      setSelectedUnitId(user.unitId || null);
-
-      setIsLoading(false);
-    }, 100);
-  }, [isAuthenticated, user, canViewAllUnits]);
+    // Demais perfis (recepção, profissional, cliente): o salão vem do próprio login. O usuário
+    // salvo não traz unitId, então antes a recepcionista ficava sem salão (e as telas usavam o
+    // salão 1 fixo); o salão está no token de acesso (claim "salonId"), o mesmo que o backend usa.
+    const unidade = user.unitId || salaoDoToken(token);
+    setAvailableUnits(unidade ? [{ id: unidade, name: "Meu salão", isHeadquarters: true }] : []);
+    setSelectedUnitId(unidade || null);
+    setIsLoading(false);
+  }, [isAuthenticated, user, canViewAllUnits, token]);
 
   // Select unit
   const selectUnit = useCallback((unitId: string | null) => {

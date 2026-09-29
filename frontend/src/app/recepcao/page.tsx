@@ -3,8 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import {
   Calendar,
   LogOut,
@@ -161,7 +160,7 @@ function ReceptionSidebar({ isOpen, onClose, userName, onLogout, pathname }: Sid
 
 function RecepcaoHub() {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, logout } = useSalonAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const firstName = user?.name?.split(" ")[0] || "Recepcionista";
@@ -255,8 +254,8 @@ function RecepcaoHub() {
 
 export default function RecepcaoPage() {
   return (
-    <ProtectedRoute requiredRole="receptionist">
+    <>{/* acesso protegido pelo layout de /recepcao (login do salão) */}
       <RecepcaoHub />
-    </ProtectedRoute>
+    </>
   );
 }

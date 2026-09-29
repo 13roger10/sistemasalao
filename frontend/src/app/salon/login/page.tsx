@@ -18,7 +18,9 @@ export default function SalonLoginPage() {
   const [error, setError] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
 
-  // Redireciona se já autenticado
+  // Redireciona se já autenticado: volta para a página que pediu o login (?redirect=), senão a
+  // página inicial do perfil. Só caminhos internos ("/x", nunca "//site" ou "http..."), para o
+  // parâmetro não virar um redirecionamento para fora do sistema.
   useEffect(() => {
     if (isAuthenticated && user) {
       const roleRedirects: Record<AuthUserRole, string> = {
@@ -27,7 +29,11 @@ export default function SalonLoginPage() {
         PROFESSIONAL: "/salon/professional",
         CLIENT: "/salon/book",
       };
-      router.push(roleRedirects[user.role]);
+      const pedido = new URLSearchParams(window.location.search).get("redirect");
+      const interno = pedido && pedido.startsWith("/") && !pedido.startsWith("//") && !pedido.startsWith("/\\");
+      const areaDaRecepcao = pedido?.startsWith("/recepcao");
+      const permitido = interno && (!areaDaRecepcao || user.role === "ADMIN" || user.role === "RECEPCIONIST");
+      router.push(permitido ? pedido! : roleRedirects[user.role]);
     }
   }, [isAuthenticated, user, router]);
 

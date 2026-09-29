@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import {
   ArrowLeft,
   List,
@@ -12,8 +11,8 @@ import {
   Star,
   RotateCcw,
 } from "lucide-react";
+import { useSalaoAtual } from "@/hooks/useSalaoAtual";
 
-const SALON_ID = "1";
 
 type StatusAgendamento =
   | "PENDENTE"
@@ -222,6 +221,7 @@ function Summary({ rows }: { rows: Row[] }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 function ListaDoDialContent() {
+  const SALON_ID = useSalaoAtual();
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>([]);
   const [prioritizedIds, setPrioritizedIds] = useState<Set<number>>(new Set());
@@ -413,8 +413,8 @@ function ListaDoDialContent() {
 
 export default function ListaDoDiaPage() {
   return (
-    <ProtectedRoute requiredRole="receptionist">
+    <>{/* acesso protegido pelo layout de /recepcao (login do salão) */}
       <ListaDoDialContent />
-    </ProtectedRoute>
+    </>
   );
 }

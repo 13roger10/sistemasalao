@@ -10,8 +10,8 @@ import {
   UserCheck, Users, CheckCircle2, CreditCard,
   Clock, User, Scissors, ChevronRight, UserX, X,
 } from "lucide-react";
+import { useSalaoAtual } from "@/hooks/useSalaoAtual";
 
-const SALON_ID = "1";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -327,6 +327,7 @@ function AppointmentCard({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AtendimentoPage() {
+  const SALON_ID = useSalaoAtual();
   const router = useRouter();
   const today = todayStr();
 

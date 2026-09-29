@@ -11,8 +11,8 @@ import {
   CheckCircle2, Clock, User, Scissors, RefreshCw, X,
   BadgeDollarSign,
 } from "lucide-react";
+import { useSalaoAtual } from "@/hooks/useSalaoAtual";
 
-const SALON_ID = "1";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -236,6 +236,7 @@ function PaymentBadge({ pago, cancelado }: { pago: boolean; cancelado: boolean }
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function RecepcaoPagamentosPage() {
+  const SALON_ID = useSalaoAtual();
   const router = useRouter();
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [appointments, setAppointments] = useState<AgendamentoBackend[]>([]);
