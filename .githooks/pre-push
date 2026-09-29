@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+#
+# pre-push — barreira de revisão/segredos ANTES do push (principal controle local).
+#
+# Bloqueia o push quando detecta possíveis segredos nas linhas ADICIONADAS dos
+# commits que estão sendo enviados. É a principal barreira do fluxo: rode a revisão
+# aqui, antes de o código sair da máquina. A proteção de branch e o secret scanning
+# no GitHub são camadas complementares no servidor.
+#
+# Bypass consciente (use só quando tiver certeza de que é falso positivo):
+#   git push --no-verify
+#
+# Instalado via: git config core.hooksPath .githooks
+
+set -u
+RED=$'\033[31m'; YEL=$'\033[33m'; GRN=$'\033[32m'; RST=$'\033[0m'
+Z="0000000000000000000000000000000000000000"
+findings=0
+tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
+
+# Padrões de segredo (regex estendida). Mantidos focados para reduzir ruído.
+PATTERNS='(-----BEGIN [A-Z ]*PRIVATE KEY-----)'
+PATTERNS="$PATTERNS|(AKIA[0-9A-Z]{16})"                                  # AWS Access Key ID
+PATTERNS="$PATTERNS|(ASIA[0-9A-Z]{16})"                                  # AWS temp key
+PATTERNS="$PATTERNS|(gh[pousr]_[A-Za-z0-9]{20,})"                        # GitHub tokens
+PATTERNS="$PATTERNS|(xox[baprs]-[A-Za-z0-9-]{10,})"                      # Slack tokens
+PATTERNS="$PATTERNS|(sk-[A-Za-z0-9]{20,})"                               # OpenAI-style key
+PATTERNS="$PATTERNS|(eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})" # JWT
+PATTERNS="$PATTERNS|((aws_)?secret_access_key['\"[:space:]]*[:=])"       # AWS secret assignment
+PATTERNS="$PATTERNS|(([Pp]assword|PASSWORD|[Ss]ecret|SECRET|[Tt]oken|api[_-]?key|API[_-]?KEY|private[_-]?key)['\"[:space:]]*[:=][[:space:]]*['\"][^'\"[:space:]]{6,})"
+
+# Placeholders/valores nitidamente não-sensíveis → ignorados (reduz falso positivo).
+ALLOW='your-|changeme|change_me|CHANGE_ME|example|exemplo|placeholder|dummy|xxxx|<[^>]+>|\$\{|process\.env|import\.meta\.env|redacted|REDACTED|min-32|belezza-dev-|test-secret|foo|bar'
+
+scan_range() {
+  local range="$1"
+  # Só linhas adicionadas (+), ignorando cabeçalhos +++; exclui lockfiles/binários comuns.
+  git diff --no-color --unified=0 "$range" -- . \
+      ':(exclude)*.lock' ':(exclude)*package-lock.json' ':(exclude)*.min.js' \
+      ':(exclude)*.png' ':(exclude)*.jpg' ':(exclude)*.jpeg' ':(exclude)*.gif' \
+      ':(exclude)*.pdf' ':(exclude).githooks/pre-push' 2>/dev/null \
+    | grep -nE '^\+' \
+    | grep -vE '^\+\+\+' \
+    | grep -EI "$PATTERNS" \
+    | grep -vEI "$ALLOW" >> "$tmp" || true
+}
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$Z" ] && continue   # deleção de branch: nada a escanear
+  if [ "$remote_sha" = "$Z" ]; then
+    # branch novo no remoto: escaneia commits que ainda não estão em nenhum remoto
+    range_expr="$(git rev-list "$local_sha" --not --remotes | tail -n 1)"
+    if [ -n "$range_expr" ]; then
+      base="$(git rev-list --max-parents=0 "$local_sha" | tail -n 1)"
+      first_new="$(git rev-list "$local_sha" --not --remotes | tail -n 1)"
+      parent="$(git rev-parse "${first_new}^" 2>/dev/null || echo "$base")"
+      scan_range "${parent}..${local_sha}"
+    else
+      scan_range "${local_sha}"
+    fi
+  else
+    scan_range "${remote_sha}..${local_sha}"
+  fi
+done
+
+if [ -s "$tmp" ]; then
+  echo "${RED}✖ push BLOQUEADO — possível segredo detectado nas alterações:${RST}" >&2
+  echo "" >&2
+  sed -E 's/^\+//' "$tmp" | sed -E 's/([:=][[:space:]]*['\''"]?[^'\''"[:space:]]{3})[^'\''"[:space:]]*/\1****/g' | head -40 >&2
+  echo "" >&2
+  echo "${YEL}Revise os itens acima. Se for credencial real:${RST}" >&2
+  echo "  1) remova do código e rotacione o segredo (considere-o comprometido);" >&2
+  echo "  2) use variáveis de ambiente / secret manager." >&2
+  echo "${YEL}Se for comprovadamente falso positivo, refaça com:${RST} git push --no-verify" >&2
+  exit 1
+fi
+
+echo "${GRN}✓ pre-push: nenhuma credencial aparente nas alterações. Prossiga com a revisão do PR.${RST}" >&2
+exit 0
