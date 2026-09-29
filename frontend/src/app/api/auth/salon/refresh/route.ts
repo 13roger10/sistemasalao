@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { SalonAuthUser, AuthUserRole, AUTH_ROLE_PERMISSIONS, AuthLoginResponse } from "@/types/salon/auth";
 
 // Backend API URL (sem /api no final)
-const BACKEND_URL = process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+// Mesma normalização das outras rotas de auth: NEXT_PUBLIC_API_URL já termina em /api, e somar
+// "/api/auth/refresh" gerava /api/api/auth/refresh — a renovação da sessão nunca funcionava.
+const RAW_BACKEND_URL = process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const BACKEND_URL = RAW_BACKEND_URL.endsWith("/api") ? RAW_BACKEND_URL : `${RAW_BACKEND_URL}/api`;
 
 // Interface para resposta do backend
 interface BackendAuthResponse {
@@ -65,7 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Chama o backend Java para refresh
-    const backendResponse = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
+    const backendResponse = await fetch(`${BACKEND_URL}/auth/refresh`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -96,22 +99,10 @@ export async function POST(request: NextRequest) {
       expiresIn: backendData.expiresIn,
     };
 
-    // Cria response com cookie atualizado
-    const nextResponse = NextResponse.json(response);
-
-    // Atualiza cookie
-    nextResponse.cookies.set("salon_auth_token", backendData.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      // Cookie maxAge is in SECONDS; backendData.expiresIn comes from the backend in
-      // MILLISECONDS (900000 = 15 min). Without the conversion this cookie would live
-      // ~250 hours instead of 15 minutes.
-      maxAge: Math.floor(backendData.expiresIn / 1000),
-      path: "/",
-    });
-
-    return nextResponse;
+    // O cookie salon_auth_token é gravado no navegador (lib/session-refresh), como no login.
+    // Um cookie httpOnly com o mesmo nome aqui não poderia mais ser atualizado pelo JavaScript
+    // e expiraria em 15 minutos, levando ao login na próxima navegação.
+    return NextResponse.json(response);
   } catch (error) {
     console.error("Refresh token error:", error);
 

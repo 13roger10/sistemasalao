@@ -1,5 +1,7 @@
 // Base API configuration for salon services
 
+import { encerrarSessaoSalon, refreshSalonSession } from '@/lib/session-refresh';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 export interface ApiResponse<T> {
@@ -28,7 +30,8 @@ export class ApiException extends Error {
 // Generic fetch wrapper with error handling
 async function fetchApi<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  sessaoRenovada = false
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
 
@@ -62,6 +65,14 @@ async function fetchApi<T>(
 
   console.log(`[API] Response: ${response.status} ${response.statusText}`);
   // SEC-014: não logar headers da resposta (podem conter Authorization/Set-Cookie).
+
+  // Sessão expirada: renova o token e repete a requisição uma vez; sem renovação, volta ao login
+  if (response.status === 401 && token && !sessaoRenovada) {
+    if (await refreshSalonSession()) {
+      return fetchApi<T>(endpoint, options, true);
+    }
+    encerrarSessaoSalon();
+  }
 
   // Handle non-JSON responses
   const contentType = response.headers.get('content-type');
@@ -170,20 +181,29 @@ export const api = {
     const formData = new FormData();
     formData.append(fieldName, file);
 
-    const token = typeof window !== 'undefined'
-      ? localStorage.getItem('salon_auth_token')
-      : null;
+    const enviar = () => {
+      const token = typeof window !== 'undefined'
+        ? localStorage.getItem('salon_auth_token')
+        : null;
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      return fetch(`${API_BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+    };
 
-    const headers: HeadersInit = {};
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+    let response = await enviar();
+    if (response.status === 401) {
+      if (await refreshSalonSession()) {
+        response = await enviar();
+      } else {
+        encerrarSessaoSalon();
+      }
     }
-
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
 
     const data = await response.json();
 

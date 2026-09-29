@@ -205,12 +205,18 @@ export default function proxy(request: NextRequest) {
     // Decodifica o token para verificar a role
     const payload = decodeJwtPayload(salonToken);
 
-    // Se não conseguiu decodificar ou token expirado, redireciona para login
-    if (!payload || isTokenExpired(payload)) {
-      log("Invalid or expired salon token, redirecting to /salon/login");
+    // Token ilegível → login. Token apenas expirado segue: o access token dura 15 minutos e o
+    // navegador renova a sessão com o refresh token na primeira chamada à API (401 → refresh);
+    // se não der para renovar, o próprio cliente leva ao login. O backend continua exigindo
+    // token válido em toda chamada — aqui só se decide qual tela abrir.
+    if (!payload) {
+      log("Invalid salon token, redirecting to /salon/login");
       const response = NextResponse.redirect(new URL('/salon/login', request.url));
       response.cookies.delete('salon_auth_token');
       return addSecurityHeaders(response);
+    }
+    if (isTokenExpired(payload)) {
+      log("Expired salon access token: letting the client renew the session");
     }
 
     const userRole = normalizeRole(payload.role);

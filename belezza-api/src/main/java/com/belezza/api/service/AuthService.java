@@ -207,8 +207,10 @@ public class AuthService {
 
         log.debug("Token refreshed for user: {}", usuario.getId());
 
+        // Mesmo usuário do login (com profissionalId): sem ele, a sessão renovada de um
+        // profissional perdia o vínculo com a própria agenda
         return AuthResponse.of(
-                UserResponse.fromEntity(usuario),
+                buildUserResponse(usuario),
                 newAccessToken,
                 newRefreshToken,
                 jwtService.getAccessTokenExpiration()

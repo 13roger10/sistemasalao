@@ -10,6 +10,8 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
+import { env } from "@/lib/env";
+import { gravarCookieSessao, SESSAO_RENOVADA_EVENT } from "@/lib/session-refresh";
 import {
   SalonAuthUser,
   SalonAuthState,
@@ -126,13 +128,11 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
         localStorage.setItem(TOKEN_EXPIRY_KEY, expiry.toString());
       }
 
-      // Define cookie para o servidor
-      const expires = new Date(Date.now() + (expiresIn || 86400000)).toUTCString();
+      // Define cookie para o servidor, válido enquanto a sessão puder ser renovada.
       // SEC-013: cookie endurecido — SameSite=Strict e Secure em HTTPS (reduz exposição
       // a CSRF e a vazamento em canal inseguro). O token continua acessível em JS por
       // exigência do WebSocket/STOMP; a mitigação principal de XSS é a CSP (next.config).
-      const secureFlag = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
-      document.cookie = `salon_auth_token=${token}; path=/; expires=${expires}; SameSite=Strict${secureFlag}`;
+      gravarCookieSessao(token);
     }
 
     setState({
@@ -237,7 +237,9 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
     }
 
     try {
-      const response = await fetch("/api/auth/refresh", {
+      // Direto no backend (/api/auth/refresh): não existe rota do Next com esse caminho, e
+      // a renovação agendada caía num 404 e nunca acontecia
+      const response = await fetch(`${env.apiUrl}/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken }),
@@ -326,13 +328,8 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
         ? user.permissions
         : AUTH_ROLE_PERMISSIONS[user.role] || [];
 
-      // Redefine o cookie
-      const expires = expiryStr
-        ? new Date(parseInt(expiryStr, 10)).toUTCString()
-        : new Date(Date.now() + 24 * 60 * 60 * 1000).toUTCString();
-      // SEC-013: cookie endurecido (SameSite=Strict + Secure em HTTPS).
-      const secureFlag = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
-      document.cookie = `salon_auth_token=${token}; path=/; expires=${expires}; SameSite=Strict${secureFlag}`;
+      // Redefine o cookie (SEC-013: SameSite=Strict + Secure em HTTPS)
+      gravarCookieSessao(token);
 
       setState({
         user: { ...user, permissions },
@@ -372,6 +369,19 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
     hasInitialized.current = true;
     checkAuth();
   }, [checkAuth]);
+
+  // ===== Token renovado pelos clientes HTTP (lib/session-refresh) =====
+  // Mantém o token do estado (usado por notificações e WebSocket) igual ao do localStorage
+  useEffect(() => {
+    const aoRenovar = (e: Event) => {
+      const token = (e as CustomEvent<{ token: string }>).detail?.token;
+      if (token) {
+        setState(prev => ({ ...prev, token, refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY) }));
+      }
+    };
+    window.addEventListener(SESSAO_RENOVADA_EVENT, aoRenovar);
+    return () => window.removeEventListener(SESSAO_RENOVADA_EVENT, aoRenovar);
+  }, []);
 
   // ===== Cleanup =====
   useEffect(() => {

@@ -1,6 +1,7 @@
 // ===== HTTP Client para Sistema de Salão com Interceptors =====
 
 import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from "axios";
+import { encerrarSessaoSalon, refreshSalonSession } from "./session-refresh";
 
 // Constantes de storage
 const TOKEN_KEY = "salon_auth_token";
@@ -36,25 +37,8 @@ salonApi.interceptors.request.use(
 );
 
 // ===== Response Interceptor =====
-// Trata erros de autenticação e faz refresh automático
-let isRefreshing = false;
-let failedQueue: Array<{
-  resolve: (value: unknown) => void;
-  reject: (reason: unknown) => void;
-}> = [];
-
-const processQueue = (error: Error | null, token: string | null = null) => {
-  failedQueue.forEach((promise) => {
-    if (error) {
-      promise.reject(error);
-    } else {
-      promise.resolve(token);
-    }
-  });
-
-  failedQueue = [];
-};
-
+// Sessão expirada (401): renova o token (renovação compartilhada com os outros clientes
+// HTTP, ver lib/session-refresh) e repete a requisição uma vez; sem renovação, volta ao login.
 salonApi.interceptors.response.use(
   (response: AxiosResponse) => {
     return response;
@@ -64,81 +48,16 @@ salonApi.interceptors.response.use(
       _retry?: boolean;
     };
 
-    // Se o erro for 401 (não autorizado)
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      // Se já está fazendo refresh, adiciona à fila
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        })
-          .then((token) => {
-            if (originalRequest.headers) {
-              originalRequest.headers.Authorization = `Bearer ${token}`;
-            }
-            return salonApi(originalRequest);
-          })
-          .catch((err) => {
-            return Promise.reject(err);
-          });
-      }
-
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true;
-      isRefreshing = true;
-
-      // Tenta fazer refresh do token
-      const refreshToken =
-        typeof window !== "undefined"
-          ? localStorage.getItem(REFRESH_TOKEN_KEY)
-          : null;
-
-      if (refreshToken) {
-        try {
-          const response = await axios.post("/api/auth/salon/refresh", {
-            refreshToken,
-          });
-
-          const { token, refreshToken: newRefreshToken } = response.data;
-
-          // Atualiza tokens no storage
-          if (typeof window !== "undefined") {
-            localStorage.setItem(TOKEN_KEY, token);
-            if (newRefreshToken) {
-              localStorage.setItem(REFRESH_TOKEN_KEY, newRefreshToken);
-            }
-          }
-
-          // Atualiza header da requisição original
-          if (originalRequest.headers) {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-          }
-
-          processQueue(null, token);
-
-          return salonApi(originalRequest);
-        } catch (refreshError) {
-          processQueue(refreshError as Error, null);
-
-          // Limpa auth e redireciona para login
-          if (typeof window !== "undefined") {
-            localStorage.removeItem(TOKEN_KEY);
-            localStorage.removeItem(REFRESH_TOKEN_KEY);
-            localStorage.removeItem("salon_auth_user");
-            window.location.href = "/salon/login";
-          }
-
-          return Promise.reject(refreshError);
-        } finally {
-          isRefreshing = false;
+      const token = await refreshSalonSession();
+      if (token) {
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
         }
-      } else {
-        // Sem refresh token, limpa auth e redireciona
-        if (typeof window !== "undefined") {
-          localStorage.removeItem(TOKEN_KEY);
-          localStorage.removeItem(REFRESH_TOKEN_KEY);
-          localStorage.removeItem("salon_auth_user");
-          window.location.href = "/salon/login";
-        }
+        return salonApi(originalRequest);
       }
+      encerrarSessaoSalon();
     }
 
     // Trata outros erros

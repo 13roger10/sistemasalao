@@ -1,5 +1,6 @@
-import axios from "axios";
+import axios, { InternalAxiosRequestConfig } from "axios";
 import { env } from "./env";
+import { refreshSalonSession } from "./session-refresh";
 
 export const api = axios.create({
   baseURL: env.apiUrl,
@@ -29,7 +30,22 @@ api.interceptors.request.use(
 // Interceptor para tratar erros de resposta
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    // Sessão do salão expirada: renova o token e repete a requisição uma vez
+    const original = error.config as (InternalAxiosRequestConfig & { _sessaoRenovada?: boolean }) | undefined;
+    if (
+      error.response?.status === 401 &&
+      original && !original._sessaoRenovada &&
+      typeof window !== "undefined" && localStorage.getItem("salon_auth_token")
+    ) {
+      original._sessaoRenovada = true;
+      const token = await refreshSalonSession();
+      if (token) {
+        original.headers.Authorization = `Bearer ${token}`;
+        return api(original);
+      }
+    }
+
     if (error.response?.status === 401) {
       // Token expirado ou inválido — limpa só o token que foi de fato usado nesta
       // chamada (o request interceptor acima prioriza salon_auth_token sobre

@@ -3,6 +3,7 @@ package com.belezza.api.config;
 import com.belezza.api.security.ApiKeyAuthFilter;
 import com.belezza.api.security.JwtAuthenticationFilter;
 import com.belezza.api.security.RateLimitFilter;
+import com.belezza.api.security.RestAuthErrorHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -43,6 +44,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ApiKeyAuthFilter apiKeyAuthFilter;
     private final RateLimitFilter rateLimitFilter;
+    private final RestAuthErrorHandler restAuthErrorHandler;
     private final UserDetailsService userDetailsService;
     private final CorsConfigurationSource corsConfigurationSource;
 
@@ -112,6 +114,13 @@ public class SecurityConfig {
             // Set session management to stateless
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            )
+
+            // Token ausente/expirado/inválido → 401 (o frontend renova a sessão);
+            // autenticado sem permissão → 403. Ambos com corpo JSON.
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(restAuthErrorHandler)
+                .accessDeniedHandler(restAuthErrorHandler)
             )
 
             // Configure authorization rules
