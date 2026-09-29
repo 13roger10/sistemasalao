@@ -74,10 +74,12 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long> 
         @Param("fim") LocalDateTime fim
     );
 
-    // Find no-show candidates (past appointment time, still confirmed)
-    @Query("SELECT a FROM Agendamento a WHERE a.status = 'CONFIRMADO' " +
-           "AND a.dataHora < :cutoff")
-    List<Agendamento> findNoShowCandidates(@Param("cutoff") LocalDateTime cutoff);
+    // Candidatos a falta: horário entre :desde e :cutoff e o atendimento não foi iniciado (pendente
+    // ou confirmado), exceto os que a equipe já desfez a falta. O limite :desde evita marcar de uma
+    // vez agendamentos antigos esquecidos (ex.: na primeira execução ou após o sistema ficar parado).
+    @Query("SELECT a FROM Agendamento a WHERE a.status IN ('PENDENTE', 'CONFIRMADO') " +
+           "AND a.noShowDesfeito = false AND a.dataHora >= :desde AND a.dataHora < :cutoff")
+    List<Agendamento> findNoShowCandidates(@Param("desde") LocalDateTime desde, @Param("cutoff") LocalDateTime cutoff);
 
     // Daily appointments for a professional
     @Query("SELECT a FROM Agendamento a WHERE a.profissional.id = :profId " +

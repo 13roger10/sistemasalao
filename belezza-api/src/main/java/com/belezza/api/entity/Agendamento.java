@@ -78,6 +78,11 @@ public class Agendamento {
     @Builder.Default
     private StatusAgendamento status = StatusAgendamento.PENDENTE;
 
+    /** A equipe desfez a falta deste agendamento: a rotina automática de falta não o marca de novo. */
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    @Builder.Default
+    private boolean noShowDesfeito = false;
+
     /**
      * Observação do cliente sobre o agendamento (ex: pedidos especiais).
      * Visível para o próprio cliente e para a equipe do salão.

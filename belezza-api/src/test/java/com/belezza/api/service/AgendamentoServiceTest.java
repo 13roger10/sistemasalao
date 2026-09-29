@@ -570,6 +570,8 @@ class AgendamentoServiceTest {
 
             assertThat(agendamento.getStatus()).isEqualTo(StatusAgendamento.CONFIRMADO);
             assertThat(cliente.getNoShows()).isZero();
+            // a rotina automática de falta não marca este agendamento de novo
+            assertThat(agendamento.isNoShowDesfeito()).isTrue();
             verify(clienteRepository).save(cliente);
         }
 

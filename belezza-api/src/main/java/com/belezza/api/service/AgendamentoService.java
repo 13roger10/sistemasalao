@@ -931,6 +931,8 @@ public class AgendamentoService {
         agendamento.setProfissional(profissional);
         agendamento.setStatus(StatusAgendamento.PENDENTE);
         agendamento.setLembreteEnviado24h(false);
+        // Novo horário: a regra de falta automática volta a valer
+        agendamento.setNoShowDesfeito(false);
         agendamento.setLembreteEnviado2h(false);
         if (request.getObservacoes() != null) {
             agendamento.setObservacoes(request.getObservacoes());
@@ -1046,6 +1048,7 @@ public class AgendamentoService {
         }
 
         agendamento.setStatus(StatusAgendamento.CONFIRMADO);
+        agendamento.setNoShowDesfeito(true);
         agendamento = agendamentoRepository.save(agendamento);
 
         Cliente cliente = agendamento.getCliente();
