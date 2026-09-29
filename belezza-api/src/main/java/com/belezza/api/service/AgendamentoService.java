@@ -29,8 +29,10 @@ import com.belezza.api.dto.agendamento.MeusAgendamentosResponse;
 
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
@@ -611,6 +613,7 @@ public class AgendamentoService {
             agendamento.getStatus() == StatusAgendamento.NO_SHOW) {
             throw new BusinessException("Este agendamento não pode ser cancelado");
         }
+        validarPrazoCancelamento(agendamento, true, "cancelar");
 
         agendamento.setStatus(StatusAgendamento.CANCELADO);
         agendamento.setMotivoCancelamento(motivo != null ? motivo : "Cancelado pelo cliente via link");
@@ -823,6 +826,7 @@ public class AgendamentoService {
             agendamento.getStatus() == StatusAgendamento.NO_SHOW) {
             throw new BusinessException("Este agendamento não pode ser cancelado");
         }
+        validarPrazoCancelamento(agendamento, operador != null && operador.getRole() == Role.CLIENTE, "cancelar");
 
         agendamento.setStatus(StatusAgendamento.CANCELADO);
         agendamento.setMotivoCancelamento(request.getMotivo());
@@ -866,6 +870,7 @@ public class AgendamentoService {
             agendamento.getStatus() == StatusAgendamento.NO_SHOW) {
             throw new BusinessException("Este agendamento não pode ser reagendado");
         }
+        validarPrazoCancelamento(agendamento, operador != null && operador.getRole() == Role.CLIENTE, "reagendar");
 
         Profissional profissional = agendamento.getProfissional();
         if (request.getNovoProfissionalId() != null) {
@@ -1057,6 +1062,10 @@ public class AgendamentoService {
             throw new BusinessException("Não é possível agendar em horários passados");
         }
 
+        // 6b. Antecedência configurada pelo administrador. Mesmas regras de DisponibilidadeService:
+        // sem isto, só a tela de horários livres as aplicava e a API aceitava qualquer horário.
+        validarAntecedencia(salon, dataHora);
+
         // 7. Salon is open on this day and time. Same rules as DisponibilidadeService: the
         // per-day configuration wins; without it, the salon's global hours apply.
         LocalTime horarioServico = dataHora.toLocalTime();
@@ -1104,6 +1113,40 @@ public class AgendamentoService {
         LocalDateTime fimPrevisto = dataHora.plusMinutes(duracaoMinutos);
         if (bloqueioHorarioService.temBloqueio(profissional.getId(), dataHora, fimPrevisto)) {
             throw new BusinessException("Profissional possui bloqueio de horário neste período");
+        }
+    }
+
+    private void validarAntecedencia(Salon salon, LocalDateTime dataHora) {
+        LocalDate hoje = LocalDate.now(ZoneId.of("America/Sao_Paulo"));
+        LocalDate data = dataHora.toLocalDate();
+        if (!salon.isPermiteAgendamentoMesmoDia() && data.isEqual(hoje)) {
+            throw new BusinessException("Agendamento no mesmo dia não é permitido neste salão");
+        }
+        if (data.isAfter(hoje.plusDays(salon.getMaxAntecediaDias()))) {
+            throw new BusinessException("Não é possível agendar com mais de " +
+                    salon.getMaxAntecediaDias() + " dias de antecedência");
+        }
+        int horas = salon.getAntecedenciaMinimaHoras();
+        if (horas > 0 && dataHora.isBefore(LocalDateTime.now().plusHours(horas))) {
+            throw new BusinessException("Agendamentos precisam ser feitos com pelo menos " +
+                    horas + (horas == 1 ? " hora" : " horas") + " de antecedência");
+        }
+    }
+
+    /**
+     * Prazo mínimo de cancelamento do salão. Vale para o cliente (app ou link do e-mail, que
+     * chega sem operador); a equipe cancela a qualquer momento, por exemplo quando o cliente
+     * liga desmarcando. O reagendamento pelo cliente também libera o horário antigo, então
+     * segue o mesmo prazo.
+     */
+    private void validarPrazoCancelamento(Agendamento agendamento, boolean pedidoDoCliente, String acao) {
+        if (!pedidoDoCliente) {
+            return;
+        }
+        int horas = agendamento.getSalon().getCancelamentoMinimoHoras();
+        if (horas > 0 && agendamento.getDataHora().isBefore(LocalDateTime.now().plusHours(horas))) {
+            throw new BusinessException("Só é possível " + acao + " com pelo menos " + horas +
+                    (horas == 1 ? " hora" : " horas") + " de antecedência. Entre em contato com o salão.");
         }
     }
 

@@ -3,6 +3,7 @@ package com.belezza.api.service;
 import com.belezza.api.dto.agendamento.AgendamentoRequest;
 import com.belezza.api.dto.agendamento.AgendamentoResponse;
 import com.belezza.api.dto.agendamento.CancelamentoRequest;
+import com.belezza.api.dto.agendamento.ReagendamentoRequest;
 import com.belezza.api.entity.*;
 import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.ResourceNotFoundException;
@@ -14,7 +15,6 @@ import com.belezza.api.repository.HorarioTrabalhoRepository;
 import com.belezza.api.security.TenantContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -29,8 +29,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -426,18 +428,109 @@ class AgendamentoServiceTest {
         }
 
         @Test
-        @Disabled("Regra não implementada: AgendamentoService.cancelar não aplica Salon.cancelamentoMinimoHoras")
-        @DisplayName("Should throw exception when canceling too close to appointment")
+        @DisplayName("Cliente não cancela dentro do prazo mínimo de cancelamento do salão")
         void shouldThrowExceptionWhenCancelingTooClose() {
-            // Given
-            agendamento.setDataHora(LocalDateTime.now().plusMinutes(30)); // Too close
+            // Given: salão exige 2 h; faltam 30 min
+            agendamento.setDataHora(LocalDateTime.now().plusMinutes(30));
             CancelamentoRequest request = new CancelamentoRequest("Motivo teste");
             when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
 
             // When/Then
-            assertThatThrownBy(() -> agendamentoService.cancelar(1L, request))
+            assertThatThrownBy(() -> agendamentoService.cancelar(1L, request, true, true, usuario))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("pelo menos 2 horas de antecedência");
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Link de cancelamento do e-mail segue o mesmo prazo do cliente")
+        void cancelamentoPorLinkDentroDoPrazo() {
+            agendamento.setDataHora(LocalDateTime.now().plusMinutes(30));
+            when(agendamentoRepository.findByTokenConfirmacao("token-123")).thenReturn(Optional.of(agendamento));
+
+            assertThatThrownBy(() -> agendamentoService.cancelarPorToken("token-123", null))
                     .isInstanceOf(BusinessException.class)
                     .hasMessageContaining("antecedência");
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Equipe cancela a qualquer momento (cliente ligou desmarcando)")
+        void equipeCancelaDentroDoPrazo() {
+            agendamento.setDataHora(LocalDateTime.now().plusMinutes(30));
+            Usuario recepcionista = Usuario.builder().id(14L).role(Role.RECEPCIONISTA).build();
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+            when(agendamentoRepository.save(any(Agendamento.class))).thenReturn(agendamento);
+
+            agendamentoService.cancelar(1L, new CancelamentoRequest("Cliente ligou"), false, false, recepcionista);
+
+            assertThat(agendamento.getStatus()).isEqualTo(StatusAgendamento.CANCELADO);
+        }
+
+        @Test
+        @DisplayName("Cliente não reagenda dentro do prazo mínimo de cancelamento")
+        void clienteNaoReagendaDentroDoPrazo() {
+            agendamento.setDataHora(LocalDateTime.now().plusMinutes(30));
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+            ReagendamentoRequest request = new ReagendamentoRequest();
+            request.setNovaDataHora(LocalDateTime.now().plusDays(2).withHour(10).withMinute(0));
+
+            assertThatThrownBy(() -> agendamentoService.reagendar(1L, request, true, true, usuario))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("Só é possível reagendar");
+            verify(agendamentoRepository, never()).save(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("Criar - regras de antecedência do salão")
+    class CriarAntecedenciaTests {
+
+        private final Usuario recepcionista = Usuario.builder().id(14L).role(Role.RECEPCIONISTA).build();
+
+        @BeforeEach
+        void stubs() {
+            when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
+            when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
+            when(servicoService.getServicoEntity(1L)).thenReturn(servico);
+        }
+
+        private AgendamentoRequest em(LocalDateTime dataHora) {
+            return AgendamentoRequest.builder()
+                    .clienteId(1L).profissionalId(1L).servicoId(1L).dataHora(dataHora).build();
+        }
+
+        @Test
+        @DisplayName("Horário antes da antecedência mínima é recusado")
+        void antecedenciaMinima() {
+            salon.setAntecedenciaMinimaHoras(3);
+
+            assertThatThrownBy(() -> agendamentoService.criar(em(LocalDateTime.now().plusHours(1)), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("pelo menos 3 horas de antecedência");
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Salão que não permite agendar no mesmo dia recusa horário de hoje")
+        void mesmoDiaProibido() {
+            salon.setAntecedenciaMinimaHoras(0);
+            salon.setPermiteAgendamentoMesmoDia(false);
+            LocalDateTime hojeMaisTarde = LocalDate.now(ZoneId.of("America/Sao_Paulo")).atTime(23, 59);
+
+            assertThatThrownBy(() -> agendamentoService.criar(em(hojeMaisTarde), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("mesmo dia não é permitido");
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Data além do prazo máximo de antecedência é recusada")
+        void alemDoPrazoMaximo() {
+            assertThatThrownBy(() -> agendamentoService.criar(em(LocalDateTime.now().plusDays(31)), recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("mais de 30 dias de antecedência");
+            verify(agendamentoRepository, never()).save(any());
         }
     }
 
