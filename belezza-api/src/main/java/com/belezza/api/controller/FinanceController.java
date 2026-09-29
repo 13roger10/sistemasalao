@@ -61,14 +61,21 @@ public class FinanceController {
     private final MovimentacaoCaixaRepository movimentacaoCaixaRepository;
 
     /**
-     * Sums approved payments for a salon/period grouped by payment method.
-     * Backs both the current cash register summary and the daily report —
-     * both must reflect real Pagamento rows, never fixed placeholder totals.
+     * Valor recebido no período, por forma, pela mesma regra do caixa: pagamentos do período
+     * (incluindo os estornados depois a partir de outro caixa) + entradas avulsas − estornos
+     * feitos no período. Antes somava só os pagamentos ainda aprovados: ignorava entradas avulsas
+     * e, quando um pagamento era estornado em outro dia, ele sumia do dia em que foi recebido.
      */
-    private Map<FormaPagamento, BigDecimal> sumByForma(Long salonId, LocalDateTime inicio, LocalDateTime fim) {
+    private Map<FormaPagamento, BigDecimal> recebidoPorForma(Long salonId, LocalDateTime inicio, LocalDateTime fim) {
         Map<FormaPagamento, BigDecimal> totals = new EnumMap<>(FormaPagamento.class);
-        for (Object[] row : pagamentoRepository.sumByFormaPagamentoAndPeriod(salonId, inicio, fim)) {
-            totals.put((FormaPagamento) row[0], (BigDecimal) row[2]);
+        for (Object[] row : pagamentoRepository.sumRecebidoByFormaAndPeriod(salonId, inicio, fim)) {
+            totals.merge((FormaPagamento) row[0], (BigDecimal) row[1], BigDecimal::add);
+        }
+        for (Object[] row : movimentacaoCaixaRepository.sumByFormaAndPeriod(salonId, TipoMovimentacaoCaixa.RECEITA, inicio, fim)) {
+            totals.merge((FormaPagamento) row[0], (BigDecimal) row[1], BigDecimal::add);
+        }
+        for (Object[] row : movimentacaoCaixaRepository.sumByFormaAndPeriod(salonId, TipoMovimentacaoCaixa.ESTORNO, inicio, fim)) {
+            totals.merge((FormaPagamento) row[0], ((BigDecimal) row[1]).negate(), BigDecimal::add);
         }
         return totals;
     }
@@ -502,7 +509,7 @@ public class FinanceController {
         LocalDateTime inicio = targetDate.atStartOfDay();
         LocalDateTime fim = targetDate.plusDays(1).atStartOfDay();
 
-        Map<FormaPagamento, BigDecimal> totals = sumByForma(salonId, inicio, fim);
+        Map<FormaPagamento, BigDecimal> totals = recebidoPorForma(salonId, inicio, fim);
         double cashTotal = formaTotal(totals, FormaPagamento.DINHEIRO);
         double pixTotal = formaTotal(totals, FormaPagamento.PIX);
         double creditCardTotal = formaTotal(totals, FormaPagamento.CARTAO_CREDITO);

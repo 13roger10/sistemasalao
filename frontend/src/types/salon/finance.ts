@@ -31,6 +31,8 @@ export interface CashRegister extends Timestamps {
   totalIncome: number;
   totalExpenses: number;
   totalWithdrawals: number;
+  /** Suprimentos (dinheiro colocado na gaveta sem venda) */
+  totalSupplies?: number;
 
   // By payment method
   cashTotal: number;

@@ -28,6 +28,14 @@ public interface MovimentacaoCaixaRepository extends JpaRepository<MovimentacaoC
                                           @Param("inicio") LocalDateTime inicio,
                                           @Param("fim") LocalDateTime fim);
 
+    /** Movimentações de um tipo no período, somadas por forma: [forma, soma]. */
+    @Query("SELECT m.forma, SUM(m.valor) FROM MovimentacaoCaixa m WHERE m.caixa.salon.id = :salonId " +
+           "AND m.tipo = :tipo AND m.criadoEm >= :inicio AND m.criadoEm < :fim GROUP BY m.forma")
+    List<Object[]> sumByFormaAndPeriod(@Param("salonId") Long salonId,
+                                       @Param("tipo") TipoMovimentacaoCaixa tipo,
+                                       @Param("inicio") LocalDateTime inicio,
+                                       @Param("fim") LocalDateTime fim);
+
     @Query("SELECT m.categoria, SUM(m.valor) FROM MovimentacaoCaixa m WHERE m.caixa.salon.id = :salonId " +
            "AND m.tipo = :tipo AND m.criadoEm >= :inicio AND m.criadoEm < :fim GROUP BY m.categoria")
     List<Object[]> sumByCategoriaAndPeriod(@Param("salonId") Long salonId,

@@ -1,6 +1,17 @@
 // Finance Service - API calls for financial management
 
 import { api } from './api';
+
+/**
+ * Data no fuso do navegador (yyyy-MM-dd). toISOString() usa UTC: no Brasil (UTC−3), a partir
+ * das 21h ele já devolve o dia seguinte e o caixa mostrava os valores do dia errado.
+ */
+export function dataLocal(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 import type {
   CashRegister,
   CashRegisterOpenInput,
@@ -148,7 +159,7 @@ export const financeService = {
     // Get daily report
     daily: (date: Date, unitId?: string): Promise<DailyReport> => {
       return api.get<DailyReport>(`${BASE_PATH}/reports/daily`, {
-        date: date.toISOString(),
+        date: dataLocal(date),
         unitId,
       });
     },

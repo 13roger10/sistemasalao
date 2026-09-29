@@ -47,6 +47,23 @@ public interface PagamentoRepository extends JpaRepository<Pagamento, Long> {
         @Param("fim") LocalDateTime fim
     );
 
+    /**
+     * Recebido no período, por forma: pagamentos aprovados e também os estornados depois a partir
+     * de outro caixa (movimentação ESTORNO) — o dinheiro entrou naquele dia e a devolução conta
+     * no dia do estorno, como no caixa. Estorno no mesmo caixa apaga o pagamento do dia.
+     */
+    @Query("SELECT p.forma, SUM(p.valor) FROM Pagamento p " +
+           "WHERE p.salon.id = :salonId AND p.processadoEm >= :inicio AND p.processadoEm < :fim " +
+           "AND (p.status = 'APROVADO' OR (p.status = 'ESTORNADO' AND EXISTS (" +
+           "SELECT m.id FROM MovimentacaoCaixa m WHERE m.pagamentoId = p.id " +
+           "AND m.tipo = com.belezza.api.entity.TipoMovimentacaoCaixa.ESTORNO))) " +
+           "GROUP BY p.forma")
+    List<Object[]> sumRecebidoByFormaAndPeriod(
+        @Param("salonId") Long salonId,
+        @Param("inicio") LocalDateTime inicio,
+        @Param("fim") LocalDateTime fim
+    );
+
     @Query("SELECT p.forma, COUNT(p), SUM(p.valor) FROM Pagamento p " +
            "WHERE p.salon.id = :salonId AND p.status = 'APROVADO' " +
            "AND p.processadoEm BETWEEN :inicio AND :fim " +

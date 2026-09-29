@@ -33,7 +33,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
 import { DataTable, Column, ActionMenuItem } from "@/components/ui/DataTable";
-import { financeService } from "@/services/salon/financeService";
+import { financeService, dataLocal } from "@/services/salon/financeService";
 import { api } from "@/services/salon/api";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import { useToast } from "@/components/ui/Toast";
@@ -522,7 +522,7 @@ export default function FinanceCashPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `caixa_${selectedDate.toISOString().split("T")[0]}.csv`;
+      a.download = `caixa_${dataLocal(selectedDate)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -540,6 +540,15 @@ export default function FinanceCashPage() {
       currentCashRegister.openingBalance + currentCashRegister.cashTotal - currentCashRegister.totalWithdrawals
     );
   }, [currentCashRegister]);
+
+  // Despesas pagas com dinheiro da gaveta (as pagas em PIX/cartão não saem dela): é o que falta
+  // para as linhas do resumo de fechamento somarem o saldo esperado
+  const despesasEmDinheiro = useMemo(() => {
+    if (!currentCashRegister) return 0;
+    const valor = currentCashRegister.openingBalance + currentCashRegister.cashTotal
+      + (currentCashRegister.totalSupplies ?? 0) - currentCashRegister.totalWithdrawals - expectedBalance;
+    return Math.max(0, Math.round(valor * 100) / 100);
+  }, [currentCashRegister, expectedBalance]);
 
   // Calcular totais por forma de pagamento
   const paymentMethodTotals = useMemo(() => {
@@ -645,8 +654,8 @@ export default function FinanceCashPage() {
           <div className="flex items-center gap-2">
             <input
               type="date"
-              value={selectedDate.toISOString().split("T")[0]}
-              onChange={(e) => setSelectedDate(new Date(e.target.value))}
+              value={dataLocal(selectedDate)}
+              onChange={(e) => e.target.value && setSelectedDate(new Date(`${e.target.value}T00:00:00`))}
               className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             />
             {!isRecepcionist && (
@@ -969,9 +978,21 @@ export default function FinanceCashPage() {
                 </span>
               </div>
               <div>
+                <span className="text-gray-500 dark:text-gray-400">Suprimentos:</span>
+                <span className="ml-2 font-medium text-green-600 dark:text-green-400">
+                  +{formatCurrency(currentCashRegister?.totalSupplies || 0)}
+                </span>
+              </div>
+              <div>
                 <span className="text-gray-500 dark:text-gray-400">Sangrias:</span>
                 <span className="ml-2 font-medium text-red-600 dark:text-red-400">
                   -{formatCurrency(currentCashRegister?.totalWithdrawals || 0)}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">Despesas em dinheiro:</span>
+                <span className="ml-2 font-medium text-red-600 dark:text-red-400">
+                  -{formatCurrency(despesasEmDinheiro)}
                 </span>
               </div>
               <div className="border-t pt-2 dark:border-gray-700">
