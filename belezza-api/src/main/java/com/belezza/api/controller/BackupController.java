@@ -3,6 +3,7 @@ package com.belezza.api.controller;
 import com.belezza.api.dto.backup.BackupInfo;
 import com.belezza.api.dto.backup.BackupResponse;
 import com.belezza.api.dto.backup.RestoreRequest;
+import com.belezza.api.entity.Usuario;
 import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.service.BackupService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -10,21 +11,48 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
+/**
+ * Backup do banco INTEIRO (todos os salões). Antes bastava o papel ADMIN — que é o dono de cada
+ * salão —, então qualquer salão podia baixar a lista, apagar backups ou restaurar um backup antigo
+ * por cima dos dados de todos. Agora só os operadores da plataforma listados em
+ * {@code belezza.backup.operadores} (e-mails separados por vírgula) acessam; vazio = ninguém pela API.
+ * O backup automático diário (BackupScheduler) não depende destas rotas.
+ */
 @RestController
 @RequestMapping("/api/backup")
 @RequiredArgsConstructor
 @Slf4j
-@Tag(name = "Backup", description = "Gerenciamento de backups do banco de dados")
+@Tag(name = "Backup", description = "Gerenciamento de backups do banco de dados (operadores da plataforma)")
 public class BackupController {
 
     private final BackupService backupService;
+
+    @Value("${belezza.backup.operadores:}")
+    private String operadores;
+
+    @ModelAttribute
+    void exigirOperadorDaPlataforma(@AuthenticationPrincipal Usuario usuario) {
+        Set<String> permitidos = Arrays.stream(operadores.split(","))
+                .map(String::trim).map(String::toLowerCase).filter(s -> !s.isEmpty())
+                .collect(Collectors.toSet());
+        if (usuario == null || !permitidos.contains(usuario.getEmail().toLowerCase())) {
+            log.warn("Acesso negado ao backup do banco: {}", usuario != null ? usuario.getEmail() : "anonimo");
+            throw new AccessDeniedException("Acesso negado: backup do banco é restrito aos operadores da plataforma");
+        }
+    }
 
     @PostMapping
     @AdminOnly

@@ -287,6 +287,9 @@ belezza:
     pg-dump-path: ${PG_DUMP_PATH:pg_dump}
     schedule: ${BACKUP_SCHEDULE:0 0 3 * * ?}  # Every day at 3:00 AM
     cleanup-schedule: ${BACKUP_CLEANUP_SCHEDULE:0 0 4 ? * SUN}  # Every Sunday at 4:00 AM
+    # E-mails (separados por vírgula) dos operadores da plataforma que podem usar /api/backup.
+    # O backup é do banco inteiro (todos os salões): vazio = ninguém acessa pela API.
+    operadores: ${BACKUP_OPERADORES:}
 
   # Plan Limits Configuration
   plans:

@@ -145,12 +145,28 @@ public class BackupService {
     /**
      * Restore database from a backup file.
      */
+    /**
+     * Arquivo de backup dentro do diretório de backups. Antes o nome recebido era juntado direto ao
+     * diretório: "../../qualquer-arquivo" apagava ou restaurava arquivos fora dele (path traversal).
+     */
+    private Path arquivoDeBackup(String filename) {
+        if (filename == null || !filename.matches("belezza_backup_[A-Za-z0-9_.-]+")) {
+            throw new BusinessException("Nome de arquivo de backup invalido");
+        }
+        Path diretorio = Paths.get(backupDirectory).toAbsolutePath().normalize();
+        Path arquivo = diretorio.resolve(filename).normalize();
+        if (!arquivo.getParent().equals(diretorio)) {
+            throw new BusinessException("Nome de arquivo de backup invalido");
+        }
+        return arquivo;
+    }
+
     public BackupResponse restaurarBackup(String filename) {
         log.info("Iniciando restauracao do backup: {}", filename);
         long startTime = System.currentTimeMillis();
 
         try {
-            Path backupPath = Paths.get(backupDirectory, filename);
+            Path backupPath = arquivoDeBackup(filename);
 
             if (!Files.exists(backupPath)) {
                 throw new BusinessException("Arquivo de backup nao encontrado: " + filename);
@@ -248,7 +264,7 @@ public class BackupService {
      */
     public boolean deletarBackup(String filename) {
         try {
-            Path backupPath = Paths.get(backupDirectory, filename);
+            Path backupPath = arquivoDeBackup(filename);
 
             if (!Files.exists(backupPath)) {
                 throw new BusinessException("Arquivo de backup nao encontrado: " + filename);
