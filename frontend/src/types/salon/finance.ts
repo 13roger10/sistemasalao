@@ -270,12 +270,21 @@ export interface MonthlyReport {
     appointments: number;
   }[];
 
-  topClients: {
+  topClients?: {
     clientId: ID;
     clientName: string;
     spent: number;
     visits: number;
   }[];
+
+  /** Recebido no mês por forma de pagamento (mesma regra do caixa) */
+  paymentMethods?: {
+    cash: number;
+    pix: number;
+    creditCard: number;
+    debitCard: number;
+    voucher: number;
+  };
 }
 
 export interface FinanceStats {

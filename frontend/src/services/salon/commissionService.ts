@@ -32,6 +32,7 @@ const mapComissaoToFrontend = (c: Record<string, unknown>): Commission => ({
   status: (c.status as string) === 'PAGA' ? 'paid' : (c.status as string) === 'CANCELADA' ? 'canceled' : 'pending',
   appointmentDate: c.dataAgendamento ? new Date(c.dataAgendamento as string) : new Date(),
   unitId: String(c.salonId),
+  payoutId: c.pagamentoProfissionalId ? String(c.pagamentoProfissionalId) : undefined,
   createdAt: c.criadoEm ? new Date(c.criadoEm as string) : new Date(),
   updatedAt: c.criadoEm ? new Date(c.criadoEm as string) : new Date(),
 });
@@ -268,14 +269,15 @@ export const commissionService = {
     };
   },
 
-  // GET /api/comissoes/salon/{id} — listagem geral para ADMIN/RECEPCIONIST
+  // GET /api/comissoes/salon/{id} — listagem geral para ADMIN/RECEPCIONIST. Mais recentes primeiro:
+  // a ordem padrão do backend é crescente, e com o limite de itens as comissões novas ficavam de fora.
   listBySalon: async (
     salonId: string,
     params: { page?: number; size?: number } = {}
   ): Promise<PaginatedResponse<Commission>> => {
     const response = await api.get<{ content: Record<string, unknown>[], totalElements: number, totalPages: number, number: number }>(
       `/comissoes/salon/${salonId}`,
-      { page: (params.page || 1) - 1, size: params.size || 100 }
+      { page: (params.page || 1) - 1, size: params.size || 500, sort: 'criadoEm,desc' }
     );
     const commissions = (response.content || []).map(mapComissaoToFrontend);
     return {
@@ -283,6 +285,25 @@ export const commissionService = {
       items: commissions,
       meta: { total: response.totalElements || commissions.length, page: (response.number || 0) + 1, limit: params.size || 100, totalPages: response.totalPages || 1, hasNextPage: false, hasPrevPage: false },
     };
+  },
+
+  // === REPASSE AO PROFISSIONAL (/api/pagamentos-profissional) ===
+  // O repasse junta todas as comissões pendentes do profissional no período (não uma comissão avulsa)
+  // e só vira "pago" quando o salão confirma com a forma e a referência da transferência.
+  payouts: {
+    gerar: (salonId: string, data: { professionalId: string; periodStart: string; periodEnd: string; notes?: string }) =>
+      api.post<{ id: number; valorTotalComissoes: number; totalServicos: number }>(`/pagamentos-profissional/salon/${salonId}`, {
+        profissionalId: Number(data.professionalId),
+        periodoInicio: data.periodStart,
+        periodoFim: data.periodEnd,
+        observacoes: data.notes || undefined,
+      }),
+    confirmar: (payoutId: string | number, data: { paymentMethod: string; reference: string; notes?: string }) =>
+      api.post(`/pagamentos-profissional/${payoutId}/confirmar`, {
+        formaPagamento: data.paymentMethod,
+        referenciaTransacao: data.reference,
+        observacoes: data.notes || undefined,
+      }),
   },
 
   // Calculate commission for a service

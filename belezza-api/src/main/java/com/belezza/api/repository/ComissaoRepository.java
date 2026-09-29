@@ -122,6 +122,11 @@ public interface ComissaoRepository extends JpaRepository<Comissao, Long> {
     );
 
     // Dashboard: Total geral de comissões no período
+    /** Comissões calculadas e ainda não pagas ao profissional (a pagar). */
+    @Query("SELECT COALESCE(SUM(c.valorComissao), 0) FROM Comissao c WHERE c.salon.id = :salonId " +
+           "AND c.status = com.belezza.api.entity.StatusComissao.CALCULADA")
+    BigDecimal sumPendentesBySalonId(@Param("salonId") Long salonId);
+
     @Query("SELECT SUM(c.valorComissao) FROM Comissao c " +
            "WHERE c.salon.id = :salonId " +
            "AND c.criadoEm BETWEEN :inicio AND :fim")

@@ -26,6 +26,8 @@ export interface Commission extends Timestamps {
   paidAt?: Date;
   paidById?: ID;
   paidByName?: string;
+  /** Repasse ao profissional em que a comissão já entrou (ainda pendente enquanto não confirmado) */
+  payoutId?: ID;
 
   // Date
   appointmentDate: Date;

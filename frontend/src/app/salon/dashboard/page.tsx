@@ -9,8 +9,13 @@ import { appointmentService } from "@/services/salon/appointmentService";
 import { commissionService } from "@/services/salon/commissionService";
 import { reviewService } from "@/services/salon/reviewService";
 import { dashboardService } from "@/services/salon/dashboardService";
+import { financeService, dataLocal } from "@/services/salon/financeService";
+import { serviceService } from "@/services/salon/serviceService";
+import { clientService } from "@/services/salon/clientService";
+import { useUnit } from "@/contexts/UnitContext";
 import { api } from "@/services/salon/api";
-import type { Appointment } from "@/types/salon";
+import type { Appointment, FinanceStats } from "@/types/salon";
+import type { Client } from "@/types/salon/client";
 import type { DashboardData } from "@/types/salon/dashboard";
 import {
   Calendar,
@@ -72,48 +77,110 @@ interface AvailableSlot {
 interface NewClient {
   month: string;
   count: number;
-  returning: number;
 }
 
-// ===== MOCK DATA =====
-const generateRevenueData = (): DailyRevenue[] => {
-  const today = new Date();
-  const data: DailyRevenue[] = [];
-
-  for (let i = 6; i >= 0; i--) {
-    const date = new Date(today);
-    date.setDate(date.getDate() - i);
-    const dayNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-
-    data.push({
-      date: date.toISOString().split("T")[0],
-      label: i === 0 ? "Hoje" : i === 1 ? "Ontem" : dayNames[date.getDay()],
-      revenue: Math.floor(Math.random() * 2000) + 1500,
-      appointments: Math.floor(Math.random() * 15) + 8,
-    });
-  }
-
-  return data;
-};
-
-const availableSlots: AvailableSlot[] = [
-  { professionalId: "1", professionalName: "Ana", slots: 3, totalSlots: 8 },
-  { professionalId: "2", professionalName: "Carlos", slots: 5, totalSlots: 10 },
-  { professionalId: "3", professionalName: "Juliana", slots: 2, totalSlots: 8 },
-  { professionalId: "4", professionalName: "Roberto", slots: 6, totalSlots: 8 },
-  { professionalId: "5", professionalName: "Fernanda", slots: 4, totalSlots: 6 },
-];
-
 const SERVICE_COLORS = ["#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ec4899", "#6b7280", "#3b82f6", "#ef4444"];
+const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
-const newClientsData: NewClient[] = [
-  { month: "Jul", count: 28, returning: 45 },
-  { month: "Ago", count: 35, returning: 52 },
-  { month: "Set", count: 42, returning: 48 },
-  { month: "Out", count: 38, returning: 55 },
-  { month: "Nov", count: 48, returning: 62 },
-  { month: "Dez", count: 55, returning: 70 },
-];
+/**
+ * Faturamento e atendimentos dos últimos 7 dias, pelo relatório diário (mesma regra do caixa).
+ * Antes o gráfico usava valores aleatórios a cada carregamento.
+ */
+async function carregarUltimos7Dias(unitId?: string): Promise<DailyRevenue[]> {
+  const dias = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d;
+  });
+  const relatorios = await Promise.all(dias.map((d) => financeService.reports.daily(d, unitId)));
+  return dias.map((d, i) => ({
+    date: dataLocal(d),
+    label: i === 6 ? "Hoje" : i === 5 ? "Ontem" : DIAS_SEMANA[d.getDay()],
+    revenue: relatorios[i].revenue.total,
+    appointments: relatorios[i].appointments.total - relatorios[i].appointments.canceled,
+  }));
+}
+
+/** Faturamento de cada dia do mês atual, pelo relatório mensal. */
+async function carregarMesAtual(unitId?: string): Promise<DailyRevenue[]> {
+  const hoje = new Date();
+  const relatorio = await financeService.reports.monthly(hoje.getMonth() + 1, hoje.getFullYear(), unitId);
+  return relatorio.revenue.byDay
+    .filter((d) => d.date <= dataLocal(hoje))
+    .map((d) => ({ date: d.date, label: String(Number(d.date.slice(8, 10))), revenue: d.amount, appointments: 0 }));
+}
+
+/**
+ * Horários livres hoje por profissional, pelo mesmo cálculo da tela de horários livres (expediente,
+ * intervalos, bloqueios, agendamentos e antecedência). Usa o serviço mais curto do salão, que é o
+ * que ocupa a menor fatia da agenda.
+ */
+async function carregarHorariosHoje(unitId?: string): Promise<AvailableSlot[]> {
+  const servicos = (await serviceService.getAll({ salonId: unitId })).filter((s) => s.status !== "inactive");
+  if (servicos.length === 0) return [];
+  const maisCurto = servicos.reduce((a, b) => (a.durationMinutes <= b.durationMinutes ? a : b));
+  const disponibilidade = await appointmentService.checkAvailability({
+    date: new Date(),
+    serviceIds: [maisCurto.id],
+    unitId: unitId ?? "",
+  });
+  return disponibilidade.professionals
+    .filter((p) => p.slots.length > 0)
+    .map((p) => ({
+      professionalId: p.professionalId,
+      professionalName: p.professionalName.split(" ")[0],
+      slots: p.slots.filter((s) => s.available).length,
+      totalSlots: p.slots.length,
+    }));
+}
+
+/** Clientes cadastrados em cada um dos últimos 6 meses. */
+function contarClientesNovos(clientes: Client[]): NewClient[] {
+  const hoje = new Date();
+  return Array.from({ length: 6 }, (_, i) => {
+    const mes = new Date(hoje.getFullYear(), hoje.getMonth() - (5 - i), 1);
+    const count = clientes.filter((c) => {
+      if (!c.createdAt) return false;
+      const criado = new Date(c.createdAt);
+      return criado.getFullYear() === mes.getFullYear() && criado.getMonth() === mes.getMonth();
+    }).length;
+    return { month: MESES[mes.getMonth()], count };
+  });
+}
+
+/** Clientes com aniversário nos próximos 7 dias (hoje incluído). */
+function aniversariantesDaSemana(clientes: Client[]): Client[] {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  return clientes.filter((c) => {
+    if (!c.birthDate) return false;
+    // data de nascimento vem como "yyyy-MM-dd": lê dia e mês sem passar por UTC
+    const [, mes, dia] = String(c.birthDate).slice(0, 10).split("-").map(Number);
+    const aniversario = new Date(hoje.getFullYear(), mes - 1, dia);
+    if (aniversario < hoje) aniversario.setFullYear(hoje.getFullYear() + 1);
+    return (aniversario.getTime() - hoje.getTime()) / 864e5 < 7;
+  });
+}
+
+interface ProximoAgendamento {
+  id: number;
+  clienteNome: string;
+  profissionalNome: string;
+  servicos: string[];
+  dataHora: string;
+  status: string;
+}
+
+/** Próximos agendamentos de hoje (pendentes e confirmados que ainda não começaram). */
+async function carregarProximosHoje(unitId: string): Promise<ProximoAgendamento[]> {
+  const lista = await api.get<ProximoAgendamento[]>(`/recepcao/appointments?date=${dataLocal(new Date())}&salonId=${unitId}`);
+  const agora = Date.now();
+  return (Array.isArray(lista) ? lista : [])
+    .filter((a) => ["PENDENTE", "CONFIRMADO"].includes(a.status) && new Date(a.dataHora).getTime() >= agora)
+    .sort((a, b) => a.dataHora.localeCompare(b.dataHora))
+    .slice(0, 5);
+}
 
 // ===== COMPONENTES AUXILIARES =====
 interface StatCardProps {
@@ -656,8 +723,35 @@ function AdminDashboard() {
     };
   }, []);
 
-  // Mock data with useMemo (usado apenas para o grafico de 7 dias, ainda sem endpoint diario granular)
-  const revenueData = useMemo(() => generateRevenueData(), []);
+  // Gráficos com dados reais: últimos 7 dias (relatório diário), mês atual, horários livres hoje
+  // e clientes novos por mês. Cada um carrega por conta própria; se falhar, fica vazio.
+  const { selectedUnitId } = useUnit();
+  const unitId = selectedUnitId ?? undefined;
+  const [ultimos7Dias, setUltimos7Dias] = useState<DailyRevenue[]>([]);
+  const [mesAtual, setMesAtual] = useState<DailyRevenue[]>([]);
+  const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
+  const [clientes, setClientes] = useState<Client[]>([]);
+  const [upcomingAppointments, setUpcomingAppointments] = useState<ProximoAgendamento[]>([]);
+  const [financeStats, setFinanceStats] = useState<FinanceStats | null>(null);
+
+  useEffect(() => {
+    if (!unitId) return;
+    let cancelled = false;
+    const carregar = <T,>(fn: () => Promise<T>, set: (v: T) => void, nome: string) =>
+      fn().then((v) => { if (!cancelled) set(v); })
+        .catch((error) => console.error(`Erro ao carregar ${nome}:`, error));
+    carregar(() => carregarUltimos7Dias(unitId), setUltimos7Dias, "faturamento dos últimos 7 dias");
+    carregar(() => carregarMesAtual(unitId), setMesAtual, "faturamento do mês");
+    carregar(() => carregarHorariosHoje(unitId), setAvailableSlots, "horários livres");
+    carregar(() => clientService.list({ salonId: unitId }).then((r) => r.data), setClientes, "clientes");
+    carregar(() => carregarProximosHoje(unitId), setUpcomingAppointments, "próximos agendamentos");
+    carregar(() => financeService.getStats(unitId), setFinanceStats, "resumo financeiro");
+    return () => { cancelled = true; };
+  }, [unitId]);
+
+  const newClientsData = useMemo(() => contarClientesNovos(clientes), [clientes]);
+
+  const revenueData = revenueFilter === "month" ? mesAtual : ultimos7Dias;
 
   // Faturamento de hoje: dado real (Pagamento), com variacao vs ontem calculada no backend
   const todayRevenue = todayData?.faturamento.valorTotal ?? 0;
@@ -676,10 +770,11 @@ function AdminDashboard() {
 
   const totalAvailableSlots = availableSlots.reduce((sum, p) => sum + p.slots, 0);
   const totalSlots = availableSlots.reduce((sum, p) => sum + p.totalSlots, 0);
-  const occupancyRate = Math.round(((totalSlots - totalAvailableSlots) / totalSlots) * 100);
+  const occupancyRate = totalSlots > 0 ? Math.round(((totalSlots - totalAvailableSlots) / totalSlots) * 100) : 0;
 
-  const weeklyRevenue = revenueData.reduce((sum, day) => sum + day.revenue, 0);
-  const weeklyAppointments = revenueData.reduce((sum, day) => sum + day.appointments, 0);
+  // Destaque "esta semana": sempre os últimos 7 dias, qualquer que seja o filtro do gráfico
+  const weeklyRevenue = ultimos7Dias.reduce((sum, day) => sum + day.revenue, 0);
+  const weeklyAppointments = ultimos7Dias.reduce((sum, day) => sum + day.appointments, 0);
 
   // Serviços mais vendidos: dado real, com cores atribuídas por posição
   const servicosChartData = (dashboardData?.servicosMaisVendidos ?? []).map((servico, index) => ({
@@ -693,19 +788,28 @@ function AdminDashboard() {
   // Ranking de profissionais: dado real, incluindo comissão acumulada
   const rankingChartData = dashboardData?.rankingProfissionais ?? [];
 
-  const upcomingAppointments = [
-    { id: 1, client: "João Silva", service: "Corte Masculino", time: "09:00", professional: "Carlos Barbeiro", status: "confirmed" },
-    { id: 2, client: "Maria Santos", service: "Coloração", time: "10:30", professional: "Ana Cabeleireira", status: "pending" },
-    { id: 3, client: "Pedro Oliveira", service: "Barba", time: "11:00", professional: "Carlos Barbeiro", status: "confirmed" },
-    { id: 4, client: "Lucia Costa", service: "Corte + Escova", time: "14:00", professional: "Juliana Stylist", status: "confirmed" },
-  ];
-
-  const alerts = [
-    { type: "warning", message: "3 clientes com aniversário esta semana", icon: Users },
-    { type: "info", message: "Estoque de pomada modeladora baixo", icon: AlertCircle },
-    { type: "success", message: "Meta semanal atingida: R$ 15.000", icon: Target },
-    { type: "warning", message: "5 horários vagos hoje à tarde", icon: Clock },
-  ];
+  // Alertas a partir de dados reais (antes eram 4 frases fixas, iguais para todo salão)
+  const alerts = useMemo(() => {
+    const lista: { type: string; message: string; icon: typeof Users }[] = [];
+    const aniversariantes = aniversariantesDaSemana(clientes).length;
+    if (aniversariantes > 0) {
+      lista.push({ type: "warning", icon: Users,
+        message: `${aniversariantes} cliente${aniversariantes > 1 ? "s" : ""} com aniversário nos próximos 7 dias` });
+    }
+    const meta = financeStats?.month.revenueTarget ?? 0;
+    if (financeStats && meta > 0) {
+      const progresso = financeStats.month.targetProgress ?? 0;
+      lista.push({ type: progresso >= 100 ? "success" : "info", icon: Target,
+        message: progresso >= 100
+          ? `Meta do mês atingida: R$ ${meta.toLocaleString("pt-BR")}`
+          : `Meta do mês: ${progresso.toFixed(0)}% de R$ ${meta.toLocaleString("pt-BR")}` });
+    }
+    if (totalAvailableSlots > 0) {
+      lista.push({ type: "warning", icon: Clock,
+        message: `${totalAvailableSlots} horário${totalAvailableSlots > 1 ? "s" : ""} livre${totalAvailableSlots > 1 ? "s" : ""} hoje` });
+    }
+    return lista;
+  }, [clientes, financeStats, totalAvailableSlots]);
 
   return (
     <SalonLayout pageTitle="Dashboard" requiredRole={["ADMIN"]}>
@@ -786,7 +890,7 @@ function AdminDashboard() {
           <Can permission="finance.view">
             <ChartCard
               title="Faturamento Diário"
-              subtitle="Últimos 7 dias"
+              subtitle={revenueFilter === "month" ? "Mês atual" : "Últimos 7 dias"}
               action={
                 <select
                   value={revenueFilter}
@@ -892,8 +996,8 @@ function AdminDashboard() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Clientes Novos Chart */}
           <ChartCard
-            title="Clientes Novos vs Recorrentes"
-            subtitle="Últimos 6 meses"
+            title="Clientes Novos"
+            subtitle="Cadastrados nos últimos 6 meses"
           >
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%" minHeight={200}>
@@ -909,17 +1013,10 @@ function AdminDashboard() {
                     axisLine={{ stroke: "#e5e7eb" }}
                   />
                   <Tooltip content={<CustomTooltip />} />
-                  <Legend />
                   <Bar
                     dataKey="count"
                     name="Novos"
                     fill="#8b5cf6"
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Bar
-                    dataKey="returning"
-                    name="Recorrentes"
-                    fill="#06b6d4"
                     radius={[4, 4, 0, 0]}
                   />
                 </BarChart>
@@ -1052,32 +1149,37 @@ function AdminDashboard() {
               </div>
             </div>
             <div className="divide-y dark:divide-gray-700">
+              {upcomingAppointments.length === 0 && (
+                <p className="p-4 text-sm text-gray-500 dark:text-gray-400">
+                  Nenhum agendamento pendente ou confirmado para o resto do dia.
+                </p>
+              )}
               {upcomingAppointments.map((appointment) => (
                 <div key={appointment.id} className="flex items-center justify-between p-4">
                   <div className="flex items-center gap-4">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-100 text-sm font-semibold text-violet-600 dark:bg-violet-900/30 dark:text-violet-400">
-                      {appointment.client.charAt(0)}
+                      {(appointment.clienteNome || "?").charAt(0)}
                     </div>
                     <div>
                       <p className="font-medium text-gray-900 dark:text-white">
-                        {appointment.client}
+                        {appointment.clienteNome}
                       </p>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {appointment.service} - {appointment.professional}
+                        {(appointment.servicos ?? []).join(" + ")} - {appointment.profissionalNome}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-medium text-gray-900 dark:text-white">
-                      {appointment.time}
+                      {appointment.dataHora.slice(11, 16)}
                     </span>
                     <span className={cn(
                       "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium",
-                      appointment.status === "confirmed"
+                      appointment.status === "CONFIRMADO"
                         ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
                         : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
                     )}>
-                      {appointment.status === "confirmed" ? "Confirmado" : "Pendente"}
+                      {appointment.status === "CONFIRMADO" ? "Confirmado" : "Pendente"}
                     </span>
                   </div>
                 </div>
@@ -1105,6 +1207,9 @@ function AdminDashboard() {
             </div>
           </div>
           <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">
+            {alerts.length === 0 && (
+              <p className="text-sm text-gray-500 dark:text-gray-400">Nenhum alerta no momento.</p>
+            )}
             {alerts.map((alert, index) => {
               const Icon = alert.icon;
               return (
@@ -1172,15 +1277,19 @@ const STATUS_PAG: Record<string, { label: string; cls: string }> = {
 
 function ReceptionistDashboard() {
   const { user } = useSalonAuth();
+  const { selectedUnitId } = useUnit();
   const [appointments, setAppointments] = useState<ReceptionAppointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const load = useCallback(async () => {
+    if (!selectedUnitId) return;
     setIsLoading(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      // Data local (toISOString usa UTC e depois das 21h já mostrava o dia seguinte) e o salão do
+      // usuário (antes era sempre o salão 1)
+      const today = dataLocal(new Date());
       const resp = await api.get<ReceptionAppointment[] | { data?: ReceptionAppointment[]; content?: ReceptionAppointment[] }>(
-        `/recepcao/appointments?date=${today}&salonId=1`
+        `/recepcao/appointments?date=${today}&salonId=${selectedUnitId}`
       );
       const list = Array.isArray(resp)
         ? resp
@@ -1193,7 +1302,7 @@ function ReceptionistDashboard() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [selectedUnitId]);
 
   useEffect(() => { load(); }, [load]);
 

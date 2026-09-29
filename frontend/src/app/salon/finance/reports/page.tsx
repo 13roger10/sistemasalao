@@ -6,7 +6,6 @@ import {
   TrendingUp,
   TrendingDown,
   Calendar,
-  Download,
   Filter,
   RefreshCw,
   ChevronLeft,
@@ -23,10 +22,6 @@ import {
   ArrowDownRight,
   FileSpreadsheet,
   Printer,
-  History,
-  Database,
-  CheckCircle,
-  Clock,
 } from "lucide-react";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { Button } from "@/components/ui/Button";
@@ -34,15 +29,6 @@ import { Modal } from "@/components/ui/Modal";
 import { financeService } from "@/services/salon/financeService";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import type { MonthlyReport, FinanceStats } from "@/types/salon";
-
-// ===== TIPOS =====
-interface BackupInfo {
-  id: string;
-  date: Date;
-  size: string;
-  status: "completed" | "in_progress" | "failed";
-  type: "automatic" | "manual";
-}
 
 // ===== COMPONENTES AUXILIARES =====
 
@@ -155,17 +141,16 @@ export default function FinanceReportsPage() {
   const { user } = useSalonAuth();
 
   // Estados principais
-  const [activeTab, setActiveTab] = useState<"overview" | "professional" | "service" | "payment" | "backup">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "professional" | "service" | "payment">("overview");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [monthlyReport, setMonthlyReport] = useState<MonthlyReport | null>(null);
   const [stats, setStats] = useState<FinanceStats | null>(null);
-  const [backups, setBackups] = useState<BackupInfo[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Estados de loading
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
-  const [isBackingUp, setIsBackingUp] = useState(false);
 
   // Funções de formatação
   const formatCurrency = (value: number) => {
@@ -173,16 +158,6 @@ export default function FinanceReportsPage() {
       style: "currency",
       currency: "BRL",
     }).format(value);
-  };
-
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString("pt-BR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
   };
 
   const getMonthName = (month: number) => {
@@ -218,109 +193,13 @@ export default function FinanceReportsPage() {
       ]);
       setMonthlyReport(report);
       setStats(financeStats);
+      setLoadError(null);
     } catch (error) {
       console.error("Erro ao carregar relatórios:", error);
-
-      // Mock data
-      const mockReport: MonthlyReport = {
-        month: selectedMonth + 1,
-        year: selectedYear,
-        revenue: {
-          total: 45750,
-          byWeek: [10500, 12300, 11200, 11750],
-          byDay: Array.from({ length: 30 }, (_, i) => ({
-            date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`,
-            amount: 1200 + Math.random() * 800,
-          })),
-          comparison: {
-            previousMonth: 42000,
-            percentageChange: 8.9,
-          },
-        },
-        expenses: {
-          total: 12500,
-          byCategory: [
-            { categoryId: "1", categoryName: "Produtos", amount: 5000, percentage: 40 },
-            { categoryId: "2", categoryName: "Aluguel", amount: 3500, percentage: 28 },
-            { categoryId: "3", categoryName: "Contas", amount: 2000, percentage: 16 },
-            { categoryId: "4", categoryName: "Marketing", amount: 1500, percentage: 12 },
-            { categoryId: "5", categoryName: "Outros", amount: 500, percentage: 4 },
-          ],
-          comparison: {
-            previousMonth: 11800,
-            percentageChange: 5.9,
-          },
-        },
-        profit: {
-          total: 33250,
-          margin: 72.7,
-          comparison: {
-            previousMonth: 30200,
-            percentageChange: 10.1,
-          },
-        },
-        appointments: {
-          total: 320,
-          averagePerDay: 10.7,
-          completionRate: 92,
-        },
-        topServices: [
-          { serviceId: "1", serviceName: "Corte Masculino", revenue: 12500, count: 250 },
-          { serviceId: "2", serviceName: "Coloração", revenue: 9800, count: 65 },
-          { serviceId: "3", serviceName: "Corte + Barba", revenue: 8750, count: 125 },
-          { serviceId: "4", serviceName: "Barba", revenue: 5200, count: 148 },
-          { serviceId: "5", serviceName: "Limpeza de Pele", revenue: 4800, count: 40 },
-        ],
-        topProfessionals: [
-          { professionalId: "1", professionalName: "Carlos", revenue: 15200, appointments: 120 },
-          { professionalId: "2", professionalName: "Ana", revenue: 12800, appointments: 85 },
-          { professionalId: "3", professionalName: "Roberto", revenue: 10500, appointments: 95 },
-          { professionalId: "4", professionalName: "Juliana", revenue: 7250, appointments: 60 },
-        ],
-        topClients: [
-          { clientId: "1", clientName: "João Silva", spent: 850, visits: 8 },
-          { clientId: "2", clientName: "Maria Santos", spent: 720, visits: 4 },
-          { clientId: "3", clientName: "Pedro Oliveira", spent: 680, visits: 6 },
-          { clientId: "4", clientName: "Lucia Costa", spent: 550, visits: 5 },
-          { clientId: "5", clientName: "Carlos Mendes", spent: 480, visits: 4 },
-        ],
-      };
-      setMonthlyReport(mockReport);
-
-      const mockStats: FinanceStats = {
-        today: {
-          revenue: 1850,
-          expenses: 150,
-          profit: 1700,
-          appointments: 12,
-          averageTicket: 154.17,
-        },
-        week: {
-          revenue: 8500,
-          expenses: 800,
-          profit: 7700,
-        },
-        month: {
-          revenue: 45750,
-          expenses: 12500,
-          profit: 33250,
-          revenueTarget: 50000,
-          targetProgress: 91.5,
-        },
-        pendingExpenses: 2500,
-        pendingCommissions: 3800,
-      };
-      setStats(mockStats);
-
-      // Mock backups
-      const mockBackups: BackupInfo[] = [
-        { id: "1", date: new Date(), size: "125 MB", status: "completed", type: "automatic" },
-        { id: "2", date: new Date(Date.now() - 24 * 60 * 60 * 1000), size: "123 MB", status: "completed", type: "automatic" },
-        { id: "3", date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), size: "121 MB", status: "completed", type: "automatic" },
-        { id: "4", date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), size: "120 MB", status: "completed", type: "manual" },
-        { id: "5", date: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000), size: "118 MB", status: "completed", type: "automatic" },
-      ];
-      setBackups(mockBackups);
+      // Sem dados de exemplo: antes, qualquer falha mostrava números inventados como se fossem reais
+      setMonthlyReport(null);
+      setStats(null);
+      setLoadError(error instanceof Error ? error.message.replace(/^\[HTTP \d+\]\s*/, "") : "Tente novamente.");
     } finally {
       setIsLoading(false);
     }
@@ -344,7 +223,7 @@ export default function FinanceReportsPage() {
         lucro: monthlyReport.profit.total,
         margemLucro: monthlyReport.profit.margin,
         atendimentos: monthlyReport.appointments.total,
-        ticketMedio: monthlyReport.revenue.total / monthlyReport.appointments.total,
+        ticketMedio: monthlyReport.appointments.total > 0 ? monthlyReport.revenue.total / monthlyReport.appointments.total : 0,
         topServicos: monthlyReport.topServices,
         topProfissionais: monthlyReport.topProfessionals,
       };
@@ -397,36 +276,19 @@ export default function FinanceReportsPage() {
     }
   };
 
-  // Criar backup manual
-  const handleBackup = async () => {
-    setIsBackingUp(true);
-    try {
-      // Simular backup
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      const newBackup: BackupInfo = {
-        id: Date.now().toString(),
-        date: new Date(),
-        size: "126 MB",
-        status: "completed",
-        type: "manual",
-      };
-      setBackups([newBackup, ...backups]);
-    } catch (error) {
-      console.error("Erro ao criar backup:", error);
-    } finally {
-      setIsBackingUp(false);
-    }
-  };
-
-  // Calcular totais por forma de pagamento (mock)
+  // Recebido no mês por forma de pagamento, vindo do backend (antes era uma divisão fixa
+  // 35/30/20/12/3% do faturamento, igual para todo salão e todo mês)
   const paymentMethodTotals = useMemo(() => {
-    if (!monthlyReport) return null;
+    const formas = monthlyReport?.paymentMethods;
+    if (!formas) return null;
+    const total = formas.cash + formas.pix + formas.creditCard + formas.debitCard + formas.voucher;
+    const item = (value: number) => ({ value, percentage: total > 0 ? (value / total) * 100 : 0 });
     return {
-      cash: { value: monthlyReport.revenue.total * 0.35, percentage: 35 },
-      pix: { value: monthlyReport.revenue.total * 0.30, percentage: 30 },
-      creditCard: { value: monthlyReport.revenue.total * 0.20, percentage: 20 },
-      debitCard: { value: monthlyReport.revenue.total * 0.12, percentage: 12 },
-      voucher: { value: monthlyReport.revenue.total * 0.03, percentage: 3 },
+      cash: item(formas.cash),
+      pix: item(formas.pix),
+      creditCard: item(formas.creditCard),
+      debitCard: item(formas.debitCard),
+      voucher: item(formas.voucher),
     };
   }, [monthlyReport]);
 
@@ -491,11 +353,19 @@ export default function FinanceReportsPage() {
             { id: "professional", label: "Por Profissional", icon: <Users className="h-4 w-4" /> },
             { id: "service", label: "Por Serviço", icon: <Scissors className="h-4 w-4" /> },
             { id: "payment", label: "Por Pagamento", icon: <CreditCard className="h-4 w-4" /> },
-            { id: "backup", label: "Backup", icon: <Database className="h-4 w-4" /> },
           ]}
           activeTab={activeTab}
           onChange={(id) => setActiveTab(id as typeof activeTab)}
         />
+
+        {loadError && (
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300">
+            <span>Não foi possível carregar o relatório: {loadError}</span>
+            <Button variant="secondary" size="sm" onClick={loadData} leftIcon={<RefreshCw className="h-4 w-4" />}>
+              Tentar novamente
+            </Button>
+          </div>
+        )}
 
         {/* Tab: Visão Geral */}
         {activeTab === "overview" && monthlyReport && (
@@ -544,7 +414,7 @@ export default function FinanceReportsPage() {
             </div>
 
             {/* Meta de Faturamento */}
-            {stats?.month.revenueTarget && (
+            {stats && (stats.month.revenueTarget ?? 0) > 0 && (
               <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -562,7 +432,7 @@ export default function FinanceReportsPage() {
                 </div>
                 <div className="mt-2 flex justify-between text-sm text-gray-500 dark:text-gray-400">
                   <span>Atual: {formatCurrency(stats.month.revenue)}</span>
-                  <span>Meta: {formatCurrency(stats.month.revenueTarget)}</span>
+                  <span>Meta: {formatCurrency(stats.month.revenueTarget ?? 0)}</span>
                 </div>
               </div>
             )}
@@ -844,99 +714,6 @@ export default function FinanceReportsPage() {
                 <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                   {paymentMethodTotals.voucher.percentage.toFixed(1)}% do total
                 </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Tab: Backup */}
-        {activeTab === "backup" && (
-          <div className="space-y-6">
-            {/* Configuração de Backup Automático */}
-            <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Backup Automático
-                  </h3>
-                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Backups são realizados automaticamente todos os dias às 03:00
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                    <CheckCircle className="h-4 w-4" />
-                    Ativo
-                  </span>
-                  <Button
-                    onClick={handleBackup}
-                    isLoading={isBackingUp}
-                    leftIcon={<Database className="h-4 w-4" />}
-                  >
-                    Backup Manual
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Lista de Backups */}
-            <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-              <div className="border-b border-gray-200 p-4 dark:border-gray-700">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Histórico de Backups
-                </h3>
-              </div>
-              <div className="divide-y dark:divide-gray-700">
-                {backups.map((backup) => (
-                  <div key={backup.id} className="flex items-center justify-between p-4">
-                    <div className="flex items-center gap-4">
-                      <div
-                        className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                          backup.status === "completed"
-                            ? "bg-green-100 dark:bg-green-900/30"
-                            : backup.status === "in_progress"
-                            ? "bg-yellow-100 dark:bg-yellow-900/30"
-                            : "bg-red-100 dark:bg-red-900/30"
-                        }`}
-                      >
-                        {backup.status === "completed" ? (
-                          <CheckCircle className="h-5 w-5 text-green-500" />
-                        ) : backup.status === "in_progress" ? (
-                          <Clock className="h-5 w-5 text-yellow-500" />
-                        ) : (
-                          <History className="h-5 w-5 text-red-500" />
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-white">
-                          {formatDate(backup.date)}
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {backup.type === "automatic" ? "Automático" : "Manual"} • {backup.size}
-                        </p>
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="sm" leftIcon={<Download className="h-4 w-4" />}>
-                      Baixar
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Informações de Retenção */}
-            <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-900 dark:bg-yellow-900/20">
-              <div className="flex items-start gap-3">
-                <History className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                <div>
-                  <h4 className="font-medium text-yellow-800 dark:text-yellow-200">
-                    Política de Retenção
-                  </h4>
-                  <p className="mt-1 text-sm text-yellow-700 dark:text-yellow-300">
-                    Os backups automáticos são mantidos por 30 dias. Backups manuais são mantidos por 90 dias.
-                    Após esse período, os arquivos são automaticamente excluídos.
-                  </p>
-                </div>
               </div>
             </div>
           </div>

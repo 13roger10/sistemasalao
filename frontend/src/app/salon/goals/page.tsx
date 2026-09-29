@@ -21,6 +21,7 @@ import { DataTable, ActionMenuItem, Column } from "@/components/ui/DataTable";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
 import { goalService } from "@/services/salon/goalService";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import type {
@@ -164,6 +165,7 @@ const GoalCard = ({ goal, onClick }: { goal: Goal; onClick: () => void }) => {
 
 export default function GoalsPage() {
   const { user } = useSalonAuth();
+  const toast = useToast();
 
   // States
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -216,88 +218,11 @@ export default function GoalsPage() {
       setDashboard(dashboardResponse);
     } catch (error) {
       console.error("Erro ao carregar metas:", error);
-      // Mock data
-      const mockGoals: Goal[] = [
-        {
-          id: "1",
-          nome: "Faturamento Mensal",
-          descricao: "Meta de faturamento para o mês",
-          tipo: "FATURAMENTO",
-          tipoDescricao: "Faturamento",
-          tipoUnidade: "R$",
-          periodo: "MENSAL",
-          periodoDescricao: "Mensal",
-          valorMeta: 50000,
-          valorAtual: 35000,
-          percentualProgresso: 70,
-          dataInicio: "2026-03-01",
-          dataFim: "2026-03-31",
-          salonId: "1",
-          criadoPorId: "1",
-          criadoPorNome: "Admin",
-          notificarProgresso: true,
-          notificarAoAtingir: 80,
-          atingida: false,
-          dentroDoPeriodo: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        {
-          id: "2",
-          nome: "Atendimentos Semanais",
-          tipo: "ATENDIMENTOS",
-          tipoDescricao: "Atendimentos",
-          tipoUnidade: "un",
-          periodo: "SEMANAL",
-          periodoDescricao: "Semanal",
-          valorMeta: 100,
-          valorAtual: 95,
-          percentualProgresso: 95,
-          dataInicio: "2026-03-25",
-          dataFim: "2026-03-31",
-          salonId: "1",
-          criadoPorId: "1",
-          criadoPorNome: "Admin",
-          notificarProgresso: true,
-          notificarAoAtingir: 80,
-          atingida: false,
-          dentroDoPeriodo: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        {
-          id: "3",
-          nome: "Novos Clientes",
-          tipo: "NOVOS_CLIENTES",
-          tipoDescricao: "Novos Clientes",
-          tipoUnidade: "un",
-          periodo: "MENSAL",
-          periodoDescricao: "Mensal",
-          valorMeta: 30,
-          valorAtual: 32,
-          percentualProgresso: 106.67,
-          dataInicio: "2026-03-01",
-          dataFim: "2026-03-31",
-          salonId: "1",
-          criadoPorId: "1",
-          criadoPorNome: "Admin",
-          notificarProgresso: true,
-          notificarAoAtingir: 80,
-          atingida: true,
-          dentroDoPeriodo: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ];
-      setGoals(mockGoals);
-      setDashboard({
-        totalMetas: 3,
-        metasAtingidas: 1,
-        metasEmAndamento: 2,
-        percentualGeralProgresso: 90.56,
-        metasAtuais: mockGoals,
-        resumoPorTipo: [],
-      });
+      // Sem metas de exemplo: antes, qualquer falha mostrava metas inventadas como se fossem do salão
+      setGoals([]);
+      setDashboard(null);
+      toast.error("Não foi possível carregar as metas",
+        error instanceof Error ? error.message.replace(/^\[HTTP \d+\]\s*/, "") : "Tente novamente.");
     } finally {
       setIsLoading(false);
     }

@@ -35,8 +35,14 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
 import { DataTable, Column, ActionMenuItem } from "@/components/ui/DataTable";
+import { useToast } from "@/components/ui/Toast";
 import { commissionService } from "@/services/salon";
+import { dataLocal } from "@/services/salon/financeService";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
+import { useUnit } from "@/contexts/UnitContext";
+
+const mensagemDeErro = (error: unknown): string =>
+  error instanceof Error ? error.message.replace(/^\[HTTP \d+\]\s*/, "") : "Tente novamente.";
 import type {
   Commission,
   CommissionStatus,
@@ -267,94 +273,16 @@ const ProfessionalCommissionCard = ({
   );
 };
 
-// ===== DADOS MOCK =====
-const mockProfessionals = [
-  {
-    id: "1",
-    name: "Maria Silva",
-    avatar: "",
-    commissionType: "percentage" as CommissionType,
-    commissionValue: 40,
-  },
-  {
-    id: "2",
-    name: "João Santos",
-    avatar: "",
-    commissionType: "percentage" as CommissionType,
-    commissionValue: 35,
-  },
-  {
-    id: "3",
-    name: "Ana Costa",
-    avatar: "",
-    commissionType: "fixed" as CommissionType,
-    commissionValue: 50,
-  },
-];
-
-const mockServices = [
-  { id: "1", name: "Corte Feminino", price: 80 },
-  { id: "2", name: "Coloração", price: 200 },
-  { id: "3", name: "Manicure", price: 50 },
-  { id: "4", name: "Escova Progressiva", price: 350 },
-];
-
-const generateMockCommissions = (): Commission[] => {
-  const commissions: Commission[] = [];
-  const statuses: CommissionStatus[] = ["pending", "paid", "paid", "pending", "paid"];
-
-  for (let i = 1; i <= 25; i++) {
-    const professional = mockProfessionals[Math.floor(Math.random() * mockProfessionals.length)];
-    const service = mockServices[Math.floor(Math.random() * mockServices.length)];
-    const daysAgo = Math.floor(Math.random() * 30);
-    const status = statuses[Math.floor(Math.random() * statuses.length)];
-
-    const commissionValue =
-      professional.commissionType === "percentage"
-        ? (service.price * professional.commissionValue) / 100
-        : professional.commissionValue;
-
-    commissions.push({
-      id: `comm-${i}`,
-      professionalId: professional.id,
-      professionalName: professional.name,
-      appointmentId: `app-${i}`,
-      serviceId: service.id,
-      serviceName: service.name,
-      clientId: `client-${i}`,
-      clientName: `Cliente ${i}`,
-      servicePrice: service.price,
-      commissionType: professional.commissionType,
-      commissionRate: professional.commissionValue,
-      commissionValue,
-      status,
-      appointmentDate: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
-      unitId: "unit-1",
-      paidAt: status === "paid" ? new Date(Date.now() - (daysAgo - 2) * 24 * 60 * 60 * 1000) : undefined,
-      paidById: status === "paid" ? "admin-1" : undefined,
-      paidByName: status === "paid" ? "Administrador" : undefined,
-      createdAt: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
-      updatedAt: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
-    });
-  }
-
-  return commissions.sort(
-    (a, b) => b.appointmentDate.getTime() - a.appointmentDate.getTime()
-  );
-};
-
-const generateMockSummaries = (commissions: Commission[]): ProfessionalCommissionSummary[] => {
+/** Resumo por profissional a partir das comissões carregadas (dados reais do backend). */
+const resumirPorProfissional = (commissions: Commission[]): ProfessionalCommissionSummary[] => {
   const summaryMap = new Map<string, ProfessionalCommissionSummary>();
 
   commissions.forEach((commission) => {
+    if (commission.status === "canceled") return;
     if (!summaryMap.has(commission.professionalId)) {
-      const professional = mockProfessionals.find(
-        (p) => p.id === commission.professionalId
-      );
       summaryMap.set(commission.professionalId, {
         professionalId: commission.professionalId,
         professionalName: commission.professionalName,
-        avatar: professional?.avatar,
         period: {
           startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
           endDate: new Date(),
@@ -379,14 +307,11 @@ const generateMockSummaries = (commissions: Commission[]): ProfessionalCommissio
       summary.paidCommission += commission.commissionValue;
     }
 
-    // Atualizar breakdown por serviço
-    const serviceIndex = summary.byService.findIndex(
-      (s) => s.serviceId === commission.serviceId
-    );
-    if (serviceIndex >= 0) {
-      summary.byService[serviceIndex].count += 1;
-      summary.byService[serviceIndex].revenue += commission.servicePrice;
-      summary.byService[serviceIndex].commission += commission.commissionValue;
+    const service = summary.byService.find((s) => s.serviceId === commission.serviceId);
+    if (service) {
+      service.count += 1;
+      service.revenue += commission.servicePrice;
+      service.commission += commission.commissionValue;
     } else {
       summary.byService.push({
         serviceId: commission.serviceId,
@@ -401,61 +326,28 @@ const generateMockSummaries = (commissions: Commission[]): ProfessionalCommissio
   return Array.from(summaryMap.values());
 };
 
-const mockCommissionRules: CommissionRule[] = [
-  {
-    id: "rule-1",
-    name: "Comissão Padrão",
-    description: "Comissão padrão para todos os serviços",
-    type: "global",
-    commissionType: "percentage",
-    commissionValue: 40,
-    priority: 1,
-    isActive: true,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: "rule-2",
-    name: "Coloração Premium",
-    description: "Comissão especial para serviços de coloração acima de R$ 150",
-    type: "category",
-    targetId: "cat-coloracao",
-    commissionType: "percentage",
-    commissionValue: 45,
-    minServicePrice: 150,
-    priority: 2,
-    isActive: true,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: "rule-3",
-    name: "Bônus Maria Silva",
-    description: "Bônus fixo por atendimento para Maria Silva",
-    type: "professional",
-    targetId: "1",
-    commissionType: "fixed",
-    commissionValue: 10,
-    priority: 3,
-    isActive: false,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
+/** Comissão que ainda pode entrar num repasse: pendente e fora de outro repasse. */
+const disponivelParaRepasse = (c: Commission) => c.status === "pending" && !c.payoutId;
+
+const FORMAS_REPASSE = [
+  { value: "PIX", label: "PIX" },
+  { value: "DINHEIRO", label: "Dinheiro" },
+  { value: "TRANSFERENCIA", label: "Transferência" },
 ];
 
 // ===== COMPONENTE PRINCIPAL =====
 export default function CommissionPage() {
   const { user } = useSalonAuth();
+  const { selectedUnitId } = useUnit();
+  const toast = useToast();
 
   const isProfessional = user?.role === 'PROFESSIONAL';
 
   // ===== ESTADOS =====
-  const [activeTab, setActiveTab] = useState<"commissions" | "summary" | "rules" | "report">("commissions");
+  const [activeTab, setActiveTab] = useState<"commissions" | "summary" | "report">("commissions");
   const [commissions, setCommissions] = useState<Commission[]>([]);
   const [summaries, setSummaries] = useState<ProfessionalCommissionSummary[]>([]);
-  const [rules, setRules] = useState<CommissionRule[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCommissions, setSelectedCommissions] = useState<string[]>([]);
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState("");
@@ -500,30 +392,16 @@ export default function CommissionPage() {
 
   // Modais
   const [showPayModal, setShowPayModal] = useState(false);
-  const [showPayMultipleModal, setShowPayMultipleModal] = useState(false);
-  const [showRuleModal, setShowRuleModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const [showConfirmCancel, setShowConfirmCancel] = useState(false);
   const [selectedCommission, setSelectedCommission] = useState<Commission | null>(null);
   const [selectedProfessional, setSelectedProfessional] = useState<ProfessionalCommissionSummary | null>(null);
-  const [selectedRule, setSelectedRule] = useState<CommissionRule | null>(null);
 
-  // Formulário de Regra
-  const [ruleForm, setRuleForm] = useState<CommissionRuleCreateInput>({
-    name: "",
-    description: "",
-    type: "global",
-    commissionType: "percentage",
-    commissionValue: 0,
-    priority: 1,
-  });
-
-  // Formulário de Pagamento
+  // Repasse ao profissional: comissões pendentes (fora de outro repasse) dele no filtro atual
+  const [payout, setPayout] = useState<{ professionalId: string; professionalName: string; commissions: Commission[] } | null>(null);
+  const [isPaying, setIsPaying] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
-    paymentMethod: "pix",
+    paymentMethod: "PIX",
     paymentReference: "",
-    deductions: 0,
-    bonuses: 0,
     notes: "",
   });
 
@@ -549,19 +427,21 @@ export default function CommissionPage() {
         // Aplica filtro client-side automático como defesa em profundidade
         setProfessionalFilter(String(user.professionalId));
       } else {
-        // ADMIN / RECEPCIONIST: listagem geral do salão
-        const response = await commissionService.listBySalon('1');
+        // ADMIN / RECEPCIONIST: listagem geral do salão do usuário (antes era sempre o salão 1)
+        if (!selectedUnitId) return;
+        const response = await commissionService.listBySalon(String(selectedUnitId));
         data = response.data;
       }
       setCommissions(data);
-      setSummaries(generateMockSummaries(data));
-      setRules(mockCommissionRules);
+      setSummaries(resumirPorProfissional(data));
     } catch (error) {
       console.error("Erro ao carregar comissões:", error);
+      toast.error("Não foi possível carregar as comissões", mensagemDeErro(error));
     } finally {
       setLoading(false);
     }
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, selectedUnitId]);
 
   useEffect(() => {
     loadData();
@@ -633,179 +513,63 @@ export default function CommissionPage() {
   }, [commissions, searchTerm, statusFilter, professionalFilter, dateRange]);
 
   // ===== HANDLERS =====
-  const handlePayCommission = (commission: Commission) => {
-    setSelectedCommission(commission);
-    setPaymentForm({
-      paymentMethod: "pix",
-      paymentReference: "",
-      deductions: 0,
-      bonuses: 0,
-      notes: "",
-    });
+  // Repasse ao profissional: junta as comissões pendentes dele no filtro atual (fora de outro
+  // repasse). O backend paga por período, então todas as comissões pendentes do profissional
+  // naquele período entram juntas — não dá para pagar uma comissão avulsa.
+  const abrirRepasse = (professionalId: string, professionalName: string) => {
+    const pendentes = filteredCommissions.filter(
+      (c) => c.professionalId === professionalId && disponivelParaRepasse(c)
+    );
+    if (pendentes.length === 0) {
+      toast.info("Nada a repassar", `${professionalName} não tem comissões pendentes fora de outro repasse neste período.`);
+      return;
+    }
+    setPayout({ professionalId, professionalName, commissions: pendentes });
+    setPaymentForm({ paymentMethod: "PIX", paymentReference: "", notes: "" });
     setShowPayModal(true);
   };
 
-  const handlePayMultiple = () => {
-    if (selectedCommissions.length === 0) return;
-    setPaymentForm({
-      paymentMethod: "pix",
-      paymentReference: "",
-      deductions: 0,
-      bonuses: 0,
-      notes: "",
-    });
-    setShowPayMultipleModal(true);
-  };
-
   const handleConfirmPay = async () => {
-    try {
-      if (selectedCommission) {
-        // Em produção: await commissionService.markAsPaid(selectedCommission.id)
-        setCommissions((prev) =>
-          prev.map((c) =>
-            c.id === selectedCommission.id
-              ? {
-                  ...c,
-                  status: "paid" as CommissionStatus,
-                  paidAt: new Date(),
-                  paidById: user?.id,
-                  paidByName: user?.name,
-                }
-              : c
-          )
-        );
-      }
-      setShowPayModal(false);
-      setSelectedCommission(null);
-    } catch (error) {
-      console.error("Erro ao pagar comissão:", error);
+    if (!payout || !selectedUnitId) return;
+    if (!paymentForm.paymentReference.trim()) {
+      toast.error("Informe a referência", "Ex.: ID do PIX, número da transferência ou \"pago em dinheiro\".");
+      return;
     }
-  };
-
-  const handleConfirmPayMultiple = async () => {
+    // Período do repasse = dias em que as comissões foram geradas (o backend filtra por essa data)
+    const datas = payout.commissions.map((c) => dataLocal(new Date(c.createdAt))).sort();
+    setIsPaying(true);
+    let repasseId: number | undefined;
     try {
-      // Em produção: await commissionService.markMultipleAsPaid(selectedCommissions)
-      setCommissions((prev) =>
-        prev.map((c) =>
-          selectedCommissions.includes(c.id)
-            ? {
-                ...c,
-                status: "paid" as CommissionStatus,
-                paidAt: new Date(),
-                paidById: user?.id,
-                paidByName: user?.name,
-              }
-            : c
-        )
-      );
-      setSelectedCommissions([]);
-      setShowPayMultipleModal(false);
-    } catch (error) {
-      console.error("Erro ao pagar comissões:", error);
-    }
-  };
-
-  const handleCancelCommission = (commission: Commission) => {
-    setSelectedCommission(commission);
-    setShowConfirmCancel(true);
-  };
-
-  const handleConfirmCancel = async () => {
-    if (!selectedCommission) return;
-    try {
-      // Em produção: await commissionService.cancel(selectedCommission.id)
-      setCommissions((prev) =>
-        prev.map((c) =>
-          c.id === selectedCommission.id
-            ? { ...c, status: "canceled" as CommissionStatus }
-            : c
-        )
-      );
-      setShowConfirmCancel(false);
-      setSelectedCommission(null);
-    } catch (error) {
-      console.error("Erro ao cancelar comissão:", error);
-    }
-  };
-
-  const handleSaveRule = async () => {
-    try {
-      if (selectedRule) {
-        // Editar regra existente
-        setRules((prev) =>
-          prev.map((r) =>
-            r.id === selectedRule.id
-              ? { ...r, ...ruleForm, updatedAt: new Date() }
-              : r
-          )
-        );
-      } else {
-        // Criar nova regra
-        const newRule: CommissionRule = {
-          id: `rule-${Date.now()}`,
-          ...ruleForm,
-          priority: ruleForm.priority ?? 1,
-          isActive: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-        setRules((prev) => [...prev, newRule]);
-      }
-      setShowRuleModal(false);
-      setSelectedRule(null);
-      setRuleForm({
-        name: "",
-        description: "",
-        type: "global",
-        commissionType: "percentage",
-        commissionValue: 0,
-        priority: 1,
+      const repasse = await commissionService.payouts.gerar(String(selectedUnitId), {
+        professionalId: payout.professionalId,
+        periodStart: datas[0],
+        periodEnd: datas[datas.length - 1],
+        notes: paymentForm.notes,
       });
+      repasseId = repasse.id;
+      await commissionService.payouts.confirmar(repasse.id, {
+        paymentMethod: paymentForm.paymentMethod,
+        reference: paymentForm.paymentReference.trim(),
+        notes: paymentForm.notes,
+      });
+      toast.success("Repasse registrado",
+        `${payout.professionalName}: ${repasse.totalServicos} comissão(ões), R$ ${Number(repasse.valorTotalComissoes).toFixed(2)}.`);
+      setShowPayModal(false);
+      setPayout(null);
+      loadData();
     } catch (error) {
-      console.error("Erro ao salvar regra:", error);
+      toast.error(
+        repasseId ? "Repasse gerado, mas não confirmado" : "Não foi possível gerar o repasse",
+        mensagemDeErro(error)
+      );
+      if (repasseId) loadData();
+    } finally {
+      setIsPaying(false);
     }
   };
 
-  const handleToggleRule = (rule: CommissionRule) => {
-    setRules((prev) =>
-      prev.map((r) =>
-        r.id === rule.id ? { ...r, isActive: !r.isActive } : r
-      )
-    );
-  };
-
-  const handleDeleteRule = (rule: CommissionRule) => {
-    setRules((prev) => prev.filter((r) => r.id !== rule.id));
-  };
-
-  const handleEditRule = (rule: CommissionRule) => {
-    setSelectedRule(rule);
-    setRuleForm({
-      name: rule.name,
-      description: rule.description,
-      type: rule.type,
-      targetId: rule.targetId,
-      commissionType: rule.commissionType,
-      commissionValue: rule.commissionValue,
-      minServicePrice: rule.minServicePrice,
-      maxServicePrice: rule.maxServicePrice,
-      validFrom: rule.validFrom,
-      validUntil: rule.validUntil,
-      priority: rule.priority,
-    });
-    setShowRuleModal(true);
-  };
-
-  const handlePayProfessionalCommissions = (
-    summary: ProfessionalCommissionSummary
-  ) => {
-    setSelectedProfessional(summary);
-    const pendingCommissions = commissions.filter(
-      (c) =>
-        c.professionalId === summary.professionalId && c.status === "pending"
-    );
-    setSelectedCommissions(pendingCommissions.map((c) => c.id));
-    setShowPayMultipleModal(true);
+  const handlePayProfessionalCommissions = (summary: ProfessionalCommissionSummary) => {
+    abrirRepasse(summary.professionalId, summary.professionalName);
   };
 
   const handleExportPDF = () => {
@@ -948,49 +712,6 @@ export default function CommissionPage() {
 
   // ===== COLUNAS DA TABELA =====
   const commissionColumns: Column<Commission>[] = [
-    ...(!isProfessional ? [{
-      key: "select" as const,
-      header: (
-        <input
-          type="checkbox"
-          checked={
-            selectedCommissions.length > 0 &&
-            selectedCommissions.length ===
-              filteredCommissions.filter((c) => c.status === "pending").length
-          }
-          onChange={(e) => {
-            if (e.target.checked) {
-              setSelectedCommissions(
-                filteredCommissions
-                  .filter((c) => c.status === "pending")
-                  .map((c) => c.id)
-              );
-            } else {
-              setSelectedCommissions([]);
-            }
-          }}
-          className="h-4 w-4 rounded border-gray-300"
-        />
-      ),
-      width: "40px",
-      render: (commission: Commission) =>
-        commission.status === "pending" ? (
-          <input
-            type="checkbox"
-            checked={selectedCommissions.includes(commission.id)}
-            onChange={(e) => {
-              if (e.target.checked) {
-                setSelectedCommissions((prev) => [...prev, commission.id]);
-              } else {
-                setSelectedCommissions((prev) =>
-                  prev.filter((id) => id !== commission.id)
-                );
-              }
-            }}
-            className="h-4 w-4 rounded border-gray-300"
-          />
-        ) : null,
-    }] : []),
     {
       key: "professional",
       header: isProfessional ? "Cliente" : "Profissional",
@@ -1040,7 +761,14 @@ export default function CommissionPage() {
       key: "status",
       header: "Status",
       render: (commission) => (
-        <CommissionStatusBadge status={commission.status} />
+        <div className="flex flex-col items-start gap-1">
+          <CommissionStatusBadge status={commission.status} />
+          {commission.status === "pending" && commission.payoutId && (
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              No repasse #{commission.payoutId}
+            </span>
+          )}
+        </div>
       ),
     },
     {
@@ -1063,12 +791,12 @@ export default function CommissionPage() {
 
   const renderCommissionActions = (commission: Commission) => (
     <>
-      {!isProfessional && commission.status === "pending" && (
+      {!isProfessional && disponivelParaRepasse(commission) && (
         <ActionMenuItem
-          onClick={() => handlePayCommission(commission)}
+          onClick={() => abrirRepasse(commission.professionalId, commission.professionalName)}
           icon={<CheckCircle className="h-4 w-4" />}
         >
-          Pagar
+          Repassar ao profissional
         </ActionMenuItem>
       )}
       <ActionMenuItem
@@ -1079,107 +807,6 @@ export default function CommissionPage() {
         icon={<Eye className="h-4 w-4" />}
       >
         Ver Detalhes
-      </ActionMenuItem>
-      {!isProfessional && commission.status === "pending" && (
-        <ActionMenuItem
-          onClick={() => handleCancelCommission(commission)}
-          icon={<XCircle className="h-4 w-4" />}
-          variant="danger"
-        >
-          Cancelar
-        </ActionMenuItem>
-      )}
-    </>
-  );
-
-  // ===== COLUNAS DA TABELA DE REGRAS =====
-  const ruleColumns: Column<CommissionRule>[] = [
-    {
-      key: "name",
-      header: "Regra",
-      render: (rule) => (
-        <div>
-          <p className="font-medium text-gray-900 dark:text-white">
-            {rule.name}
-          </p>
-          {rule.description && (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {rule.description}
-            </p>
-          )}
-        </div>
-      ),
-    },
-    {
-      key: "type",
-      header: "Tipo",
-      render: (rule) => {
-        const typeLabels = {
-          global: "Global",
-          service: "Serviço",
-          category: "Categoria",
-          professional: "Profissional",
-        };
-        return (
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-300">
-            {typeLabels[rule.type]}
-          </span>
-        );
-      },
-    },
-    {
-      key: "commission",
-      header: "Comissão",
-      render: (rule) => (
-        <CommissionTypeBadge
-          type={rule.commissionType}
-          value={rule.commissionValue}
-        />
-      ),
-    },
-    {
-      key: "priority",
-      header: "Prioridade",
-      render: (rule) => (
-        <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-          #{rule.priority}
-        </span>
-      ),
-    },
-    {
-      key: "status",
-      header: "Status",
-      render: (rule) => (
-        <button
-          onClick={() => handleToggleRule(rule)}
-          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-            rule.isActive ? "bg-primary-500" : "bg-gray-300 dark:bg-gray-600"
-          }`}
-        >
-          <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-              rule.isActive ? "translate-x-6" : "translate-x-1"
-            }`}
-          />
-        </button>
-      ),
-    },
-  ];
-
-  const renderRuleActions = (rule: CommissionRule) => (
-    <>
-      <ActionMenuItem
-        onClick={() => handleEditRule(rule)}
-        icon={<Edit2 className="h-4 w-4" />}
-      >
-        Editar
-      </ActionMenuItem>
-      <ActionMenuItem
-        onClick={() => handleDeleteRule(rule)}
-        icon={<Trash2 className="h-4 w-4" />}
-        variant="danger"
-      >
-        Excluir
       </ActionMenuItem>
     </>
   );
@@ -1207,12 +834,6 @@ export default function CommissionPage() {
               <Download className="mr-2 h-4 w-4" />
               PDF
             </Button>
-            {!isProfessional && selectedCommissions.length > 0 && (
-              <Button variant="primary" onClick={handlePayMultiple}>
-                <Wallet className="mr-2 h-4 w-4" />
-                Pagar Selecionados ({selectedCommissions.length})
-              </Button>
-            )}
           </div>
         </div>
 
@@ -1251,7 +872,6 @@ export default function CommissionPage() {
               { id: "commissions", label: "Comissões", icon: DollarSign },
               ...(!isProfessional ? [
                 { id: "summary", label: "Por Profissional", icon: Users },
-                { id: "rules", label: "Regras", icon: Settings },
               ] : []),
               { id: "report", label: "Relatório", icon: FileSpreadsheet },
             ].map((tab) => (
@@ -1358,9 +978,9 @@ export default function CommissionPage() {
                       className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                     >
                       <option value="all">Todos</option>
-                      {mockProfessionals.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
+                      {summaries.map((p) => (
+                        <option key={p.professionalId} value={p.professionalId}>
+                          {p.professionalName}
                         </option>
                       ))}
                     </select>
@@ -1429,50 +1049,6 @@ export default function CommissionPage() {
                 }
               />
             ))}
-          </div>
-        )}
-
-        {/* Tab: Regras */}
-        {activeTab === "rules" && !isProfessional && (
-          <div className="space-y-4">
-            <div className="flex justify-end">
-              <Button
-                variant="primary"
-                onClick={() => {
-                  setSelectedRule(null);
-                  setRuleForm({
-                    name: "",
-                    description: "",
-                    type: "global",
-                    commissionType: "percentage",
-                    commissionValue: 0,
-                    priority: 1,
-                  });
-                  setShowRuleModal(true);
-                }}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Nova Regra
-              </Button>
-            </div>
-
-            <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-              <div className="mb-4 flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Regras com maior prioridade são aplicadas primeiro. Se
-                  múltiplas regras se aplicam, a de maior prioridade prevalece.
-                </p>
-              </div>
-            </div>
-
-            <DataTable
-              data={rules}
-              columns={ruleColumns}
-              rowActions={renderRuleActions}
-              keyExtractor={(item) => item.id}
-              emptyMessage="Nenhuma regra cadastrada"
-            />
           </div>
         )}
 
@@ -1667,49 +1243,37 @@ export default function CommissionPage() {
         )}
       </div>
 
-      {/* Modal: Pagar Comissão Individual */}
+      {/* Modal: Repasse ao profissional (gera e confirma o repasse no backend) */}
       <Modal
         isOpen={showPayModal}
-        onClose={() => setShowPayModal(false)}
-        title="Pagar Comissão"
+        onClose={() => { if (!isPaying) setShowPayModal(false); }}
+        title="Repasse ao Profissional"
       >
-        {selectedCommission && (
+        {payout && (
           <div className="space-y-4">
             <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
               <div className="grid gap-2">
                 <div className="flex justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">
-                    Profissional:
-                  </span>
-                  <span className="font-medium text-gray-900 dark:text-white">
-                    {selectedCommission.professionalName}
-                  </span>
+                  <span className="text-gray-500 dark:text-gray-400">Profissional:</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{payout.professionalName}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">
-                    Serviço:
-                  </span>
-                  <span className="font-medium text-gray-900 dark:text-white">
-                    {selectedCommission.serviceName}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">
-                    Valor do Serviço:
-                  </span>
-                  <span className="font-medium text-gray-900 dark:text-white">
-                    R$ {selectedCommission.servicePrice.toFixed(2)}
-                  </span>
+                  <span className="text-gray-500 dark:text-gray-400">Comissões pendentes:</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{payout.commissions.length}</span>
                 </div>
                 <div className="flex justify-between border-t border-gray-200 pt-2 dark:border-gray-700">
-                  <span className="text-gray-500 dark:text-gray-400">
-                    Comissão:
-                  </span>
+                  <span className="text-gray-500 dark:text-gray-400">Total a repassar:</span>
                   <span className="text-lg font-bold text-primary-600 dark:text-primary-400">
-                    R$ {selectedCommission.commissionValue.toFixed(2)}
+                    R$ {payout.commissions.reduce((s, c) => s + c.commissionValue, 0).toFixed(2)}
                   </span>
                 </div>
               </div>
+              <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                Entram todas as comissões pendentes de {payout.professionalName} geradas entre{" "}
+                {new Date(Math.min(...payout.commissions.map((c) => new Date(c.createdAt).getTime()))).toLocaleDateString("pt-BR")} e{" "}
+                {new Date(Math.max(...payout.commissions.map((c) => new Date(c.createdAt).getTime()))).toLocaleDateString("pt-BR")}.
+                O profissional é avisado e confirma o recebimento na tela de recibos.
+              </p>
             </div>
 
             <div>
@@ -1726,18 +1290,18 @@ export default function CommissionPage() {
                 }
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               >
-                <option value="pix">PIX</option>
-                <option value="cash">Dinheiro</option>
-                <option value="transfer">Transferência</option>
+                {FORMAS_REPASSE.map((f) => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
               </select>
             </div>
 
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Referência do Pagamento
+                Referência do Pagamento *
               </label>
               <Input
-                placeholder="Ex: Comprovante PIX #123"
+                placeholder="Ex: ID do PIX, nº da transferência ou &quot;pago em dinheiro&quot;"
                 value={paymentForm.paymentReference}
                 onChange={(e) =>
                   setPaymentForm((prev) => ({
@@ -1763,357 +1327,16 @@ export default function CommissionPage() {
             </div>
 
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowPayModal(false)}>
+              <Button variant="outline" onClick={() => setShowPayModal(false)} disabled={isPaying}>
                 Cancelar
               </Button>
-              <Button variant="primary" onClick={handleConfirmPay}>
+              <Button variant="primary" onClick={handleConfirmPay} isLoading={isPaying}>
                 <CheckCircle className="mr-2 h-4 w-4" />
-                Confirmar Pagamento
+                Confirmar Repasse
               </Button>
             </div>
           </div>
         )}
-      </Modal>
-
-      {/* Modal: Pagar Múltiplas Comissões */}
-      <Modal
-        isOpen={showPayMultipleModal}
-        onClose={() => setShowPayMultipleModal(false)}
-        title="Pagar Múltiplas Comissões"
-        size="lg"
-      >
-        <div className="space-y-4">
-          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
-            <div className="grid gap-2">
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">
-                  Comissões selecionadas:
-                </span>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  {selectedCommissions.length}
-                </span>
-              </div>
-              <div className="flex justify-between border-t border-gray-200 pt-2 dark:border-gray-700">
-                <span className="text-gray-500 dark:text-gray-400">
-                  Total a Pagar:
-                </span>
-                <span className="text-xl font-bold text-primary-600 dark:text-primary-400">
-                  R${" "}
-                  {commissions
-                    .filter((c) => selectedCommissions.includes(c.id))
-                    .reduce((sum, c) => sum + c.commissionValue, 0)
-                    .toFixed(2)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Descontos
-              </label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={paymentForm.deductions}
-                onChange={(e) =>
-                  setPaymentForm((prev) => ({
-                    ...prev,
-                    deductions: parseFloat(e.target.value) || 0,
-                  }))
-                }
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Bônus
-              </label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={paymentForm.bonuses}
-                onChange={(e) =>
-                  setPaymentForm((prev) => ({
-                    ...prev,
-                    bonuses: parseFloat(e.target.value) || 0,
-                  }))
-                }
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Forma de Pagamento
-            </label>
-            <select
-              value={paymentForm.paymentMethod}
-              onChange={(e) =>
-                setPaymentForm((prev) => ({
-                  ...prev,
-                  paymentMethod: e.target.value,
-                }))
-              }
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-            >
-              <option value="pix">PIX</option>
-              <option value="cash">Dinheiro</option>
-              <option value="transfer">Transferência</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Referência do Pagamento
-            </label>
-            <Input
-              placeholder="Ex: Comprovante PIX #123"
-              value={paymentForm.paymentReference}
-              onChange={(e) =>
-                setPaymentForm((prev) => ({
-                  ...prev,
-                  paymentReference: e.target.value,
-                }))
-              }
-            />
-          </div>
-
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800">
-            <div className="grid gap-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500 dark:text-gray-400">
-                  Subtotal:
-                </span>
-                <span className="text-gray-900 dark:text-white">
-                  R${" "}
-                  {commissions
-                    .filter((c) => selectedCommissions.includes(c.id))
-                    .reduce((sum, c) => sum + c.commissionValue, 0)
-                    .toFixed(2)}
-                </span>
-              </div>
-              {paymentForm.deductions > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-red-500">Descontos:</span>
-                  <span className="text-red-500">
-                    - R$ {paymentForm.deductions.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              {paymentForm.bonuses > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-green-500">Bônus:</span>
-                  <span className="text-green-500">
-                    + R$ {paymentForm.bonuses.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between border-t border-gray-200 pt-2 dark:border-gray-700">
-                <span className="font-medium text-gray-900 dark:text-white">
-                  Valor Final:
-                </span>
-                <span className="text-xl font-bold text-primary-600 dark:text-primary-400">
-                  R${" "}
-                  {(
-                    commissions
-                      .filter((c) => selectedCommissions.includes(c.id))
-                      .reduce((sum, c) => sum + c.commissionValue, 0) -
-                    paymentForm.deductions +
-                    paymentForm.bonuses
-                  ).toFixed(2)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowPayMultipleModal(false)}
-            >
-              Cancelar
-            </Button>
-            <Button variant="primary" onClick={handleConfirmPayMultiple}>
-              <Wallet className="mr-2 h-4 w-4" />
-              Confirmar Pagamento
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Modal: Regra de Comissão */}
-      <Modal
-        isOpen={showRuleModal}
-        onClose={() => setShowRuleModal(false)}
-        title={selectedRule ? "Editar Regra" : "Nova Regra de Comissão"}
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Nome da Regra *
-            </label>
-            <Input
-              value={ruleForm.name}
-              onChange={(e) =>
-                setRuleForm((prev) => ({ ...prev, name: e.target.value }))
-              }
-              placeholder="Ex: Comissão Padrão"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Descrição
-            </label>
-            <textarea
-              value={ruleForm.description || ""}
-              onChange={(e) =>
-                setRuleForm((prev) => ({
-                  ...prev,
-                  description: e.target.value,
-                }))
-              }
-              rows={2}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-            />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Tipo de Regra
-              </label>
-              <select
-                value={ruleForm.type}
-                onChange={(e) =>
-                  setRuleForm((prev) => ({
-                    ...prev,
-                    type: e.target.value as CommissionRule["type"],
-                  }))
-                }
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              >
-                <option value="global">Global</option>
-                <option value="service">Por Serviço</option>
-                <option value="category">Por Categoria</option>
-                <option value="professional">Por Profissional</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Prioridade
-              </label>
-              <Input
-                type="number"
-                min="1"
-                value={ruleForm.priority}
-                onChange={(e) =>
-                  setRuleForm((prev) => ({
-                    ...prev,
-                    priority: parseInt(e.target.value) || 1,
-                  }))
-                }
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Tipo de Comissão
-              </label>
-              <select
-                value={ruleForm.commissionType}
-                onChange={(e) =>
-                  setRuleForm((prev) => ({
-                    ...prev,
-                    commissionType: e.target.value as CommissionType,
-                  }))
-                }
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              >
-                <option value="percentage">Porcentagem (%)</option>
-                <option value="fixed">Valor Fixo (R$)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Valor
-              </label>
-              <Input
-                type="number"
-                min="0"
-                step={ruleForm.commissionType === "percentage" ? "1" : "0.01"}
-                max={ruleForm.commissionType === "percentage" ? "100" : undefined}
-                value={ruleForm.commissionValue}
-                onChange={(e) =>
-                  setRuleForm((prev) => ({
-                    ...prev,
-                    commissionValue: parseFloat(e.target.value) || 0,
-                  }))
-                }
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Valor Mínimo do Serviço
-              </label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={ruleForm.minServicePrice || ""}
-                onChange={(e) =>
-                  setRuleForm((prev) => ({
-                    ...prev,
-                    minServicePrice: parseFloat(e.target.value) || undefined,
-                  }))
-                }
-                placeholder="Sem limite"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Valor Máximo do Serviço
-              </label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={ruleForm.maxServicePrice || ""}
-                onChange={(e) =>
-                  setRuleForm((prev) => ({
-                    ...prev,
-                    maxServicePrice: parseFloat(e.target.value) || undefined,
-                  }))
-                }
-                placeholder="Sem limite"
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowRuleModal(false)}>
-              Cancelar
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleSaveRule}
-              disabled={!ruleForm.name || ruleForm.commissionValue <= 0}
-            >
-              {selectedRule ? "Salvar Alterações" : "Criar Regra"}
-            </Button>
-          </div>
-        </div>
       </Modal>
 
       {/* Modal: Detalhes da Comissão */}
@@ -2285,17 +1508,6 @@ export default function CommissionPage() {
           </div>
         )}
       </Modal>
-
-      {/* Modal: Confirmar Cancelamento */}
-      <ConfirmModal
-        isOpen={showConfirmCancel}
-        onClose={() => setShowConfirmCancel(false)}
-        onConfirm={handleConfirmCancel}
-        title="Cancelar Comissão"
-        message="Tem certeza que deseja cancelar esta comissão? Esta ação não pode ser desfeita."
-        confirmText="Cancelar Comissão"
-        variant="danger"
-      />
     </SalonLayout>
   );
 }

@@ -59,25 +59,11 @@ public class FinanceController {
     private final TenantIsolationService tenantIsolationService;
     private final CaixaService caixaService;
     private final MovimentacaoCaixaRepository movimentacaoCaixaRepository;
+    private final com.belezza.api.service.RelatorioFinanceiroService relatorioFinanceiroService;
 
-    /**
-     * Valor recebido no período, por forma, pela mesma regra do caixa: pagamentos do período
-     * (incluindo os estornados depois a partir de outro caixa) + entradas avulsas − estornos
-     * feitos no período. Antes somava só os pagamentos ainda aprovados: ignorava entradas avulsas
-     * e, quando um pagamento era estornado em outro dia, ele sumia do dia em que foi recebido.
-     */
+    /** Valor recebido no período por forma, pela regra do caixa (ver RelatorioFinanceiroService). */
     private Map<FormaPagamento, BigDecimal> recebidoPorForma(Long salonId, LocalDateTime inicio, LocalDateTime fim) {
-        Map<FormaPagamento, BigDecimal> totals = new EnumMap<>(FormaPagamento.class);
-        for (Object[] row : pagamentoRepository.sumRecebidoByFormaAndPeriod(salonId, inicio, fim)) {
-            totals.merge((FormaPagamento) row[0], (BigDecimal) row[1], BigDecimal::add);
-        }
-        for (Object[] row : movimentacaoCaixaRepository.sumByFormaAndPeriod(salonId, TipoMovimentacaoCaixa.RECEITA, inicio, fim)) {
-            totals.merge((FormaPagamento) row[0], (BigDecimal) row[1], BigDecimal::add);
-        }
-        for (Object[] row : movimentacaoCaixaRepository.sumByFormaAndPeriod(salonId, TipoMovimentacaoCaixa.ESTORNO, inicio, fim)) {
-            totals.merge((FormaPagamento) row[0], ((BigDecimal) row[1]).negate(), BigDecimal::add);
-        }
-        return totals;
+        return relatorioFinanceiroService.recebidoPorForma(salonId, inicio, fim);
     }
 
     private double formaTotal(Map<FormaPagamento, BigDecimal> totals, FormaPagamento forma) {
@@ -365,135 +351,136 @@ public class FinanceController {
 
     // ===== STATS =====
 
+    /** Valor em reais com 2 casas, para a resposta. */
+    private static double reais(BigDecimal valor) {
+        return valor.setScale(2, java.math.RoundingMode.HALF_UP).doubleValue();
+    }
+
+    /** Variação percentual (1 casa) em relação ao anterior; 0 quando o anterior é zero. */
+    private static double variacao(BigDecimal atual, BigDecimal anterior) {
+        if (anterior.signum() == 0) return 0.0;
+        return Math.round(atual.subtract(anterior).multiply(BigDecimal.valueOf(1000))
+                .divide(anterior.abs(), 0, java.math.RoundingMode.HALF_UP).doubleValue()) / 10.0;
+    }
+
     @GetMapping("/stats")
-    @Operation(summary = "Estatísticas financeiras", description = "Retorna estatísticas financeiras do salão")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Estatísticas financeiras", description = "Resumo do dia, da semana e do mês, com os valores reais recebidos e as despesas do caixa")
     public ResponseEntity<FinanceStatsResponse> getStats(@RequestParam(required = false) String unitId) {
-        log.debug("Getting finance stats for unitId: {}", unitId);
+        Long salonId = resolverSalao(unitId);
+        LocalDate hoje = LocalDate.now();
+        LocalDateTime amanha = hoje.plusDays(1).atStartOfDay();
 
-        // Mock data - to be replaced with real service implementation
-        TodayStats today = new TodayStats(
-            1850.0,    // revenue
-            450.0,     // expenses
-            1400.0,    // profit
-            12,        // appointments
-            154.17     // averageTicket
-        );
+        LocalDateTime inicioDia = hoje.atStartOfDay();
+        BigDecimal receitaDia = relatorioFinanceiroService.receita(salonId, inicioDia, amanha);
+        BigDecimal despesasDia = relatorioFinanceiroService.despesas(salonId, inicioDia, amanha);
+        long agendamentosDia = relatorioFinanceiroService.agendamentosPorStatus(salonId, inicioDia, amanha).entrySet().stream()
+                .filter(e -> e.getKey() != StatusAgendamento.CANCELADO)
+                .mapToLong(Map.Entry::getValue).sum();
+        TodayStats today = new TodayStats(reais(receitaDia), reais(despesasDia), reais(receitaDia.subtract(despesasDia)),
+                (int) agendamentosDia, reais(relatorioFinanceiroService.ticketMedio(salonId, inicioDia, amanha)));
 
-        WeekStats week = new WeekStats(
-            12500.0,   // revenue
-            3200.0,    // expenses
-            9300.0     // profit
-        );
+        // Semana de segunda até hoje; mês do dia 1 até hoje
+        LocalDateTime inicioSemana = hoje.with(java.time.DayOfWeek.MONDAY).atStartOfDay();
+        BigDecimal receitaSemana = relatorioFinanceiroService.receita(salonId, inicioSemana, amanha);
+        BigDecimal despesasSemana = relatorioFinanceiroService.despesas(salonId, inicioSemana, amanha);
+        WeekStats week = new WeekStats(reais(receitaSemana), reais(despesasSemana), reais(receitaSemana.subtract(despesasSemana)));
 
-        MonthStats month = new MonthStats(
-            45750.0,   // revenue
-            12500.0,   // expenses
-            33250.0,   // profit
-            50000.0,   // revenueTarget
-            91.5       // targetProgress
-        );
+        LocalDateTime inicioMes = hoje.withDayOfMonth(1).atStartOfDay();
+        BigDecimal receitaMes = relatorioFinanceiroService.receita(salonId, inicioMes, amanha);
+        BigDecimal despesasMes = relatorioFinanceiroService.despesas(salonId, inicioMes, amanha);
+        BigDecimal meta = relatorioFinanceiroService.metaFaturamento(salonId, hoje).orElse(BigDecimal.ZERO);
+        double progresso = meta.signum() > 0
+                ? receitaMes.multiply(BigDecimal.valueOf(100)).divide(meta, 1, java.math.RoundingMode.HALF_UP).doubleValue()
+                : 0.0;
+        MonthStats month = new MonthStats(reais(receitaMes), reais(despesasMes), reais(receitaMes.subtract(despesasMes)),
+                reais(meta), progresso);
 
-        FinanceStatsResponse stats = new FinanceStatsResponse(
-            today,
-            week,
-            month,
-            2500.0,    // pendingExpenses
-            1800.0     // pendingCommissions
-        );
-
-        return ResponseEntity.ok(stats);
+        // Não há contas a pagar cadastradas no sistema: despesas pendentes ficam em zero
+        return ResponseEntity.ok(new FinanceStatsResponse(today, week, month, 0.0,
+                reais(relatorioFinanceiroService.comissoesPendentes(salonId))));
     }
 
     @GetMapping("/reports/monthly")
-    @Operation(summary = "Relatório mensal", description = "Retorna relatório financeiro mensal")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Relatório mensal", description = "Relatório financeiro do mês com os valores reais recebidos, despesas do caixa e atendimentos")
     public ResponseEntity<MonthlyReportResponse> getMonthlyReport(
             @RequestParam int month,
             @RequestParam int year,
             @RequestParam(required = false) String unitId) {
-        log.debug("Getting monthly report for {}/{} unitId: {}", month, year, unitId);
-
+        Long salonId = resolverSalao(unitId);
         YearMonth yearMonth = YearMonth.of(year, month);
-        int daysInMonth = yearMonth.lengthOfMonth();
+        LocalDateTime inicio = yearMonth.atDay(1).atStartOfDay();
+        LocalDateTime fim = yearMonth.plusMonths(1).atDay(1).atStartOfDay();
+        YearMonth anterior = yearMonth.minusMonths(1);
+        LocalDateTime inicioAnterior = anterior.atDay(1).atStartOfDay();
 
-        // Generate daily revenue data
-        List<DailyRevenue> dailyRevenue = new ArrayList<>();
-        Random random = new Random(year * 100 + month); // Consistent seed for same month
-        for (int day = 1; day <= daysInMonth; day++) {
-            LocalDate date = LocalDate.of(year, month, day);
-            double amount = 1200 + random.nextDouble() * 800;
-            dailyRevenue.add(new DailyRevenue(date.toString(), amount));
+        // Receita por dia; semanas = dias 1–7, 8–14, 15–21 e 22 até o fim do mês
+        List<DailyRevenue> porDia = new ArrayList<>();
+        double[] porSemana = new double[4];
+        BigDecimal receita = BigDecimal.ZERO;
+        for (int dia = 1; dia <= yearMonth.lengthOfMonth(); dia++) {
+            LocalDate data = yearMonth.atDay(dia);
+            BigDecimal valor = relatorioFinanceiroService.receita(salonId, data.atStartOfDay(), data.plusDays(1).atStartOfDay());
+            receita = receita.add(valor);
+            porDia.add(new DailyRevenue(data.toString(), reais(valor)));
+            porSemana[Math.min((dia - 1) / 7, 3)] += valor.doubleValue();
         }
+        List<Double> semanas = Arrays.stream(porSemana).map(v -> Math.round(v * 100) / 100.0).boxed().toList();
+        BigDecimal receitaAnterior = relatorioFinanceiroService.receita(salonId, inicioAnterior, inicio);
 
-        // Weekly revenue (4 weeks)
-        List<Double> weeklyRevenue = Arrays.asList(10500.0, 12300.0, 11200.0, 11750.0);
+        BigDecimal despesas = relatorioFinanceiroService.despesas(salonId, inicio, fim);
+        BigDecimal despesasAnterior = relatorioFinanceiroService.despesas(salonId, inicioAnterior, inicio);
+        List<ExpenseByCategory> porCategoria = new ArrayList<>();
+        final BigDecimal totalDespesas = despesas;
+        relatorioFinanceiroService.despesasPorCategoria(salonId, inicio, fim).forEach((categoria, valor) ->
+                porCategoria.add(new ExpenseByCategory(categoria, categoria, reais(valor),
+                        totalDespesas.signum() > 0 ? Math.round(valor.doubleValue() * 1000.0 / totalDespesas.doubleValue()) / 10.0 : 0.0)));
 
-        // Expense categories
-        List<ExpenseByCategory> expensesByCategory = Arrays.asList(
-            new ExpenseByCategory("1", "Produtos", 5000.0, 40.0),
-            new ExpenseByCategory("2", "Aluguel", 3500.0, 28.0),
-            new ExpenseByCategory("3", "Contas", 2000.0, 16.0),
-            new ExpenseByCategory("4", "Marketing", 1500.0, 12.0),
-            new ExpenseByCategory("5", "Outros", 500.0, 4.0)
-        );
+        BigDecimal lucro = receita.subtract(despesas);
+        BigDecimal lucroAnterior = receitaAnterior.subtract(despesasAnterior);
+        double margem = receita.signum() > 0 ? Math.round(lucro.doubleValue() * 1000.0 / receita.doubleValue()) / 10.0 : 0.0;
 
-        // Revenue comparison
-        RevenueData revenue = new RevenueData(
-            45750.0,
-            weeklyRevenue,
-            dailyRevenue,
-            new Comparison(42000.0, 8.9)
-        );
+        // Atendimentos pelo horário marcado; taxa de conclusão sobre os que não foram cancelados
+        Map<StatusAgendamento, Long> porStatus = relatorioFinanceiroService.agendamentosPorStatus(salonId, inicio, fim);
+        long total = porStatus.values().stream().mapToLong(Long::longValue).sum();
+        long cancelados = porStatus.getOrDefault(StatusAgendamento.CANCELADO, 0L);
+        long concluidos = porStatus.getOrDefault(StatusAgendamento.CONCLUIDO, 0L);
+        // Mês em andamento: média pelos dias já passados
+        LocalDate hoje = LocalDate.now();
+        int diasConsiderados = yearMonth.equals(YearMonth.from(hoje)) ? hoje.getDayOfMonth() : yearMonth.lengthOfMonth();
+        MonthlyAppointmentsSummary appointments = new MonthlyAppointmentsSummary((int) total,
+                Math.round(total * 10.0 / diasConsiderados) / 10.0,
+                total - cancelados > 0 ? Math.round(concluidos * 1000.0 / (total - cancelados)) / 10.0 : 0.0);
 
-        // Expenses data
-        ExpensesData expenses = new ExpensesData(
-            12500.0,
-            expensesByCategory,
-            new Comparison(12800.0, -2.3)
-        );
+        List<TopService> topServices = relatorioFinanceiroService.topServicos(salonId, inicio, fim, 5).stream()
+                .map(r -> new TopService(String.valueOf(r.id()), r.nome(), reais(r.total()), r.atendimentos()))
+                .toList();
+        List<TopProfessional> topProfessionals = relatorioFinanceiroService.topProfissionais(salonId, inicio, fim, 5).stream()
+                .map(r -> new TopProfessional(String.valueOf(r.id()), r.nome(), reais(r.total()), r.atendimentos()))
+                .toList();
 
-        // Profit data
-        ProfitData profit = new ProfitData(
-            33250.0,       // total
-            72.7,          // margin percentage
-            new Comparison(30500.0, 9.0)
-        );
+        // Recebido no mês por forma (mesma regra do caixa); transferência entra com débito, como no caixa
+        Map<FormaPagamento, BigDecimal> formas = recebidoPorForma(salonId, inicio, fim);
+        DailyPaymentMethods paymentMethods = new DailyPaymentMethods(
+                formaTotal(formas, FormaPagamento.DINHEIRO),
+                formaTotal(formas, FormaPagamento.PIX),
+                formaTotal(formas, FormaPagamento.CARTAO_CREDITO),
+                formaTotal(formas, FormaPagamento.CARTAO_DEBITO) + formaTotal(formas, FormaPagamento.TRANSFERENCIA),
+                formaTotal(formas, FormaPagamento.VALE));
 
-        // Appointments summary
-        MonthlyAppointmentsSummary appointments = new MonthlyAppointmentsSummary(
-            156,    // total
-            5.2,    // averagePerDay
-            92.5    // completionRate
-        );
-
-        // Top services
-        List<TopService> topServices = Arrays.asList(
-            new TopService("1", "Corte Masculino", 7800.0, 156),
-            new TopService("2", "Barba", 4020.0, 134),
-            new TopService("3", "Corte + Barba", 6230.0, 89),
-            new TopService("4", "Hidratação", 2700.0, 45),
-            new TopService("5", "Coloração", 3450.0, 23)
-        );
-
-        // Top professionals
-        List<TopProfessional> topProfessionals = Arrays.asList(
-            new TopProfessional("1", "Carlos Silva", 12500.0, 89),
-            new TopProfessional("2", "Ana Santos", 10800.0, 76),
-            new TopProfessional("3", "Pedro Lima", 9200.0, 65)
-        );
-
-        MonthlyReportResponse report = new MonthlyReportResponse(
+        return ResponseEntity.ok(new MonthlyReportResponse(
             month,
             year,
-            unitId,
-            revenue,
-            expenses,
-            profit,
+            String.valueOf(salonId),
+            new RevenueData(reais(receita), semanas, porDia, new Comparison(reais(receitaAnterior), variacao(receita, receitaAnterior))),
+            new ExpensesData(reais(despesas), porCategoria, new Comparison(reais(despesasAnterior), variacao(despesas, despesasAnterior))),
+            new ProfitData(reais(lucro), margem, new Comparison(reais(lucroAnterior), variacao(lucro, lucroAnterior))),
             appointments,
             topServices,
-            topProfessionals
-        );
-
-        return ResponseEntity.ok(report);
+            topProfessionals,
+            paymentMethods
+        ));
     }
 
     @GetMapping("/reports/daily")
@@ -645,7 +632,8 @@ public class FinanceController {
         ProfitData profit,
         MonthlyAppointmentsSummary appointments,
         List<TopService> topServices,
-        List<TopProfessional> topProfessionals
+        List<TopProfessional> topProfessionals,
+        DailyPaymentMethods paymentMethods
     ) {}
 
     public record ProfitData(
