@@ -27,11 +27,13 @@ import {
   Bell,
   UserPlus,
   Filter,
+  Undo2,
 } from "lucide-react";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
 import { DataTable, ActionMenuItem, Column } from "@/components/ui/DataTable";
 import { appointmentService } from "@/services/salon/appointmentService";
 import { serviceService } from "@/services/salon/serviceService";
@@ -807,10 +809,22 @@ const DayTimelineView = ({
   );
 };
 
+/** Falta (no-show) só pode ser marcada depois que o horário do agendamento chegou. */
+const horarioJaChegou = (appointment: Appointment): boolean => {
+  const inicio = new Date(appointment.date);
+  const [h, m] = (appointment.startTime || "00:00").split(":").map(Number);
+  inicio.setHours(h, m, 0, 0);
+  return Date.now() >= inicio.getTime();
+};
+
+const mensagemDeErro = (error: unknown): string =>
+  error instanceof Error ? error.message.replace(/^\[HTTP \d+\]\s*/, "") : "Tente novamente.";
+
 // ===== COMPONENTE PRINCIPAL =====
 function AppointmentsPageContent() {
   const { user } = useSalonAuth();
   const { selectedUnitId } = useUnit();
+  const toast = useToast();
 
   // Estados principais
   const [activeTab, setActiveTab] = useState<"agenda" | "list" | "waitlist">("agenda");
@@ -1293,6 +1307,23 @@ function AppointmentsPageContent() {
       loadAppointments();
     } catch (error) {
       console.error("Erro ao alterar status:", error);
+      toast.error("Não foi possível alterar o status", mensagemDeErro(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUndoNoShow = async () => {
+    if (!selectedAppointment) return;
+
+    setIsSubmitting(true);
+    try {
+      await appointmentService.undoNoShow(selectedAppointment.id);
+      toast.success("Falta desfeita", "O agendamento voltou para confirmado.");
+      setIsStatusModalOpen(false);
+      loadAppointments();
+    } catch (error) {
+      toast.error("Não foi possível desfazer a falta", mensagemDeErro(error));
     } finally {
       setIsSubmitting(false);
     }
@@ -2627,9 +2658,23 @@ function AppointmentsPageContent() {
               className="w-full justify-start"
               onClick={() => handleStatusChange("no_show")}
               isLoading={isSubmitting}
+              disabled={!horarioJaChegou(selectedAppointment)}
               leftIcon={<AlertTriangle className="h-4 w-4 text-gray-500" />}
             >
-              Marcar como Não Compareceu
+              {horarioJaChegou(selectedAppointment)
+                ? "Marcar como Não Compareceu"
+                : `Não Compareceu (disponível a partir das ${selectedAppointment.startTime})`}
+            </Button>
+          )}
+          {selectedAppointment?.status === "no_show" && (
+            <Button
+              variant="secondary"
+              className="w-full justify-start"
+              onClick={handleUndoNoShow}
+              isLoading={isSubmitting}
+              leftIcon={<Undo2 className="h-4 w-4 text-orange-500" />}
+            >
+              Desfazer Não Comparecimento
             </Button>
           )}
           {selectedAppointment?.status !== "completed" &&

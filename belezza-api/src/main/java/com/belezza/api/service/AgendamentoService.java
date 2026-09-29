@@ -996,6 +996,11 @@ public class AgendamentoService {
         if (agendamento.getStatus() != StatusAgendamento.CONFIRMADO) {
             throw new BusinessException("Apenas agendamentos confirmados podem ser marcados como no-show");
         }
+        // Só dá para dizer que o cliente faltou depois que o horário chegou
+        if (LocalDateTime.now().isBefore(agendamento.getDataHora())) {
+            throw new BusinessException("Só é possível marcar que o cliente não compareceu depois do horário do agendamento (" +
+                    agendamento.getDataHora().format(DateTimeFormatter.ofPattern("dd/MM 'às' HH:mm")) + ")");
+        }
 
         agendamento.setStatus(StatusAgendamento.NO_SHOW);
         agendamento = agendamentoRepository.save(agendamento);
@@ -1020,6 +1025,34 @@ public class AgendamentoService {
         } catch (Exception e) {
             log.error("Erro ao notificar equipe sobre no-show do agendamento {}: {}", id, e.getMessage(), e);
         }
+
+        return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
+    }
+
+    /**
+     * Desfaz um no-show marcado por engano (o cliente chegou atrasado, foi marcado o atendimento
+     * errado...): o agendamento volta a CONFIRMADO e a falta sai do contador do cliente. Se foi
+     * esta falta que levou o cliente ao bloqueio, o bloqueio também é desfeito.
+     */
+    @Transactional
+    @Auditable(action = "UNDO_NO_SHOW", entityType = "Agendamento", captureOldState = true, captureNewState = true)
+    public AgendamentoResponse desfazerNoShow(Long id, boolean restrictSensitiveData, Usuario operador) {
+        Agendamento agendamento = getAgendamento(id);
+        enforceStaffTenant(agendamento.getSalon().getId());
+        enforceAgendaDoProfissional(agendamento.getProfissional(), operador);
+
+        if (agendamento.getStatus() != StatusAgendamento.NO_SHOW) {
+            throw new BusinessException("Este agendamento não está marcado como não comparecimento");
+        }
+
+        agendamento.setStatus(StatusAgendamento.CONFIRMADO);
+        agendamento = agendamentoRepository.save(agendamento);
+
+        Cliente cliente = agendamento.getCliente();
+        boolean desbloqueado = cliente.desfazerNoShow(agendamento.getSalon().getMaxNoShowsPermitidos());
+        clienteRepository.save(cliente);
+        log.info("No-show desfeito no agendamento {} (cliente {}{})", id, cliente.getId(),
+                desbloqueado ? ", desbloqueado" : "");
 
         return restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(agendamento) : AgendamentoResponse.fromEntity(agendamento);
     }

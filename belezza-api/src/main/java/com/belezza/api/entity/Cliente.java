@@ -117,4 +117,23 @@ public class Cliente {
         }
         return false;
     }
+
+    /**
+     * Retira uma falta registrada por engano. Só desbloqueia quando o bloqueio vinha do limite
+     * de faltas (contador no limite ou acima) e a retirada deixa o cliente abaixo dele; um
+     * bloqueio manual com poucas faltas continua valendo.
+     *
+     * @return true se o cliente foi desbloqueado
+     */
+    public boolean desfazerNoShow(int maxNoShowsPermitidos) {
+        boolean bloqueadoPelasFaltas = bloqueado && noShows >= maxNoShowsPermitidos;
+        if (noShows > 0) {
+            noShows--;
+        }
+        if (bloqueadoPelasFaltas && noShows < maxNoShowsPermitidos) {
+            bloqueado = false;
+            return true;
+        }
+        return false;
+    }
 }

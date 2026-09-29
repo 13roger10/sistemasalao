@@ -198,6 +198,7 @@ function AppointmentStatusBadge({ status }: { status: string }) {
     CONCLUIDO:      { label: "Concluído",       cls: "bg-gray-100 text-gray-600" },
     CANCELADO:      { label: "Cancelado",       cls: "bg-red-100 text-red-600" },
     NAO_COMPARECEU: { label: "Não compareceu",  cls: "bg-orange-100 text-orange-700" },
+    NO_SHOW:        { label: "Não compareceu",  cls: "bg-orange-100 text-orange-700" },
   };
   const cfg = map[status] ?? { label: status, cls: "bg-gray-100 text-gray-600" };
   return (

@@ -244,6 +244,17 @@ public class AgendamentoController {
         return ResponseEntity.ok(response);
     }
 
+    @PostMapping("/{id}/no-show/desfazer")
+    @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL', 'RECEPCIONISTA')")
+    @Operation(summary = "Desfazer no-show", description = "Volta o agendamento para confirmado e retira a falta do cliente")
+    public ResponseEntity<AgendamentoResponse> desfazerNoShow(
+            @PathVariable Long id,
+            @AuthenticationPrincipal Usuario operador) {
+        boolean restrictData = shouldRestrictSensitiveData(operador);
+        AgendamentoResponse response = agendamentoService.desfazerNoShow(id, restrictData, operador);
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/disponibilidade")
     @Operation(summary = "Consultar disponibilidade",
                description = "Consulta horários disponíveis para agendamento considerando horário de trabalho, bloqueios e agendamentos existentes")

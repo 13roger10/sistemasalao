@@ -95,6 +95,7 @@ const mapStatus = (status: string): AppointmentStatus => {
     'EM_ANDAMENTO': 'in_progress',
     'CONCLUIDO': 'completed',
     'CANCELADO': 'canceled',
+    'NO_SHOW': 'no_show',
     'NAO_COMPARECEU': 'no_show',
   };
   return statusMap[status?.toUpperCase()] || 'pending';
@@ -570,6 +571,12 @@ export const appointmentService = {
   // Mark as no-show (backend usa /no-show)
   noShow: (id: string): Promise<Appointment> => {
     return api.post<AgendamentoBackendResponse>(`${BASE_PATH}/${id}/no-show`)
+      .then(mapAgendamentoToFrontend);
+  },
+
+  // Desfaz um no-show marcado por engano: volta para confirmado e retira a falta do cliente
+  undoNoShow: (id: string): Promise<Appointment> => {
+    return api.post<AgendamentoBackendResponse>(`${BASE_PATH}/${id}/no-show/desfazer`)
       .then(mapAgendamentoToFrontend);
   },
 

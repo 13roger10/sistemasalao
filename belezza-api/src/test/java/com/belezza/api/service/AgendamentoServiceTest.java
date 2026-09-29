@@ -538,6 +538,83 @@ class AgendamentoServiceTest {
     @DisplayName("No-Show Tests")
     class NoShowTests {
 
+        @BeforeEach
+        void horarioJaPassou() {
+            // Falta só pode ser marcada depois do horário do agendamento
+            agendamento.setDataHora(LocalDateTime.now().minusMinutes(30));
+        }
+
+        @Test
+        @DisplayName("Não marca falta antes do horário do agendamento")
+        void naoMarcaAntesDoHorario() {
+            agendamento.setStatus(StatusAgendamento.CONFIRMADO);
+            agendamento.setDataHora(LocalDateTime.now().plusHours(2));
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+
+            assertThatThrownBy(() -> agendamentoService.marcarNoShow(1L))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("depois do horário do agendamento");
+            verify(agendamentoRepository, never()).save(any());
+            assertThat(cliente.getNoShows()).isZero();
+        }
+
+        @Test
+        @DisplayName("Desfazer falta volta para confirmado e retira a falta do cliente")
+        void desfazNoShow() {
+            agendamento.setStatus(StatusAgendamento.NO_SHOW);
+            cliente.setNoShows(1);
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+            when(agendamentoRepository.save(any(Agendamento.class))).thenReturn(agendamento);
+
+            agendamentoService.desfazerNoShow(1L, false, null);
+
+            assertThat(agendamento.getStatus()).isEqualTo(StatusAgendamento.CONFIRMADO);
+            assertThat(cliente.getNoShows()).isZero();
+            verify(clienteRepository).save(cliente);
+        }
+
+        @Test
+        @DisplayName("Desfazer a falta que causou o bloqueio desbloqueia o cliente")
+        void desfazerDesbloqueia() {
+            agendamento.setStatus(StatusAgendamento.NO_SHOW);
+            cliente.setNoShows(3);
+            cliente.setBloqueado(true); // bloqueado ao atingir o limite de 3
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+            when(agendamentoRepository.save(any(Agendamento.class))).thenReturn(agendamento);
+
+            agendamentoService.desfazerNoShow(1L, false, null);
+
+            assertThat(cliente.getNoShows()).isEqualTo(2);
+            assertThat(cliente.isBloqueado()).isFalse();
+        }
+
+        @Test
+        @DisplayName("Bloqueio manual (abaixo do limite de faltas) continua depois de desfazer")
+        void bloqueioManualContinua() {
+            agendamento.setStatus(StatusAgendamento.NO_SHOW);
+            cliente.setNoShows(1);
+            cliente.setBloqueado(true);
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+            when(agendamentoRepository.save(any(Agendamento.class))).thenReturn(agendamento);
+
+            agendamentoService.desfazerNoShow(1L, false, null);
+
+            assertThat(cliente.getNoShows()).isZero();
+            assertThat(cliente.isBloqueado()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Só desfaz agendamento marcado como falta")
+        void soDesfazNoShow() {
+            agendamento.setStatus(StatusAgendamento.CONFIRMADO);
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+
+            assertThatThrownBy(() -> agendamentoService.desfazerNoShow(1L, false, null))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("não está marcado");
+            verify(agendamentoRepository, never()).save(any());
+        }
+
         @Test
         @DisplayName("Should mark confirmed agendamento as no-show")
         void shouldMarkAsNoShow() {

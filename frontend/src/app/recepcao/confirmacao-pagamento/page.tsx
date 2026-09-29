@@ -64,7 +64,7 @@ function isCanceled(status: string): boolean {
 }
 
 function isActive(status: string): boolean {
-  return !isCanceled(status) && status !== "NAO_COMPARECEU" && status !== "no_show";
+  return !isCanceled(status) && status !== "NAO_COMPARECEU" && status !== "NO_SHOW" && status !== "no_show";
 }
 
 // Eligible for payment registration: only CONCLUIDO or EM_ANDAMENTO

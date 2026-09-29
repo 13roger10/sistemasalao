@@ -133,6 +133,7 @@ function normalizeStatus(raw: string): FlowStatus {
     completed:   "CONCLUIDO",
     canceled:    "CANCELADO",
     no_show:     "NAO_COMPARECEU",
+    NO_SHOW:     "NAO_COMPARECEU",
   };
   return (map[raw] ?? raw) as FlowStatus;
 }
@@ -402,7 +403,7 @@ export default function AtendimentoPage() {
     }
   };
 
-  const INACTIVE = ["CANCELADO", "canceled", "NAO_COMPARECEU", "no_show"];
+  const INACTIVE = ["CANCELADO", "canceled", "NAO_COMPARECEU", "NO_SHOW", "no_show"];
   const active   = appointments.filter((a) => !INACTIVE.includes(a.status));
   const inactive = appointments.filter((a) => INACTIVE.includes(a.status));
 
