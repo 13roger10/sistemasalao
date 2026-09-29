@@ -422,6 +422,8 @@ export interface UpdateUsuarioRequest {
   nome?: string;
   email?: string;
   password?: string;
+  /** Senha atual — obrigatória quando o usuário troca a própria senha */
+  senhaAtual?: string;
   telefone?: string;
   avatarUrl?: string;
   role?: UserRole;

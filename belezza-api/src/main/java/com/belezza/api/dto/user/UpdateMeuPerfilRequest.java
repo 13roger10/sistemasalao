@@ -1,5 +1,6 @@
 package com.belezza.api.dto.user;
 
+import com.belezza.api.validation.SenhaForte;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -34,6 +35,10 @@ public class UpdateMeuPerfilRequest {
     private String avatarUrl;
 
     /** Nova senha do próprio usuário (opcional). */
-    @Size(min = 6, max = 100, message = "Senha deve ter entre 6 e 100 caracteres")
+    @SenhaForte
     private String password;
+
+    /** Senha atual — obrigatória quando {@code password} é informada (BUG-030). */
+    @Size(max = 100)
+    private String senhaAtual;
 }

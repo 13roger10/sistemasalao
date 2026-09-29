@@ -2,6 +2,7 @@ package com.belezza.api.dto.user;
 
 import com.belezza.api.entity.Plano;
 import com.belezza.api.entity.Role;
+import com.belezza.api.validation.SenhaForte;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -25,8 +26,12 @@ public class UpdateUsuarioRequest {
     @Size(max = 255, message = "Email deve ter no máximo 255 caracteres")
     private String email;
 
-    @Size(min = 6, max = 100, message = "Senha deve ter entre 6 e 100 caracteres")
+    @SenhaForte
     private String password;
+
+    /** Senha atual — obrigatória quando o usuário troca a PRÓPRIA senha (BUG-030). */
+    @Size(max = 100)
+    private String senhaAtual;
 
     @Size(max = 20, message = "Telefone deve ter no máximo 20 caracteres")
     private String telefone;

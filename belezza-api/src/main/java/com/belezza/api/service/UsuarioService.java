@@ -47,6 +47,7 @@ public class UsuarioService {
     private final NotificacaoRepository notificacaoRepository;
     private final PushSubscriptionRepository pushSubscriptionRepository;
     private final BackupCodeRepository backupCodeRepository;
+    private final LoginAttemptService loginAttemptService;
 
     /**
      * List users with pagination and filters.
@@ -264,6 +265,10 @@ public class UsuarioService {
         if (request.getTelefone() != null) usuario.setTelefone(request.getTelefone());
         if (request.getAvatarUrl() != null) usuario.setAvatarUrl(request.getAvatarUrl());
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
+            // A própria senha só muda com a senha atual; o admin redefinindo a de um funcionário não precisa dela
+            if (isSelf) {
+                verificarSenhaAtual(usuario, request.getSenhaAtual(), request.getPassword());
+            }
             usuario.setPassword(passwordEncoder.encode(request.getPassword()));
         }
 
@@ -324,6 +329,7 @@ public class UsuarioService {
         if (request.getTelefone() != null) usuario.setTelefone(request.getTelefone());
         if (request.getAvatarUrl() != null) usuario.setAvatarUrl(request.getAvatarUrl());
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
+            verificarSenhaAtual(usuario, request.getSenhaAtual(), request.getPassword());
             usuario.setPassword(passwordEncoder.encode(request.getPassword()));
         }
 
@@ -332,6 +338,25 @@ public class UsuarioService {
 
         Optional<Profissional> profissional = profissionalRepository.findByUsuarioId(usuario.getId());
         return UsuarioListResponse.fromEntityWithProfissional(usuario, profissional.orElse(null));
+    }
+
+    /**
+     * BUG-030: trocar a própria senha exige a senha atual. Antes bastava estar logado — quem pegasse
+     * uma sessão aberta (computador da recepção, celular emprestado) trocava a senha e tomava a conta.
+     * Senha atual errada conta como tentativa de login errada (mesmo bloqueio contra força bruta).
+     */
+    private void verificarSenhaAtual(Usuario usuario, String senhaAtual, String novaSenha) {
+        if (senhaAtual == null || senhaAtual.isBlank()) {
+            throw new BusinessException("Informe a senha atual para trocar a senha");
+        }
+        loginAttemptService.verificarBloqueio(usuario.getEmail());
+        if (!passwordEncoder.matches(senhaAtual, usuario.getPassword())) {
+            loginAttemptService.registrarFalha(usuario.getEmail());
+            throw new BusinessException("Senha atual incorreta");
+        }
+        if (senhaAtual.equals(novaSenha)) {
+            throw new BusinessException("A nova senha deve ser diferente da senha atual");
+        }
     }
 
     /**

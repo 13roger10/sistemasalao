@@ -16,6 +16,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isStrongPassword } from '@/utils/validators';
 
 interface FormData {
   nome: string;
@@ -75,8 +76,9 @@ export default function EditProfilePage() {
       }
       if (!form.novaSenha) {
         newErrors.novaSenha = 'Informe a nova senha';
-      } else if (form.novaSenha.length < 6) {
-        newErrors.novaSenha = 'Senha deve ter pelo menos 6 caracteres';
+      } else if (!isStrongPassword(form.novaSenha).valid) {
+        // Mesma política do backend: 8+ caracteres com maiúscula, minúscula e número
+        newErrors.novaSenha = isStrongPassword(form.novaSenha).errors[0];
       }
       if (form.novaSenha !== form.confirmarSenha) {
         newErrors.confirmarSenha = 'As senhas não coincidem';
@@ -137,6 +139,8 @@ export default function EditProfilePage() {
 
       if (showPasswordSection && form.novaSenha) {
         body.password = form.novaSenha;
+        // Antes a senha atual era pedida na tela mas não era enviada: o backend nem conferia
+        body.senhaAtual = form.senhaAtual;
       }
 
       const response = await fetch(`/api/usuarios/me`, {
@@ -394,7 +398,7 @@ export default function EditProfilePage() {
                         setForm(prev => ({ ...prev, novaSenha: e.target.value }));
                         if (errors.novaSenha) setErrors(prev => ({ ...prev, novaSenha: undefined }));
                       }}
-                      placeholder="Mínimo 6 caracteres"
+                      placeholder="8+ caracteres, maiúscula, minúscula e número"
                       className={cn(
                         'w-full rounded-xl border px-4 py-3 pr-11 text-sm text-gray-900 outline-none transition-colors dark:bg-gray-700 dark:text-white',
                         'focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20',

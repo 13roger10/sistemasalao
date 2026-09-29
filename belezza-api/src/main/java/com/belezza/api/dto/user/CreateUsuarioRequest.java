@@ -2,6 +2,7 @@ package com.belezza.api.dto.user;
 
 import com.belezza.api.entity.Plano;
 import com.belezza.api.entity.Role;
+import com.belezza.api.validation.SenhaForte;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -30,7 +31,7 @@ public class CreateUsuarioRequest {
     private String email;
 
     @NotBlank(message = "Senha é obrigatória")
-    @Size(min = 6, max = 100, message = "Senha deve ter entre 6 e 100 caracteres")
+    @SenhaForte
     private String password;
 
     @Size(max = 20, message = "Telefone deve ter no máximo 20 caracteres")

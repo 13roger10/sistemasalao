@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
+import { isStrongPassword } from "@/utils/validators";
 import { clientService } from "@/services/salon/clientService";
 import { api } from "@/services/salon/api";
 import { userService } from "@/services/user";
@@ -647,8 +648,9 @@ export default function ClientsPage() {
     }
     if (!newClientFormData.password.trim()) {
       errors.password = "Senha é obrigatória";
-    } else if (newClientFormData.password.length < 6) {
-      errors.password = "Senha deve ter pelo menos 6 caracteres";
+    } else if (!isStrongPassword(newClientFormData.password).valid) {
+      // Mesma política do backend: 8+ caracteres com maiúscula, minúscula e número
+      errors.password = isStrongPassword(newClientFormData.password).errors[0];
     }
     if (!newClientFormData.telefone.trim()) errors.telefone = "Telefone é obrigatório";
     if (!newClientFormData.birthDate) errors.birthDate = "Data de nascimento é obrigatória";
@@ -1831,7 +1833,7 @@ export default function ClientsPage() {
               value={newClientFormData.password}
               onChange={(e) => setNewClientFormData({ ...newClientFormData, password: e.target.value })}
               error={newClientFormErrors.password}
-              placeholder="Mínimo 6 caracteres"
+              placeholder="8+ caracteres, maiúscula, minúscula e número"
               leftIcon={<Lock className="h-4 w-4" />}
               autoComplete="new-password"
             />

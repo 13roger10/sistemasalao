@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
 import { userService } from "@/services/user";
+import { isStrongPassword } from "@/utils/validators";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   UsuarioListItem,
@@ -247,8 +248,9 @@ export default function UsersPage() {
 
     if (!isEdit && !formData.password) {
       errors.password = "Senha é obrigatória";
-    } else if (formData.password && formData.password.length < 6) {
-      errors.password = "Senha deve ter no mínimo 6 caracteres";
+    } else if (formData.password && !isStrongPassword(formData.password).valid) {
+      // Mesma política do backend: 8+ caracteres com maiúscula, minúscula e número
+      errors.password = isStrongPassword(formData.password).errors[0];
     }
 
     setFormErrors(errors);
@@ -506,7 +508,7 @@ export default function UsersPage() {
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               error={formErrors.password}
-              placeholder="Mínimo 6 caracteres"
+              placeholder="8+ caracteres, maiúscula, minúscula e número"
               showPasswordToggle
             />
             <Input

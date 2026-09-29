@@ -30,6 +30,7 @@ import {
   type WorkScheduleRequest,
 } from "@/services/salon/workScheduleService";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
+import { isStrongPassword } from "@/utils/validators";
 import {
   UsuarioListItem,
   UserRole,
@@ -92,6 +93,8 @@ const StatusBadge = ({ ativo }: { ativo: boolean }) => {
 export default function SalonUsersPage() {
   const router = useRouter();
   const { user } = useSalonAuth();
+  // Trocar a PRÓPRIA senha exige a senha atual (BUG-030); redefinir a de um funcionário, não
+  const [senhaAtual, setSenhaAtual] = useState("");
 
   // Estados de listagem
   const [usuarios, setUsuarios] = useState<UsuarioListItem[]>([]);
@@ -119,6 +122,7 @@ export default function SalonUsersPage() {
   const [isPermanentDeleteModalOpen, setIsPermanentDeleteModalOpen] = useState(false);
   const [permanentDeleteError, setPermanentDeleteError] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<UsuarioListItem | null>(null);
+  const editandoAPropriaConta = !!selectedUser && !!user && String(selectedUser.id) === String(user.id);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Estado para modal de erro de configuração do profissional
@@ -328,6 +332,7 @@ export default function SalonUsersPage() {
       };
       if (formData.password) {
         updateData.password = formData.password;
+        if (editandoAPropriaConta) updateData.senhaAtual = senhaAtual;
       }
 
       await userService.update(selectedUser.id, updateData);
@@ -457,10 +462,14 @@ export default function SalonUsersPage() {
       errors.email = "Email inválido";
     }
 
+    // Mesma política do backend: 8+ caracteres com maiúscula, minúscula e número
     if (!isEdit && !formData.password) {
       errors.password = "Senha é obrigatória";
-    } else if (formData.password && formData.password.length < 6) {
-      errors.password = "Senha deve ter no mínimo 6 caracteres";
+    } else if (formData.password && !isStrongPassword(formData.password).valid) {
+      errors.password = isStrongPassword(formData.password).errors[0];
+    }
+    if (isEdit && editandoAPropriaConta && formData.password && !senhaAtual) {
+      errors.senhaAtual = "Informe a sua senha atual para trocar a senha";
     }
 
     setFormErrors(errors);
@@ -480,6 +489,7 @@ export default function SalonUsersPage() {
     });
     setFormErrors({});
     setSelectedUser(null);
+    setSenhaAtual("");
     setSelectedServiceIds([]);
     setWorkSchedules(workScheduleService.getDefaultSchedule());
     setShowScheduleSection(false);
@@ -777,7 +787,7 @@ export default function SalonUsersPage() {
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               error={formErrors.password}
-              placeholder="Mínimo 6 caracteres"
+              placeholder="8+ caracteres, maiúscula, minúscula e número"
               showPasswordToggle
               autoComplete="new-password"
             />
@@ -1050,10 +1060,22 @@ export default function SalonUsersPage() {
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               error={formErrors.password}
               placeholder="Deixe em branco para manter"
-              hint="Preencha apenas se quiser alterar"
+              hint="8+ caracteres, com maiúscula, minúscula e número"
               showPasswordToggle
               autoComplete="new-password"
             />
+            {editandoAPropriaConta && formData.password && (
+              <Input
+                label="Sua senha atual *"
+                type="password"
+                value={senhaAtual}
+                onChange={(e) => setSenhaAtual(e.target.value)}
+                error={formErrors.senhaAtual}
+                placeholder="Necessária para trocar a sua senha"
+                showPasswordToggle
+                autoComplete="current-password"
+              />
+            )}
             <Input
               label="Telefone"
               value={formData.telefone}

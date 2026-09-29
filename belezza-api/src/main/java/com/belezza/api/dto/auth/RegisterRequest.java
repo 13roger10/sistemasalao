@@ -1,6 +1,7 @@
 package com.belezza.api.dto.auth;
 
 import com.belezza.api.entity.Role;
+import com.belezza.api.validation.SenhaForte;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,11 +23,7 @@ public class RegisterRequest {
     private String email;
 
     @NotBlank(message = "Senha é obrigatória")
-    @Size(min = 8, max = 100, message = "Senha deve ter entre 8 e 100 caracteres")
-    @Pattern(
-        regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).*$",
-        message = "Senha deve conter pelo menos uma letra maiúscula, uma minúscula e um número"
-    )
+    @SenhaForte
     private String password;
 
     @NotBlank(message = "Nome é obrigatório")

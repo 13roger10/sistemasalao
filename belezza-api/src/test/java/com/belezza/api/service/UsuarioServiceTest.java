@@ -1,7 +1,9 @@
 package com.belezza.api.service;
 
 import com.belezza.api.dto.user.CreateUsuarioRequest;
+import com.belezza.api.dto.user.UpdateMeuPerfilRequest;
 import com.belezza.api.dto.user.UpdateUsuarioRequest;
+import com.belezza.api.exception.BusinessException;
 import com.belezza.api.entity.*;
 import com.belezza.api.repository.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +41,7 @@ class UsuarioServiceTest {
     @Mock private NotificacaoRepository notificacaoRepository;
     @Mock private PushSubscriptionRepository pushSubscriptionRepository;
     @Mock private BackupCodeRepository backupCodeRepository;
+    @Mock private LoginAttemptService loginAttemptService;
 
     @InjectMocks
     private UsuarioService usuarioService;
@@ -182,6 +185,78 @@ class UsuarioServiceTest {
         assertThatThrownBy(() -> usuarioService.atualizar(41L, request, EMAIL_ADMIN_A))
                 .isInstanceOf(AccessDeniedException.class);
         verify(usuarioRepository, never()).save(any());
+    }
+
+    // ===== BUG-030: trocar a própria senha exige a senha atual =====
+
+    private Usuario prof() {
+        Usuario prof = Usuario.builder().id(20L).email("prof@teste.com").password("hash-atual")
+                .role(Role.PROFISSIONAL).salon(salonA).ativo(true).build();
+        lenient().when(usuarioRepository.findByEmailAndAtivoTrue("prof@teste.com")).thenReturn(Optional.of(prof));
+        lenient().when(usuarioRepository.findById(20L)).thenReturn(Optional.of(prof));
+        lenient().when(usuarioRepository.save(any(Usuario.class))).thenAnswer(i -> i.getArgument(0));
+        return prof;
+    }
+
+    @Test
+    @DisplayName("Perfil: trocar a senha sem a senha atual é recusado")
+    void perfilSemSenhaAtual() {
+        Usuario prof = prof();
+        UpdateMeuPerfilRequest req = UpdateMeuPerfilRequest.builder().password("NovaSenha1").build();
+
+        assertThatThrownBy(() -> usuarioService.atualizarMeuPerfil("prof@teste.com", req))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("Informe a senha atual");
+        assertThat(prof.getPassword()).isEqualTo("hash-atual");
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Perfil: senha atual errada é recusada e conta como tentativa errada")
+    void perfilSenhaAtualErrada() {
+        Usuario prof = prof();
+        when(passwordEncoder.matches("Errada123", "hash-atual")).thenReturn(false);
+        UpdateMeuPerfilRequest req = UpdateMeuPerfilRequest.builder().senhaAtual("Errada123").password("NovaSenha1").build();
+
+        assertThatThrownBy(() -> usuarioService.atualizarMeuPerfil("prof@teste.com", req))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("Senha atual incorreta");
+        verify(loginAttemptService).registrarFalha("prof@teste.com");
+        assertThat(prof.getPassword()).isEqualTo("hash-atual");
+    }
+
+    @Test
+    @DisplayName("Perfil: com a senha atual certa, troca a senha")
+    void perfilTrocaComSenhaAtual() {
+        Usuario prof = prof();
+        when(passwordEncoder.matches("Atual1234", "hash-atual")).thenReturn(true);
+        when(passwordEncoder.encode("NovaSenha1")).thenReturn("hash-nova");
+        UpdateMeuPerfilRequest req = UpdateMeuPerfilRequest.builder().senhaAtual("Atual1234").password("NovaSenha1").build();
+
+        usuarioService.atualizarMeuPerfil("prof@teste.com", req);
+
+        assertThat(prof.getPassword()).isEqualTo("hash-nova");
+    }
+
+    @Test
+    @DisplayName("Editar a própria conta por /usuarios/{id} também exige a senha atual")
+    void edicaoPropriaExigeSenhaAtual() {
+        prof();
+        UpdateUsuarioRequest req = UpdateUsuarioRequest.builder().password("NovaSenha1").build();
+
+        assertThatThrownBy(() -> usuarioService.atualizar(20L, req, "prof@teste.com"))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("Informe a senha atual");
+    }
+
+    @Test
+    @DisplayName("Admin redefinindo a senha de um funcionário não precisa da senha dele")
+    void adminRedefineSenhaDeFuncionario() {
+        when(passwordEncoder.encode("NovaSenha1")).thenReturn("hash-nova");
+        when(usuarioRepository.save(any(Usuario.class))).thenAnswer(i -> i.getArgument(0));
+        UpdateUsuarioRequest req = UpdateUsuarioRequest.builder().password("NovaSenha1").build();
+
+        usuarioService.atualizar(14L, req, EMAIL_ADMIN_A);
+
+        assertThat(recepA.getPassword()).isEqualTo("hash-nova");
+        verify(passwordEncoder, never()).matches(any(), any());
     }
 
     @Test
