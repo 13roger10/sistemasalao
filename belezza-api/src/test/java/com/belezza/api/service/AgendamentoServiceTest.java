@@ -333,8 +333,9 @@ class AgendamentoServiceTest {
         @Test
         @DisplayName("Should start confirmed agendamento")
         void shouldStartConfirmedAgendamento() {
-            // Given
+            // Given — horário daqui a 10 min (dentro da janela de 30 min antes)
             agendamento.setStatus(StatusAgendamento.CONFIRMADO);
+            agendamento.setDataHora(LocalDateTime.now().plusMinutes(10));
             when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
             when(agendamentoRepository.save(any(Agendamento.class))).thenReturn(agendamento);
 
@@ -357,6 +358,41 @@ class AgendamentoServiceTest {
             assertThatThrownBy(() -> agendamentoService.iniciar(1L))
                     .isInstanceOf(BusinessException.class)
                     .hasMessageContaining("confirmados");
+        }
+
+        @Test
+        @DisplayName("Não inicia dias antes do horário (BUG-023)")
+        void naoIniciaDiasAntes() {
+            agendamento.setStatus(StatusAgendamento.CONFIRMADO);
+            agendamento.setDataHora(LocalDateTime.now().plusDays(3));
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+
+            assertThatThrownBy(() -> agendamentoService.iniciar(1L))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("30 minutos antes do horário marcado");
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Atendimento em andamento não é cancelado nem reagendado (BUG-023)")
+        void emAndamentoNaoCancelaNemReagenda() {
+            agendamento.setStatus(StatusAgendamento.EM_ANDAMENTO);
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+            Usuario recepcionista = Usuario.builder().id(14L).role(Role.RECEPCIONISTA).build();
+            ReagendamentoRequest req = new ReagendamentoRequest();
+            req.setNovaDataHora(LocalDateTime.now().plusDays(2));
+
+            assertThatThrownBy(() -> agendamentoService.cancelar(1L, new CancelamentoRequest("x"), false, false, recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("em andamento não pode ser cancelado");
+            assertThatThrownBy(() -> agendamentoService.reagendar(1L, req, false, false, recepcionista))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("em andamento não pode ser reagendado");
+            when(agendamentoRepository.findByTokenConfirmacao("token-123")).thenReturn(Optional.of(agendamento));
+            assertThatThrownBy(() -> agendamentoService.cancelarPorToken("token-123", null))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("em andamento não pode ser cancelado");
+            verify(agendamentoRepository, never()).save(any());
         }
     }
 

@@ -817,6 +817,14 @@ const horarioJaChegou = (appointment: Appointment): boolean => {
   return Date.now() >= inicio.getTime();
 };
 
+/** Atendimento pode ser iniciado a partir de 30 min antes do horário (BUG-023). */
+const podeIniciar = (appointment: Appointment): boolean => {
+  const inicio = new Date(appointment.date);
+  const [h, m] = (appointment.startTime || "00:00").split(":").map(Number);
+  inicio.setHours(h, m, 0, 0);
+  return Date.now() >= inicio.getTime() - 30 * 60 * 1000;
+};
+
 const mensagemDeErro = (error: unknown): string =>
   error instanceof Error ? error.message.replace(/^\[HTTP \d+\]\s*/, "") : "Tente novamente.";
 
@@ -2633,9 +2641,12 @@ function AppointmentsPageContent() {
               className="w-full justify-start"
               onClick={() => handleStatusChange("in_progress")}
               isLoading={isSubmitting}
+              disabled={!podeIniciar(selectedAppointment)}
               leftIcon={<Scissors className="h-4 w-4 text-violet-500" />}
             >
-              Iniciar Atendimento
+              {podeIniciar(selectedAppointment)
+                ? "Iniciar Atendimento"
+                : "Iniciar Atendimento (liberado 30 min antes do horário)"}
             </Button>
           )}
           {selectedAppointment?.status === "in_progress" && (
@@ -2674,9 +2685,11 @@ function AppointmentsPageContent() {
               Desfazer Não Comparecimento
             </Button>
           )}
+          {/* em andamento não cancela (BUG-023): termine o atendimento */}
           {selectedAppointment?.status !== "completed" &&
            selectedAppointment?.status !== "canceled" &&
-           selectedAppointment?.status !== "no_show" && (
+           selectedAppointment?.status !== "no_show" &&
+           selectedAppointment?.status !== "in_progress" && (
             <Button
               variant="danger"
               className="w-full justify-start"

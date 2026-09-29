@@ -635,6 +635,10 @@ public class AgendamentoService {
             agendamento.getStatus() == StatusAgendamento.NO_SHOW) {
             throw new BusinessException("Este agendamento não pode ser cancelado");
         }
+        // BUG-023: atendimento em andamento não pode ser cancelado pelo link do e-mail
+        if (agendamento.getStatus() == StatusAgendamento.EM_ANDAMENTO) {
+            throw new BusinessException("Atendimento em andamento não pode ser cancelado");
+        }
         validarPrazoCancelamento(agendamento, true, "cancelar");
 
         agendamento.setStatus(StatusAgendamento.CANCELADO);
@@ -675,6 +679,14 @@ public class AgendamentoService {
 
         if (agendamento.getStatus() != StatusAgendamento.CONFIRMADO) {
             throw new BusinessException("Apenas agendamentos confirmados podem ser iniciados");
+        }
+        // BUG-023: antes dava para iniciar dias antes do horário. Aceita até 30 min antes (cliente
+        // que chega cedo) e em qualquer momento depois.
+        LocalDateTime inicioPermitido = agendamento.getDataHora().minusMinutes(30);
+        if (LocalDateTime.now().isBefore(inicioPermitido)) {
+            throw new BusinessException("O atendimento só pode ser iniciado a partir de " +
+                    inicioPermitido.format(DateTimeFormatter.ofPattern("dd/MM 'às' HH:mm")) +
+                    " (30 minutos antes do horário marcado)");
         }
 
         agendamento.setStatus(StatusAgendamento.EM_ANDAMENTO);
@@ -848,6 +860,10 @@ public class AgendamentoService {
             agendamento.getStatus() == StatusAgendamento.NO_SHOW) {
             throw new BusinessException("Este agendamento não pode ser cancelado");
         }
+        // BUG-023: o cliente já está sendo atendido; antes dava para cancelar no meio do atendimento
+        if (agendamento.getStatus() == StatusAgendamento.EM_ANDAMENTO) {
+            throw new BusinessException("Atendimento em andamento não pode ser cancelado");
+        }
         validarPrazoCancelamento(agendamento, operador != null && operador.getRole() == Role.CLIENTE, "cancelar");
 
         agendamento.setStatus(StatusAgendamento.CANCELADO);
@@ -891,6 +907,10 @@ public class AgendamentoService {
             agendamento.getStatus() == StatusAgendamento.CANCELADO ||
             agendamento.getStatus() == StatusAgendamento.NO_SHOW) {
             throw new BusinessException("Este agendamento não pode ser reagendado");
+        }
+        // BUG-023: atendimento em andamento não muda de horário (termine ou registre o que houve)
+        if (agendamento.getStatus() == StatusAgendamento.EM_ANDAMENTO) {
+            throw new BusinessException("Atendimento em andamento não pode ser reagendado");
         }
         validarPrazoCancelamento(agendamento, operador != null && operador.getRole() == Role.CLIENTE, "reagendar");
 

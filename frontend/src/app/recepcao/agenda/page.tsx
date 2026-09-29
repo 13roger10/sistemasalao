@@ -490,7 +490,8 @@ function AppointmentCard({
 
   const canConfirm   = appt.status === "pending";
   const canReschedule = ["pending", "confirmed"].includes(appt.status);
-  const canCancel    = !["canceled", "no_show", "completed"].includes(appt.status);
+  // em andamento não cancela (BUG-023)
+  const canCancel    = !["canceled", "no_show", "completed", "in_progress"].includes(appt.status);
   const hasActions   = canConfirm || canReschedule || canCancel;
 
   return (
