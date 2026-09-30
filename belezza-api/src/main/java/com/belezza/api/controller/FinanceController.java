@@ -215,7 +215,7 @@ public class FinanceController {
             case CARTAO_CREDITO -> "credit_card";
             case CARTAO_DEBITO -> "debit_card";
             case VALE -> "voucher";
-            case TRANSFERENCIA -> "debit_card";
+            case TRANSFERENCIA -> "transfer"; // antes aparecia como "debit_card" (BUG-034)
         };
     }
 
@@ -318,7 +318,6 @@ public class FinanceController {
 
     private CashRegisterResponse toCashRegisterResponse(Caixa caixa) {
         CaixaService.Totais t = caixaService.totais(caixa);
-        double debito = t.porForma(FormaPagamento.CARTAO_DEBITO).add(t.porForma(FormaPagamento.TRANSFERENCIA)).doubleValue();
         return new CashRegisterResponse(
                 String.valueOf(caixa.getId()),
                 String.valueOf(caixa.getSalon().getId()),
@@ -336,7 +335,7 @@ public class FinanceController {
                 t.porForma(FormaPagamento.DINHEIRO).doubleValue(),
                 t.porForma(FormaPagamento.PIX).doubleValue(),
                 t.porForma(FormaPagamento.CARTAO_CREDITO).doubleValue(),
-                debito,
+                t.porForma(FormaPagamento.CARTAO_DEBITO).doubleValue(),
                 t.porForma(FormaPagamento.VALE).doubleValue(),
                 caixa.getCriadoEm(),
                 caixa.getAtualizadoEm(),
@@ -345,7 +344,8 @@ public class FinanceController {
                 t.dinheiroEsperado().doubleValue(),
                 caixa.getDiferenca() != null ? caixa.getDiferenca().doubleValue() : null,
                 caixa.getObservacoesFechamento(),
-                t.suprimentos().doubleValue()
+                t.suprimentos().doubleValue(),
+                t.porForma(FormaPagamento.TRANSFERENCIA).doubleValue()
         );
     }
 
@@ -460,14 +460,15 @@ public class FinanceController {
                 .map(r -> new TopProfessional(String.valueOf(r.id()), r.nome(), reais(r.total()), r.atendimentos()))
                 .toList();
 
-        // Recebido no mês por forma (mesma regra do caixa); transferência entra com débito, como no caixa
+        // Recebido no mês por forma (mesma regra do caixa); transferência com total próprio (BUG-034)
         Map<FormaPagamento, BigDecimal> formas = recebidoPorForma(salonId, inicio, fim);
         DailyPaymentMethods paymentMethods = new DailyPaymentMethods(
                 formaTotal(formas, FormaPagamento.DINHEIRO),
                 formaTotal(formas, FormaPagamento.PIX),
                 formaTotal(formas, FormaPagamento.CARTAO_CREDITO),
-                formaTotal(formas, FormaPagamento.CARTAO_DEBITO) + formaTotal(formas, FormaPagamento.TRANSFERENCIA),
-                formaTotal(formas, FormaPagamento.VALE));
+                formaTotal(formas, FormaPagamento.CARTAO_DEBITO),
+                formaTotal(formas, FormaPagamento.VALE),
+                formaTotal(formas, FormaPagamento.TRANSFERENCIA));
 
         return ResponseEntity.ok(new MonthlyReportResponse(
             month,
@@ -500,9 +501,10 @@ public class FinanceController {
         double cashTotal = formaTotal(totals, FormaPagamento.DINHEIRO);
         double pixTotal = formaTotal(totals, FormaPagamento.PIX);
         double creditCardTotal = formaTotal(totals, FormaPagamento.CARTAO_CREDITO);
-        double debitCardTotal = formaTotal(totals, FormaPagamento.CARTAO_DEBITO) + formaTotal(totals, FormaPagamento.TRANSFERENCIA);
+        double debitCardTotal = formaTotal(totals, FormaPagamento.CARTAO_DEBITO);
         double voucherTotal = formaTotal(totals, FormaPagamento.VALE);
-        double totalRevenue = cashTotal + pixTotal + creditCardTotal + debitCardTotal + voucherTotal;
+        double transferTotal = formaTotal(totals, FormaPagamento.TRANSFERENCIA);
+        double totalRevenue = cashTotal + pixTotal + creditCardTotal + debitCardTotal + voucherTotal + transferTotal;
 
         // Revenue breakdown — every real payment is currently for a service; there is no
         // product/package/tip tracking yet, so those stay at 0 rather than showing fake numbers.
@@ -521,7 +523,7 @@ public class FinanceController {
         DailyExpensesSummary expenses = new DailyExpensesSummary(totalDespesas, porCategoria);
 
         DailyPaymentMethods paymentMethods = new DailyPaymentMethods(
-            cashTotal, pixTotal, creditCardTotal, debitCardTotal, voucherTotal
+            cashTotal, pixTotal, creditCardTotal, debitCardTotal, voucherTotal, transferTotal
         );
 
         int total = 0;
@@ -679,7 +681,8 @@ public class FinanceController {
         double pix,
         double creditCard,
         double debitCard,
-        double voucher
+        double voucher,
+        double transfer
     ) {}
 
     public record DailyAppointmentsSummary(
@@ -761,7 +764,8 @@ public class FinanceController {
         double expectedBalance,
         Double difference,
         String closingNotes,
-        double totalSupplies
+        double totalSupplies,
+        double transferTotal
     ) {}
 
     public record PaginatedCashRegistersResponse(

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Banknote, QrCode, CreditCard, Plus, Trash2, Split } from "lucide-react";
+import { Banknote, QrCode, CreditCard, ArrowLeftRight, Plus, Trash2, Split } from "lucide-react";
 
 // Formulário de pagamento de um atendimento, usado pelas telas que registram pagamento
 // (recepção, caixa). Regras (as mesmas do backend):
@@ -16,6 +16,7 @@ export const FORMAS_PAGAMENTO = [
   { value: "PIX", label: "PIX", icon: QrCode },
   { value: "CARTAO_CREDITO", label: "Cartão de Crédito", icon: CreditCard },
   { value: "CARTAO_DEBITO", label: "Cartão de Débito", icon: CreditCard },
+  { value: "TRANSFERENCIA", label: "Transferência", icon: ArrowLeftRight },
 ] as const;
 
 export interface PartePagamento {

@@ -27,6 +27,7 @@ import {
   Eye,
   ChevronDown,
   ChevronUp,
+  ArrowLeftRight,
 } from "lucide-react";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { Button } from "@/components/ui/Button";
@@ -151,6 +152,7 @@ const PaymentMethodBadge = ({ method }: { method: PaymentMethod }) => {
     credit_card: { label: "Crédito", icon: <CreditCard className="h-3 w-3" /> },
     debit_card: { label: "Débito", icon: <CreditCard className="h-3 w-3" /> },
     voucher: { label: "Voucher", icon: <Receipt className="h-3 w-3" /> },
+    transfer: { label: "Transferência", icon: <ArrowLeftRight className="h-3 w-3" /> },
     loyalty_points: { label: "Pontos", icon: <DollarSign className="h-3 w-3" /> },
   };
 
@@ -564,7 +566,8 @@ export default function FinanceCashPage() {
       dailyReport.paymentMethods.pix +
       dailyReport.paymentMethods.creditCard +
       dailyReport.paymentMethods.debitCard +
-      dailyReport.paymentMethods.voucher;
+      dailyReport.paymentMethods.voucher +
+      (dailyReport.paymentMethods.transfer ?? 0);
 
     return {
       cash: { value: dailyReport.paymentMethods.cash, percentage: (dailyReport.paymentMethods.cash / total) * 100 },
@@ -572,6 +575,8 @@ export default function FinanceCashPage() {
       creditCard: { value: dailyReport.paymentMethods.creditCard, percentage: (dailyReport.paymentMethods.creditCard / total) * 100 },
       debitCard: { value: dailyReport.paymentMethods.debitCard, percentage: (dailyReport.paymentMethods.debitCard / total) * 100 },
       voucher: { value: dailyReport.paymentMethods.voucher, percentage: (dailyReport.paymentMethods.voucher / total) * 100 },
+      // Transferência com total próprio (BUG-034: antes aparecia somada ao débito)
+      transfer: { value: dailyReport.paymentMethods.transfer ?? 0, percentage: ((dailyReport.paymentMethods.transfer ?? 0) / total) * 100 },
     };
   }, [dailyReport]);
 
@@ -837,7 +842,7 @@ export default function FinanceCashPage() {
             <h3 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
               Controle por Forma de Pagamento
             </h3>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               <PaymentMethodCard
                 icon={<Wallet className="h-5 w-5 text-green-500" />}
                 label="Dinheiro"
@@ -867,6 +872,12 @@ export default function FinanceCashPage() {
                 label="Voucher"
                 value={paymentMethodTotals.voucher.value}
                 percentage={paymentMethodTotals.voucher.percentage}
+              />
+              <PaymentMethodCard
+                icon={<ArrowLeftRight className="h-5 w-5 text-teal-500" />}
+                label="Transferência"
+                value={paymentMethodTotals.transfer.value}
+                percentage={paymentMethodTotals.transfer.percentage}
               />
             </div>
           </div>
@@ -1277,6 +1288,7 @@ export default function FinanceCashPage() {
                 <option value="credit_card">Cartão de Crédito</option>
                 <option value="debit_card">Cartão de Débito</option>
                 <option value="voucher">Voucher</option>
+                <option value="transfer">Transferência</option>
               </select>
             </div>
           </div>

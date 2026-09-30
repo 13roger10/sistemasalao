@@ -458,6 +458,19 @@ class AgendamentoServiceTest {
         }
 
         @Test
+        @DisplayName("Lista do salão traz 'pago' pelos pagamentos do atendimento, não por quem registrou (BUG-034)")
+        void listaDoSalaoTrazPago() {
+            when(agendamentoRepository.findBySalonId(eq(1L), any()))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(agendamento)));
+            when(pagamentoService.idsPagos(List.of(agendamento))).thenReturn(java.util.Set.of(1L));
+
+            var pagina = agendamentoService.listarPorSalon(1L, null, null,
+                    org.springframework.data.domain.Pageable.unpaged(), false, null);
+
+            assertThat(pagina.getContent()).singleElement().extracting(AgendamentoResponse::getPago).isEqualTo(true);
+        }
+
+        @Test
         @DisplayName("O JSON publica o campo como isPaid, o nome que a tela lê")
         void jsonUsaIsPaid() throws Exception {
             var json = new com.fasterxml.jackson.databind.ObjectMapper()

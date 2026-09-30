@@ -40,6 +40,8 @@ export interface CashRegister extends Timestamps {
   creditCardTotal: number;
   debitCardTotal: number;
   voucherTotal: number;
+  /** Transferência bancária (BUG-034: antes somada ao débito) */
+  transferTotal?: number;
 }
 
 export interface CashRegisterOpenInput {
@@ -199,6 +201,7 @@ export interface DailyReport {
     creditCard: number;
     debitCard: number;
     voucher: number;
+    transfer?: number;
   };
 
   appointments: {
@@ -284,6 +287,7 @@ export interface MonthlyReport {
     creditCard: number;
     debitCard: number;
     voucher: number;
+    transfer?: number;
   };
 }
 

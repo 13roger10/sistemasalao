@@ -39,6 +39,7 @@ import { appointmentService } from "@/services/salon/appointmentService";
 import { serviceService } from "@/services/salon/serviceService";
 import { professionalService } from "@/services/salon/professionalService";
 import { clientService } from "@/services/salon/clientService";
+import { financeService } from "@/services/salon/financeService";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import { useUnit } from "@/contexts/UnitContext";
 import type {
@@ -1472,11 +1473,27 @@ function AppointmentsPageContent() {
       confirmed: viewedAppointments.filter((a) => a.status === "confirmed").length,
       pending: viewedAppointments.filter((a) => a.status === "pending").length,
       completed: viewedAppointments.filter((a) => a.status === "completed").length,
+      // Valor dos atendimentos concluídos — só para o profissional, que não acessa o financeiro
       revenue: viewedAppointments
         .filter((a) => a.status === "completed")
         .reduce((acc, a) => acc + a.finalPrice, 0),
     };
   }, [appointments, viewedDate]);
+
+  // Recebido no dia (BUG-034): a mesma fonte do caixa — pagamentos aprovados do dia, pelo relatório
+  // diário do backend. Antes a agenda somava o preço dos concluídos e divergia do caixa
+  // (ex.: R$ 720 na agenda × R$ 1.020 no caixa).
+  const podeVerFinanceiro = user?.role !== "PROFESSIONAL";
+  const diaVisto = viewedDate.toDateString();
+  const [recebidoNoDia, setRecebidoNoDia] = useState<number | null>(null);
+  useEffect(() => {
+    if (!podeVerFinanceiro) return;
+    let ativo = true;
+    financeService.reports.daily(new Date(diaVisto), selectedUnitId || undefined)
+      .then((r) => { if (ativo) setRecebidoNoDia(r.revenue.total); })
+      .catch(() => { if (ativo) setRecebidoNoDia(null); });
+    return () => { ativo = false; };
+  }, [diaVisto, podeVerFinanceiro, selectedUnitId, appointments]);
 
   // Link público do salão
   const publicLink = typeof window !== "undefined"
@@ -1690,8 +1707,12 @@ function AppointmentsPageContent() {
           />
           <StatsCard
             icon={<Scissors className="h-5 w-5 text-green-500" />}
-            label={isViewingToday ? "Receita Hoje" : "Receita do Dia"}
-            value={formatCurrency(todayStats.revenue)}
+            label={podeVerFinanceiro
+              ? (isViewingToday ? "Recebido Hoje" : "Recebido no Dia")
+              : "Valor Atendido"}
+            value={podeVerFinanceiro
+              ? (recebidoNoDia === null ? "—" : formatCurrency(recebidoNoDia))
+              : formatCurrency(todayStats.revenue)}
             color="bg-green-100 dark:bg-green-900/30"
           />
         </div>

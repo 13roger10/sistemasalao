@@ -360,7 +360,14 @@ public class AgendamentoService {
                     ? agendamentoRepository.findBySalonIdAndProfissionalUsuarioId(salonId, operador.getId(), pageable)
                     : agendamentoRepository.findBySalonId(salonId, pageable);
         }
-        return pagina.map(a -> restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a));
+        // Pago pelos pagamentos do atendimento, não por quem os registrou (BUG-034: a recepção montava
+        // o "pago" com a lista de pagamentos que ela mesma registrou e via como pendente o que outro pagou)
+        Set<Long> pagos = pagamentoService.idsPagos(pagina.getContent());
+        return pagina.map(a -> {
+            AgendamentoResponse r = restrictSensitiveData ? AgendamentoResponse.fromEntityForProfessional(a) : AgendamentoResponse.fromEntity(a);
+            r.setPago(pagos.contains(a.getId()));
+            return r;
+        });
     }
 
     @Transactional(readOnly = true)

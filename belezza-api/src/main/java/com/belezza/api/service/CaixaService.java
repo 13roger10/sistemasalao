@@ -134,8 +134,9 @@ public class CaixaService {
         caixa.setTotalDinheiro(t.porForma(FormaPagamento.DINHEIRO));
         caixa.setTotalPix(t.porForma(FormaPagamento.PIX));
         caixa.setTotalCredito(t.porForma(FormaPagamento.CARTAO_CREDITO));
-        caixa.setTotalDebito(t.porForma(FormaPagamento.CARTAO_DEBITO).add(t.porForma(FormaPagamento.TRANSFERENCIA)));
+        caixa.setTotalDebito(t.porForma(FormaPagamento.CARTAO_DEBITO));
         caixa.setTotalVale(t.porForma(FormaPagamento.VALE));
+        caixa.setTotalTransferencia(t.porForma(FormaPagamento.TRANSFERENCIA));
         caixa.setTotalDespesas(t.despesas());
         caixa.setTotalSangrias(t.sangrias());
         caixa.setTotalSuprimentos(t.suprimentos());
@@ -284,6 +285,7 @@ public class CaixaService {
         porForma.put(FormaPagamento.CARTAO_CREDITO, nz(caixa.getTotalCredito()));
         porForma.put(FormaPagamento.CARTAO_DEBITO, nz(caixa.getTotalDebito()));
         porForma.put(FormaPagamento.VALE, nz(caixa.getTotalVale()));
+        porForma.put(FormaPagamento.TRANSFERENCIA, nz(caixa.getTotalTransferencia()));
         return new Totais(porForma, nz(caixa.getTotalEntradas()), nz(caixa.getTotalDespesas()),
                 nz(caixa.getTotalSangrias()), nz(caixa.getTotalSuprimentos()), nz(caixa.getSaldoEsperado()));
     }

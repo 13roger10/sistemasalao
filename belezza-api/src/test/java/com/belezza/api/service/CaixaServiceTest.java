@@ -128,6 +128,24 @@ class CaixaServiceTest {
     }
 
     @Test
+    @DisplayName("Transferência tem total próprio, fora do débito, no caixa aberto e no fechado (BUG-034)")
+    void transferenciaSeparadaDoDebito() {
+        when(pagamentoRepository.sumAprovadosByCaixaGroupByForma(7L)).thenReturn(List.of(
+                new Object[]{FormaPagamento.CARTAO_DEBITO, new BigDecimal("80.00")},
+                new Object[]{FormaPagamento.TRANSFERENCIA, new BigDecimal("300.00")}));
+
+        CaixaService.Totais aoVivo = caixaService.totais(aberto);
+        assertThat(aoVivo.porForma(FormaPagamento.CARTAO_DEBITO)).isEqualByComparingTo("80.00");
+        assertThat(aoVivo.porForma(FormaPagamento.TRANSFERENCIA)).isEqualByComparingTo("300.00");
+
+        Caixa c = caixaService.fechar(7L, new BigDecimal("200.00"), null, recepcionista);
+
+        assertThat(c.getTotalDebito()).isEqualByComparingTo("80.00");
+        assertThat(c.getTotalTransferencia()).isEqualByComparingTo("300.00");
+        assertThat(caixaService.totais(c).porForma(FormaPagamento.TRANSFERENCIA)).isEqualByComparingTo("300.00");
+    }
+
+    @Test
     @DisplayName("Sangria não passa do dinheiro disponível (200 + 150 = 350)")
     void sangriaLimitada() {
         assertThatThrownBy(() -> caixaService.registrarMovimentacao(1L, 7L, TipoMovimentacaoCaixa.SANGRIA,

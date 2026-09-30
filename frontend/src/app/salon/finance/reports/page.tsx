@@ -22,6 +22,7 @@ import {
   ArrowDownRight,
   FileSpreadsheet,
   Printer,
+  ArrowLeftRight,
 } from "lucide-react";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { Button } from "@/components/ui/Button";
@@ -281,7 +282,7 @@ export default function FinanceReportsPage() {
   const paymentMethodTotals = useMemo(() => {
     const formas = monthlyReport?.paymentMethods;
     if (!formas) return null;
-    const total = formas.cash + formas.pix + formas.creditCard + formas.debitCard + formas.voucher;
+    const total = formas.cash + formas.pix + formas.creditCard + formas.debitCard + formas.voucher + (formas.transfer ?? 0);
     const item = (value: number) => ({ value, percentage: total > 0 ? (value / total) * 100 : 0 });
     return {
       cash: item(formas.cash),
@@ -289,6 +290,8 @@ export default function FinanceReportsPage() {
       creditCard: item(formas.creditCard),
       debitCard: item(formas.debitCard),
       voucher: item(formas.voucher),
+      // Transferência com total próprio (BUG-034: antes somada ao débito)
+      transfer: item(formas.transfer ?? 0),
     };
   }, [monthlyReport]);
 
@@ -713,6 +716,29 @@ export default function FinanceReportsPage() {
                 </div>
                 <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                   {paymentMethodTotals.voucher.percentage.toFixed(1)}% do total
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="rounded-lg bg-teal-100 p-3 dark:bg-teal-900/30">
+                    <ArrowLeftRight className="h-6 w-6 text-teal-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Transferência</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                      {formatCurrency(paymentMethodTotals.transfer.value)}
+                    </p>
+                  </div>
+                </div>
+                <div className="h-2 w-full rounded-full bg-gray-100 dark:bg-gray-700">
+                  <div
+                    className="h-2 rounded-full bg-teal-500"
+                    style={{ width: `${paymentMethodTotals.transfer.percentage}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                  {paymentMethodTotals.transfer.percentage.toFixed(1)}% do total
                 </p>
               </div>
             </div>

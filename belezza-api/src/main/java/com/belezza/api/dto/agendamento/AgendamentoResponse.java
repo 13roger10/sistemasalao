@@ -72,6 +72,8 @@ public class AgendamentoResponse {
     private String notasInternas;
     private String motivoCancelamento;
     private BigDecimal valorCobrado;
+    /** Quitado pelos pagamentos aprovados (preenchido na lista do salão — BUG-034); nulo onde não é calculado. */
+    private Boolean pago;
     private LocalDateTime criadoEm;
     private LocalDateTime atualizadoEm;
 

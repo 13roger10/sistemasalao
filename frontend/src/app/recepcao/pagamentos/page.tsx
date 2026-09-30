@@ -31,6 +31,8 @@ interface AgendamentoBackend {
   status: string;
   statusDescricao: string;
   valorCobrado?: number;
+  /** Quitado pelos pagamentos aprovados, calculado no backend (BUG-034) */
+  pago?: boolean;
 }
 
 interface PagamentoBackend {
@@ -210,7 +212,19 @@ function AppointmentStatusBadge({ status }: { status: string }) {
   );
 }
 
-function PaymentBadge({ pago, cancelado }: { pago: boolean; cancelado: boolean }) {
+// "Pendente" só para quem já foi atendido e não pagou (BUG-034: antes falta e cancelado, e até
+// atendimento que ainda não aconteceu, apareciam como pagamento pendente)
+function PaymentBadge({ pago, cancelado, faltou, cobravel }: {
+  pago: boolean; cancelado: boolean; faltou: boolean; cobravel: boolean;
+}) {
+  if (faltou) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
+        <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
+        Não compareceu
+      </span>
+    );
+  }
   if (cancelado) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600">
@@ -224,6 +238,14 @@ function PaymentBadge({ pago, cancelado }: { pago: boolean; cancelado: boolean }
       <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
         <CheckCircle2 className="h-3.5 w-3.5" />
         Pago
+      </span>
+    );
+  }
+  if (!cobravel) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-500">
+        <Clock className="h-3.5 w-3.5" />
+        A atender
       </span>
     );
   }
@@ -314,12 +336,18 @@ export default function RecepcaoPagamentosPage() {
   const isCanceled = (a: AgendamentoBackend) =>
     a.status === "CANCELADO" || a.status === "canceled";
 
-  const isPaid = (a: AgendamentoBackend): boolean =>
-    paymentMap.get(a.id)?.status === "APROVADO";
+  const isNoShow = (a: AgendamentoBackend) =>
+    a.status === "NO_SHOW" || a.status === "no_show";
 
-  const active = dayAppts.filter((a) => !isCanceled(a));
+  // O backend diz se o atendimento está pago. A lista de pagamentos só traz os que esta
+  // recepcionista registrou, então um atendimento cobrado por outra pessoa aparecia como pendente.
+  const isPaid = (a: AgendamentoBackend): boolean =>
+    a.pago ?? paymentMap.get(a.id)?.status === "APROVADO";
+
+  const active = dayAppts.filter((a) => !isCanceled(a) && !isNoShow(a));
   const paidCount = active.filter(isPaid).length;
-  const pendingCount = active.filter((a) => !isPaid(a)).length;
+  // A receber: atendido (concluído ou em andamento) e sem pagamento
+  const pendingCount = active.filter((a) => canRegisterPayment(a) && !isPaid(a)).length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -441,6 +469,7 @@ export default function RecepcaoPagamentosPage() {
             </p>
             {dayAppts.map((appt) => {
               const canceled = isCanceled(appt);
+              const faltou = isNoShow(appt);
               const paid = isPaid(appt);
               const canRegister = !canceled && !paid && canRegisterPayment(appt);
 
@@ -448,7 +477,7 @@ export default function RecepcaoPagamentosPage() {
                 <div
                   key={appt.id}
                   className={`rounded-xl border bg-white p-4 shadow-sm ${
-                    canceled ? "border-gray-100 opacity-60" : "border-gray-200"
+                    canceled || faltou ? "border-gray-100 opacity-60" : "border-gray-200"
                   }`}
                 >
                   {/* Top row: time + payment badge */}
@@ -457,7 +486,7 @@ export default function RecepcaoPagamentosPage() {
                       <Clock className="h-4 w-4 flex-shrink-0 text-violet-500" />
                       {toTime(appt.dataHora)}
                     </div>
-                    <PaymentBadge pago={paid} cancelado={canceled} />
+                    <PaymentBadge pago={paid} cancelado={canceled} faltou={faltou} cobravel={canRegisterPayment(appt)} />
                   </div>
 
                   {/* Client */}

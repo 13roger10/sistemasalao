@@ -98,6 +98,10 @@ public class Caixa {
     @Column(name = "total_vale", precision = 10, scale = 2)
     private BigDecimal totalVale;
 
+    /** Transferências recebidas (BUG-034: antes entravam em totalDebito). */
+    @Column(name = "total_transferencia", precision = 10, scale = 2)
+    private BigDecimal totalTransferencia;
+
     @Column(name = "total_despesas", precision = 10, scale = 2)
     private BigDecimal totalDespesas;
 

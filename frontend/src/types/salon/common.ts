@@ -72,6 +72,7 @@ export type PaymentMethod =
   | 'credit_card'
   | 'debit_card'
   | 'voucher'
+  | 'transfer'
   | 'loyalty_points';
 
 export interface Money {
