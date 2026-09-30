@@ -283,6 +283,11 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long> 
         @Param("fim") LocalDateTime fim
     );
 
+    /** Atendimentos ainda por fazer do profissional (pendentes, confirmados ou em andamento). */
+    @Query("SELECT COUNT(a) FROM Agendamento a WHERE a.profissional.id = :profId " +
+           "AND a.status IN ('PENDENTE', 'CONFIRMADO', 'EM_ANDAMENTO') AND a.fimPrevisto > :agora")
+    long countPendentesDoProfissional(@Param("profId") Long profissionalId, @Param("agora") LocalDateTime agora);
+
     /** Agendamentos em que o usuário participa como cliente ou como profissional (histórico). */
     @Query("SELECT COUNT(a) FROM Agendamento a WHERE a.cliente.usuario.id = :usuarioId OR a.profissional.usuario.id = :usuarioId")
     long countEnvolvendoUsuario(@Param("usuarioId") Long usuarioId);

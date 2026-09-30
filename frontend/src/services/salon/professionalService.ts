@@ -120,7 +120,9 @@ export const professionalService = {
   // Usa /profissionais/salon/{salonId} pois não existe /profissionais/all no backend
   getAll: (params?: ProfessionalFilters & { salonId?: string | number }): Promise<Professional[]> => {
     const salonId = params?.salonId || '1';
-    return api.get<ProfissionalBackend[]>(`${BASE_PATH}/salon/${salonId}`, params)
+    // Seleção de profissional: só os ativos, salvo filtro explícito — quem deixou de ser
+    // profissional (ex.: virou recepcionista, BUG-028) não aparece mais para agendar
+    return api.get<ProfissionalBackend[]>(`${BASE_PATH}/salon/${salonId}`, { ativo: params?.status !== 'inactive' })
       .then((profissionais) => profissionais.map(mapProfessional));
   },
 

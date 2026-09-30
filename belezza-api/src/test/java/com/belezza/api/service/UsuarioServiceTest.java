@@ -358,4 +358,65 @@ class UsuarioServiceTest {
             verify(usuarioRepository).delete(recepA);
         }
     }
+
+    @Nested
+    @DisplayName("Troca de papel pelo admin (BUG-028)")
+    class TrocaDePapel {
+
+        private Usuario profUser;
+        private Profissional prof;
+
+        @BeforeEach
+        void profissionalDoSalaoA() {
+            profUser = Usuario.builder().id(20L).nome("Prof A").role(Role.PROFISSIONAL).ativo(true).build();
+            prof = Profissional.builder().id(8L).usuario(profUser).salon(salonA).ativo(true).build();
+            lenient().when(usuarioRepository.findById(20L)).thenReturn(Optional.of(profUser));
+            lenient().when(profissionalRepository.findByUsuarioId(20L)).thenReturn(Optional.of(prof));
+            lenient().when(salonRepository.findByAdminId(20L)).thenReturn(Optional.empty());
+            lenient().when(salonRepository.findById(1L)).thenReturn(Optional.of(salonA));
+            lenient().when(usuarioRepository.save(any(Usuario.class))).thenAnswer(inv -> inv.getArgument(0));
+        }
+
+        @Test
+        @DisplayName("Profissional vira recepcionista: cadastro de profissional desativado e recepcionista no salão")
+        void profissionalParaRecepcionista() {
+            when(agendamentoRepository.countPendentesDoProfissional(eq(8L), any())).thenReturn(0L);
+
+            usuarioService.atualizar(20L, UpdateUsuarioRequest.builder().role(Role.RECEPCIONISTA).build(), EMAIL_ADMIN_A);
+
+            assertThat(profUser.getRole()).isEqualTo(Role.RECEPCIONISTA);
+            assertThat(profUser.getSalon()).isEqualTo(salonA);
+            assertThat(prof.isAtivo()).isFalse();
+            verify(profissionalRepository).save(prof);
+        }
+
+        @Test
+        @DisplayName("Com atendimentos agendados a troca é recusada e nada muda")
+        void recusaComAtendimentosAgendados() {
+            when(agendamentoRepository.countPendentesDoProfissional(eq(8L), any())).thenReturn(3L);
+
+            assertThatThrownBy(() -> usuarioService.atualizar(20L,
+                    UpdateUsuarioRequest.builder().role(Role.RECEPCIONISTA).build(), EMAIL_ADMIN_A))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("3 atendimento(s) agendado(s)");
+            assertThat(profUser.getRole()).isEqualTo(Role.PROFISSIONAL);
+            assertThat(prof.isAtivo()).isTrue();
+            verify(usuarioRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Volta a ser profissional: reativa o cadastro antigo em vez de criar outro")
+        void voltaASerProfissional() {
+            profUser.setRole(Role.RECEPCIONISTA);
+            profUser.setSalon(salonA);
+            prof.setAtivo(false);
+
+            usuarioService.atualizar(20L, UpdateUsuarioRequest.builder().role(Role.PROFISSIONAL).build(), EMAIL_ADMIN_A);
+
+            assertThat(profUser.getRole()).isEqualTo(Role.PROFISSIONAL);
+            assertThat(prof.isAtivo()).isTrue();
+            verify(profissionalRepository).save(prof);
+            verify(profissionalRepository, never()).save(argThat(p -> p != prof));
+        }
+    }
 }

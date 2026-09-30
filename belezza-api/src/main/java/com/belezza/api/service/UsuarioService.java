@@ -29,6 +29,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -286,17 +287,9 @@ public class UsuarioService {
         }
 
         // Atualizar role (apenas ADMIN pode mudar roles)
-        if (request.getRole() != null && usuarioLogado.getRole() == Role.ADMIN) {
-            Role roleAntiga = usuario.getRole();
-            usuario.setRole(request.getRole());
-
-            // Se mudou para PROFISSIONAL, vincular ao salão
-            if (request.getRole() == Role.PROFISSIONAL && roleAntiga != Role.PROFISSIONAL) {
-                Long salonId = salaoDoAdmin(usuarioLogado);
-                if (salonId != null && !profissionalRepository.existsByUsuarioId(usuario.getId())) {
-                    vincularProfissionalAoSalon(usuario, salonId);
-                }
-            }
+        if (request.getRole() != null && usuarioLogado.getRole() == Role.ADMIN
+                && request.getRole() != usuario.getRole()) {
+            trocarPapel(usuario, request.getRole(), salaoDoAdmin(usuarioLogado));
         }
 
         // Atualizar salão do profissional
@@ -552,6 +545,50 @@ public class UsuarioService {
             if (!usuarioAlvo.getId().equals(usuarioLogado.getId())) {
                 throw new AccessDeniedException("Acesso negado: profissional só acessa o próprio cadastro");
             }
+        }
+    }
+
+    /**
+     * Troca de papel pelo admin, mantendo os cadastros coerentes (BUG-028): antes só a role
+     * mudava — o ex-profissional continuava ativo na lista de profissionais e a nova
+     * recepcionista ficava sem salão (token sem salonId).
+     */
+    private void trocarPapel(Usuario usuario, Role novoPapel, Long salonDoAdmin) {
+        Role papelAntigo = usuario.getRole();
+        Optional<Profissional> profissional = profissionalRepository.findByUsuarioId(usuario.getId());
+
+        // Deixa de ser profissional: sai da agenda, mas o cadastro fica (histórico e comissões).
+        // Com atendimentos por fazer a troca é recusada, para nenhum cliente ficar sem profissional.
+        if (papelAntigo == Role.PROFISSIONAL && profissional.isPresent()) {
+            long pendentes = agendamentoRepository.countPendentesDoProfissional(
+                    profissional.get().getId(), LocalDateTime.now());
+            if (pendentes > 0) {
+                throw new BusinessException(String.format(
+                        "Este profissional tem %d atendimento(s) agendado(s). Reagende-os com outro profissional "
+                                + "ou cancele-os antes de trocar o papel.", pendentes));
+            }
+            profissional.get().setAtivo(false);
+            profissionalRepository.save(profissional.get());
+            log.info("Profissional {} desativado: usuário {} passou de {} para {}",
+                    profissional.get().getId(), usuario.getId(), papelAntigo, novoPapel);
+        }
+
+        usuario.setRole(novoPapel);
+
+        if (novoPapel == Role.PROFISSIONAL && salonDoAdmin != null) {
+            // Volta a ser profissional: reaproveita o cadastro antigo (mesmo histórico)
+            if (profissional.isPresent()) {
+                profissional.get().setAtivo(true);
+                profissionalRepository.save(profissional.get());
+            } else {
+                vincularProfissionalAoSalon(usuario, salonDoAdmin);
+            }
+        }
+
+        // Recepcionista pertence ao salão direto pelo Usuario (é daí que sai o salonId do token)
+        if (novoPapel == Role.RECEPCIONISTA && usuario.getSalon() == null && salonDoAdmin != null) {
+            usuario.setSalon(salonRepository.findById(salonDoAdmin)
+                    .orElseThrow(() -> new ResourceNotFoundException("Salão", salonDoAdmin)));
         }
     }
 
