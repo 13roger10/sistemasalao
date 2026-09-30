@@ -115,7 +115,7 @@ class AuthServiceTest {
             // Given
             Salon salon = Salon.builder().id(1L).nome("Salão Teste").build();
             when(usuarioRepository.existsByEmail(anyString())).thenReturn(false);
-            when(usuarioRepository.existsByTelefone(anyString())).thenReturn(false);
+            when(usuarioRepository.telefoneEmUso(anyString(), isNull())).thenReturn(false);
             when(passwordEncoder.encode(anyString())).thenReturn("encodedPassword");
             when(usuarioRepository.save(any(Usuario.class))).thenReturn(usuario);
             when(salonService.getSalonEntity(1L)).thenReturn(salon);
@@ -152,7 +152,7 @@ class AuthServiceTest {
         void shouldReturnSilentlyWhenPhoneExists() {
             // Given
             when(usuarioRepository.existsByEmail(anyString())).thenReturn(false);
-            when(usuarioRepository.existsByTelefone(anyString())).thenReturn(true);
+            when(usuarioRepository.telefoneEmUso(anyString(), isNull())).thenReturn(true);
 
             // When
             authService.register(registerRequest);

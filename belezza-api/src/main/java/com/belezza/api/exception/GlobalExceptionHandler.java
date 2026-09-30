@@ -88,7 +88,10 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.BAD_REQUEST.value())
                 .error(HttpStatus.BAD_REQUEST.getReasonPhrase())
                 .errorCode("VALIDATION_ERROR")
-                .message("Erro de validação nos campos informados")
+                // As telas mostram só "message": com o motivo aqui o usuário sabe o que corrigir
+                // (antes aparecia só "Erro de validação nos campos informados")
+                .message(fieldErrors.isEmpty() ? "Erro de validação nos campos informados"
+                        : fieldErrors.values().stream().distinct().sorted().collect(Collectors.joining("; ")))
                 .path(extractPath(request))
                 .fieldErrors(fieldErrors)
                 .build();

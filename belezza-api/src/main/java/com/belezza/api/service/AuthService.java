@@ -83,7 +83,7 @@ public class AuthService {
         // SEC-016: se e-mail ou telefone já existem, retorna silenciosamente (mesma
         // resposta genérica do caso de sucesso) — sem 409, sem criar, sem enumerar.
         boolean jaExiste = usuarioRepository.existsByEmail(request.getEmail())
-                || (request.getTelefone() != null && usuarioRepository.existsByTelefone(request.getTelefone()));
+                || usuarioRepository.telefoneEmUso(request.getTelefone(), null);
         if (jaExiste) {
             log.info("Auto-cadastro para e-mail/telefone já existente — resposta genérica (anti-enumeração)");
             return;

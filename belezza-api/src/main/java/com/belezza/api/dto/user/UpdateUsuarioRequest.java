@@ -3,6 +3,7 @@ package com.belezza.api.dto.user;
 import com.belezza.api.entity.Plano;
 import com.belezza.api.entity.Role;
 import com.belezza.api.validation.SenhaForte;
+import com.belezza.api.validation.Telefone;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -34,6 +35,7 @@ public class UpdateUsuarioRequest {
     private String senhaAtual;
 
     @Size(max = 20, message = "Telefone deve ter no máximo 20 caracteres")
+    @Telefone
     private String telefone;
 
     @Size(max = 500, message = "URL do avatar deve ter no máximo 500 caracteres")

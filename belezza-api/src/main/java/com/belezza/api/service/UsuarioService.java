@@ -17,6 +17,7 @@ import com.belezza.api.repository.ProfissionalRepository;
 import com.belezza.api.repository.PushSubscriptionRepository;
 import com.belezza.api.repository.SalonRepository;
 import com.belezza.api.repository.UsuarioRepository;
+import com.belezza.api.util.Telefones;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -144,9 +145,8 @@ public class UsuarioService {
             throw new AccessDeniedException("Acesso negado: não é possível criar usuários em outro estabelecimento");
         }
 
-        // Verificar telefone duplicado
-        if (request.getTelefone() != null && !request.getTelefone().isBlank()
-            && usuarioRepository.existsByTelefone(request.getTelefone())) {
+        // Verificar telefone duplicado — em qualquer formato: "(11) 96…" = "1196…" (BUG-031)
+        if (usuarioRepository.telefoneEmUso(request.getTelefone(), null)) {
             throw new DuplicateResourceException("Usuário", "telefone", request.getTelefone());
         }
 
@@ -269,7 +269,7 @@ public class UsuarioService {
 
         // Atualizar campos seguros (auto-serviço e admin)
         if (request.getNome() != null) usuario.setNome(request.getNome().trim());
-        if (request.getTelefone() != null) usuario.setTelefone(request.getTelefone());
+        if (request.getTelefone() != null) usuario.setTelefone(telefoneLivre(request.getTelefone(), usuario));
         if (request.getAvatarUrl() != null) usuario.setAvatarUrl(request.getAvatarUrl());
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
             // A própria senha só muda com a senha atual; o admin redefinindo a de um funcionário não precisa dela
@@ -325,7 +325,7 @@ public class UsuarioService {
         Usuario usuario = getUsuarioByEmail(email);
 
         if (request.getNome() != null) usuario.setNome(request.getNome().trim());
-        if (request.getTelefone() != null) usuario.setTelefone(request.getTelefone());
+        if (request.getTelefone() != null) usuario.setTelefone(telefoneLivre(request.getTelefone(), usuario));
         if (request.getAvatarUrl() != null) usuario.setAvatarUrl(request.getAvatarUrl());
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
             verificarSenhaAtual(usuario, request.getSenhaAtual(), request.getPassword());
@@ -590,6 +590,23 @@ public class UsuarioService {
             usuario.setSalon(salonRepository.findById(salonDoAdmin)
                     .orElseThrow(() -> new ResourceNotFoundException("Salão", salonDoAdmin)));
         }
+    }
+
+    /**
+     * Telefone novo da conta, recusado se já for de outra conta em qualquer formato (BUG-031:
+     * o perfil aceitava o telefone de outro usuário). Vazio limpa o telefone.
+     */
+    private String telefoneLivre(String telefone, Usuario usuario) {
+        if (telefone.isBlank()) {
+            return null;
+        }
+        // Mesmo número de antes (só outra formatação) não é conferido: contas antigas podem
+        // compartilhar o telefone e não devem ficar impedidas de salvar o próprio perfil
+        boolean mudou = !Telefones.digitos(telefone).equals(Telefones.digitos(usuario.getTelefone()));
+        if (mudou && usuarioRepository.telefoneEmUso(telefone, usuario.getId())) {
+            throw new DuplicateResourceException("Este telefone já está cadastrado em outra conta");
+        }
+        return telefone.trim();
     }
 
     private Profissional vincularProfissionalAoSalon(Usuario usuario, Long salonId) {

@@ -4,6 +4,7 @@ import com.belezza.api.dto.user.CreateUsuarioRequest;
 import com.belezza.api.dto.user.UpdateMeuPerfilRequest;
 import com.belezza.api.dto.user.UpdateUsuarioRequest;
 import com.belezza.api.exception.BusinessException;
+import com.belezza.api.exception.DuplicateResourceException;
 import com.belezza.api.entity.*;
 import com.belezza.api.repository.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -417,6 +418,41 @@ class UsuarioServiceTest {
             assertThat(prof.isAtivo()).isTrue();
             verify(profissionalRepository).save(prof);
             verify(profissionalRepository, never()).save(argThat(p -> p != prof));
+        }
+    }
+
+    @Nested
+    @DisplayName("Telefone do próprio perfil (BUG-031)")
+    class TelefoneDoPerfil {
+
+        @BeforeEach
+        void recepcionistaLogada() {
+            recepA.setEmail("recep.a@teste.com");
+            recepA.setTelefone("11962035710");
+            lenient().when(usuarioRepository.findByEmailAndAtivoTrue("recep.a@teste.com")).thenReturn(Optional.of(recepA));
+            lenient().when(usuarioRepository.save(any(Usuario.class))).thenAnswer(inv -> inv.getArgument(0));
+        }
+
+        @Test
+        @DisplayName("Telefone de outra conta é recusado")
+        void telefoneDeOutraConta() {
+            when(usuarioRepository.telefoneEmUso("(11) 90000-1111", 14L)).thenReturn(true);
+
+            assertThatThrownBy(() -> usuarioService.atualizarMeuPerfil("recep.a@teste.com",
+                    UpdateMeuPerfilRequest.builder().telefone("(11) 90000-1111").build()))
+                    .isInstanceOf(DuplicateResourceException.class)
+                    .hasMessageContaining("outra conta");
+            verify(usuarioRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("O mesmo número com outra formatação é aceito sem conferir outras contas")
+        void mesmoNumeroOutraFormatacao() {
+            usuarioService.atualizarMeuPerfil("recep.a@teste.com",
+                    UpdateMeuPerfilRequest.builder().telefone("(11) 96203-5710").build());
+
+            assertThat(recepA.getTelefone()).isEqualTo("(11) 96203-5710");
+            verify(usuarioRepository, never()).telefoneEmUso(any(), any());
         }
     }
 }

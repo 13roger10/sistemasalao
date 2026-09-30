@@ -1,7 +1,9 @@
 package com.belezza.api.dto.cliente;
 
+import com.belezza.api.validation.Telefone;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -21,14 +23,18 @@ public class ClienteRequest {
     private String name;
 
     @NotBlank(message = "Telefone é obrigatório")
-    @Size(min = 10, max = 20, message = "Telefone inválido")
+    @Size(max = 20, message = "Telefone deve ter no máximo 20 caracteres")
+    @Telefone
     private String phone;
 
     @Email(message = "Email inválido")
     private String email;
 
+    @Size(max = 20, message = "WhatsApp deve ter no máximo 20 caracteres")
+    @Telefone(message = "WhatsApp inválido: informe o DDD e o número (10 ou 11 dígitos)")
     private String whatsapp;
 
+    @Past(message = "Data de nascimento deve estar no passado")
     private LocalDate birthDate;
 
     private String notes;

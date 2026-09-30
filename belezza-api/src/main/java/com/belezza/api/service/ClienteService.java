@@ -29,6 +29,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.belezza.api.security.annotation.Auditable;
+import com.belezza.api.util.Telefones;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -60,16 +61,14 @@ public class ClienteService {
         Long salonId = request.getSalonId() != null ? request.getSalonId() : salon.getId();
 
         // Verificar se já existe um usuário com este email/telefone
-        Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(request.getEmail())
-                .orElseGet(() -> usuarioRepository.findByTelefone(request.getPhone())
-                        .orElse(null));
+        Usuario usuario = contaExistente(request);
 
         if (usuario == null) {
             // Criar novo usuário
             usuario = Usuario.builder()
                     .nome(request.getName())
-                    .email(request.getEmail() != null ? request.getEmail() : request.getPhone() + "@cliente.belezza.ai")
-                    .telefone(request.getPhone())
+                    .email(request.getEmail() != null ? request.getEmail() : emailProvisorio(request.getPhone()))
+                    .telefone(request.getPhone().trim())
                     .password(passwordEncoder.encode(UUID.randomUUID().toString()))
                     .role(Role.CLIENTE)
                     .ativo(true)
@@ -106,15 +105,13 @@ public class ClienteService {
     @Transactional
     @SuppressWarnings("null")
     public ClienteResponse criarComSalonId(ClienteRequest request, Long salonId) {
-        Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(request.getEmail())
-                .orElseGet(() -> usuarioRepository.findByTelefone(request.getPhone())
-                        .orElse(null));
+        Usuario usuario = contaExistente(request);
 
         if (usuario == null) {
             usuario = Usuario.builder()
                     .nome(request.getName())
-                    .email(request.getEmail() != null ? request.getEmail() : request.getPhone() + "@cliente.belezza.ai")
-                    .telefone(request.getPhone())
+                    .email(request.getEmail() != null ? request.getEmail() : emailProvisorio(request.getPhone()))
+                    .telefone(request.getPhone().trim())
                     .password(passwordEncoder.encode(UUID.randomUUID().toString()))
                     .role(Role.CLIENTE)
                     .ativo(true)
@@ -141,6 +138,21 @@ public class ClienteService {
         cliente = clienteRepository.save(cliente);
         log.info("Cliente criado pela recepção: {} no salão {}", cliente.getId(), salonId);
         return ClienteResponse.fromEntity(cliente);
+    }
+
+    /**
+     * Conta já existente com o e-mail ou com o telefone informados — o telefone em qualquer
+     * formato: antes "(11) 96…" não achava a conta de "1196…" e criava outra (BUG-031).
+     */
+    private Usuario contaExistente(ClienteRequest request) {
+        return usuarioRepository.findByEmailAndAtivoTrue(request.getEmail())
+                .orElseGet(() -> usuarioRepository.findByTelefoneDigitos(Telefones.digitos(request.getPhone()))
+                        .stream().findFirst().orElse(null));
+    }
+
+    /** E-mail provisório de quem não informou e-mail: só dígitos (antes saía "(11) 96203-5710@…"). */
+    private static String emailProvisorio(String telefone) {
+        return Telefones.digitos(telefone) + "@cliente.belezza.ai";
     }
 
     @Transactional
@@ -434,7 +446,13 @@ public class ClienteService {
             usuario.setNome(request.getName());
         }
         if (request.getPhone() != null) {
-            usuario.setTelefone(request.getPhone());
+            // Telefone de outra conta (em qualquer formato) é recusado; o mesmo número com outra
+            // formatação passa — contas antigas podem compartilhar o telefone (BUG-031)
+            boolean mudou = !Telefones.digitos(request.getPhone()).equals(Telefones.digitos(usuario.getTelefone()));
+            if (mudou && usuarioRepository.telefoneEmUso(request.getPhone(), usuario.getId())) {
+                throw new BusinessException("Já existe uma conta com este telefone");
+            }
+            usuario.setTelefone(request.getPhone().trim());
         }
         if (request.getEmail() != null && !request.getEmail().endsWith("@cliente.belezza.ai")
                 && !request.getEmail().equalsIgnoreCase(usuario.getEmail())) {

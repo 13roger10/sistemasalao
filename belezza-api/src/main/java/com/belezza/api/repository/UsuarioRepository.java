@@ -31,6 +31,23 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
 
     Optional<Usuario> findByTelefone(String telefone);
 
+    /**
+     * Usuários com o mesmo telefone, qualquer que seja o formato gravado ("(11) 96…" = "1196…" =
+     * "+55 11 96…"). {@code digitos} vem de {@link com.belezza.api.util.Telefones#digitos}.
+     */
+    @Query(value = "SELECT * FROM usuarios WHERE regexp_replace(telefone, '[^0-9]', '', 'g') IN (:digitos, CONCAT('55', :digitos)) " +
+                   "ORDER BY ativo DESC, id", nativeQuery = true)
+    List<Usuario> findByTelefoneDigitos(@Param("digitos") String digitos);
+
+    /** Telefone já usado por outra conta (qualquer formato); {@code ignorarUsuarioId} é a própria conta. */
+    default boolean telefoneEmUso(String telefone, Long ignorarUsuarioId) {
+        if (telefone == null || telefone.isBlank()) {
+            return false;
+        }
+        return findByTelefoneDigitos(com.belezza.api.util.Telefones.digitos(telefone)).stream()
+                .anyMatch(u -> !u.getId().equals(ignorarUsuarioId));
+    }
+
     Optional<Usuario> findByResetPasswordToken(String token);
 
     Optional<Usuario> findByEmailVerificationToken(String token);
