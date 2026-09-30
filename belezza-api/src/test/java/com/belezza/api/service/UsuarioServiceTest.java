@@ -8,6 +8,7 @@ import com.belezza.api.entity.*;
 import com.belezza.api.repository.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -42,6 +43,9 @@ class UsuarioServiceTest {
     @Mock private PushSubscriptionRepository pushSubscriptionRepository;
     @Mock private BackupCodeRepository backupCodeRepository;
     @Mock private LoginAttemptService loginAttemptService;
+    @Mock private PagamentoRepository pagamentoRepository;
+    @Mock private CaixaRepository caixaRepository;
+    @Mock private MovimentacaoCaixaRepository movimentacaoCaixaRepository;
 
     @InjectMocks
     private UsuarioService usuarioService;
@@ -300,5 +304,58 @@ class UsuarioServiceTest {
         assertThatThrownBy(() -> usuarioService.atualizar(14L, request, EMAIL_ADMIN_A))
                 .isInstanceOf(AccessDeniedException.class);
         verify(usuarioRepository, never()).save(any());
+    }
+
+    @Nested
+    @DisplayName("Exclusão permanente com histórico financeiro (BUG-027)")
+    class ExclusaoComHistoricoFinanceiro {
+
+        private void semAgendamentos() {
+            when(agendamentoRepository.countEnvolvendoUsuario(14L)).thenReturn(0L);
+        }
+
+        @Test
+        @DisplayName("Quem registrou pagamento não é excluído")
+        void registrouPagamento() {
+            semAgendamentos();
+            when(pagamentoRepository.existsByRegistradoPorId(14L)).thenReturn(true);
+
+            assertThatThrownBy(() -> usuarioService.excluirPermanentemente(14L, EMAIL_ADMIN_A))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("pagamentos ou movimentações de caixa");
+            verify(usuarioRepository, never()).delete(any());
+        }
+
+        @Test
+        @DisplayName("Quem abriu ou fechou caixa não é excluído")
+        void operouCaixa() {
+            semAgendamentos();
+            when(caixaRepository.existsByAbertoPorIdOrFechadoPorId(14L, 14L)).thenReturn(true);
+
+            assertThatThrownBy(() -> usuarioService.excluirPermanentemente(14L, EMAIL_ADMIN_A))
+                    .isInstanceOf(BusinessException.class);
+            verify(usuarioRepository, never()).delete(any());
+        }
+
+        @Test
+        @DisplayName("Quem lançou sangria, despesa ou estorno não é excluído")
+        void lancouMovimentacao() {
+            semAgendamentos();
+            when(movimentacaoCaixaRepository.existsByRegistradoPorId(14L)).thenReturn(true);
+
+            assertThatThrownBy(() -> usuarioService.excluirPermanentemente(14L, EMAIL_ADMIN_A))
+                    .isInstanceOf(BusinessException.class);
+            verify(usuarioRepository, never()).delete(any());
+        }
+
+        @Test
+        @DisplayName("Sem nenhum histórico continua podendo ser excluído")
+        void semHistorico() {
+            semAgendamentos();
+
+            usuarioService.excluirPermanentemente(14L, EMAIL_ADMIN_A);
+
+            verify(usuarioRepository).delete(recepA);
+        }
     }
 }

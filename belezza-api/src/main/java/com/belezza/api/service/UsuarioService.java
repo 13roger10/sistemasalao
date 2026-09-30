@@ -7,9 +7,12 @@ import com.belezza.api.exception.DuplicateResourceException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.AgendamentoRepository;
 import com.belezza.api.repository.BackupCodeRepository;
+import com.belezza.api.repository.CaixaRepository;
 import com.belezza.api.repository.ClienteRepository;
 import com.belezza.api.repository.FidelidadeClienteRepository;
+import com.belezza.api.repository.MovimentacaoCaixaRepository;
 import com.belezza.api.repository.NotificacaoRepository;
+import com.belezza.api.repository.PagamentoRepository;
 import com.belezza.api.repository.ProfissionalRepository;
 import com.belezza.api.repository.PushSubscriptionRepository;
 import com.belezza.api.repository.SalonRepository;
@@ -47,6 +50,9 @@ public class UsuarioService {
     private final NotificacaoRepository notificacaoRepository;
     private final PushSubscriptionRepository pushSubscriptionRepository;
     private final BackupCodeRepository backupCodeRepository;
+    private final PagamentoRepository pagamentoRepository;
+    private final CaixaRepository caixaRepository;
+    private final MovimentacaoCaixaRepository movimentacaoCaixaRepository;
     private final LoginAttemptService loginAttemptService;
 
     /**
@@ -394,7 +400,8 @@ public class UsuarioService {
     /**
      * Exclui definitivamente um usuário que não possui histórico no sistema.
      *
-     * <p>Usuários com agendamentos (como cliente ou profissional) ou que administram um salão
+     * <p>Usuários com agendamentos (como cliente ou profissional), que registraram pagamentos ou
+     * movimentações de caixa, ou que administram um salão
      * não podem ser excluídos — o histórico de atendimentos/financeiro precisa ser preservado;
      * para esses, use {@link #desativar}. Dados acessórios do próprio usuário (notificações,
      * inscrições de push, códigos 2FA, cadastro de cliente/profissional sem histórico) são
@@ -424,6 +431,15 @@ public class UsuarioService {
             throw new BusinessException(String.format(
                     "Este usuário possui %d agendamento(s) no histórico e não pode ser excluído. Desative-o.",
                     agendamentos));
+        }
+
+        // Pagamentos, caixas e movimentações guardam só o id de quem os registrou (sem FK): sem
+        // esta checagem o usuário era excluído e o histórico financeiro apontava para ninguém (BUG-027)
+        if (pagamentoRepository.existsByRegistradoPorId(usuario.getId())
+                || caixaRepository.existsByAbertoPorIdOrFechadoPorId(usuario.getId(), usuario.getId())
+                || movimentacaoCaixaRepository.existsByRegistradoPorId(usuario.getId())) {
+            throw new BusinessException(
+                    "Este usuário registrou pagamentos ou movimentações de caixa e não pode ser excluído. Desative-o.");
         }
 
         // Dados acessórios do próprio usuário

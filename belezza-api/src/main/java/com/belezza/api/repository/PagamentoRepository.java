@@ -19,6 +19,9 @@ public interface PagamentoRepository extends JpaRepository<Pagamento, Long> {
     /** Partes de pagamento de um atendimento (pagamento dividido gera várias), mais antigas primeiro. */
     List<Pagamento> findByAgendamentoIdOrderByCriadoEmAsc(Long agendamentoId);
 
+    /** Usuário que registrou algum pagamento (histórico financeiro — BUG-027). */
+    boolean existsByRegistradoPorId(Long usuarioId);
+
     /** Partes de pagamento de vários atendimentos (status de pagamento da lista do dia). */
     List<Pagamento> findByAgendamentoIdIn(java.util.Collection<Long> agendamentoIds);
 

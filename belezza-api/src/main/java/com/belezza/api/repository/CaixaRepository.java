@@ -18,6 +18,9 @@ public interface CaixaRepository extends JpaRepository<Caixa, Long> {
 
     boolean existsBySalonIdAndStatus(Long salonId, StatusCaixa status);
 
+    /** Usuário que abriu ou fechou algum caixa (histórico financeiro — BUG-027). */
+    boolean existsByAbertoPorIdOrFechadoPorId(Long abertoPorId, Long fechadoPorId);
+
     /**
      * Caixa travado para escrita — serializa fechamento, sangria e lançamentos concorrentes.
      * SQL nativo com FOR UPDATE: o @Lock(PESSIMISTIC_WRITE) do Hibernate gera "FOR NO KEY UPDATE",

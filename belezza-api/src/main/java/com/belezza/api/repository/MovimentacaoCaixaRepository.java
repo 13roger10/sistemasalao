@@ -18,6 +18,9 @@ public interface MovimentacaoCaixaRepository extends JpaRepository<MovimentacaoC
 
     List<MovimentacaoCaixa> findByCaixaId(Long caixaId);
 
+    /** Usuário que lançou sangria, despesa ou estorno (histórico financeiro — BUG-027). */
+    boolean existsByRegistradoPorId(Long usuarioId);
+
     @Query("SELECT m FROM MovimentacaoCaixa m WHERE m.caixa.salon.id = :salonId ORDER BY m.criadoEm DESC")
     Page<MovimentacaoCaixa> findBySalonId(@Param("salonId") Long salonId, Pageable pageable);
 
