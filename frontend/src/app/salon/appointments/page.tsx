@@ -1342,6 +1342,9 @@ function AppointmentsPageContent() {
       loadAppointments();
     } catch (error) {
       console.error("Erro ao cancelar agendamento:", error);
+      toast.error("Não foi possível cancelar o agendamento", mensagemDeErro(error));
+      setIsCancelModalOpen(false);
+      loadAppointments();
     } finally {
       setIsSubmitting(false);
     }

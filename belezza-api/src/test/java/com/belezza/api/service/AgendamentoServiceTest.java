@@ -313,8 +313,8 @@ class AgendamentoServiceTest {
         @DisplayName("Should confirm agendamento by token")
         void shouldConfirmAgendamentoByToken() {
             // Given
-            when(agendamentoRepository.findByTokenConfirmacao("token-123"))
-                    .thenReturn(Optional.of(agendamento));
+            when(agendamentoRepository.findIdByTokenConfirmacao("token-123")).thenReturn(Optional.of(1L));
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
             when(agendamentoRepository.save(any(Agendamento.class))).thenReturn(agendamento);
 
             // When
@@ -322,7 +322,8 @@ class AgendamentoServiceTest {
 
             // Then
             assertThat(response).isNotNull();
-            verify(agendamentoRepository).findByTokenConfirmacao("token-123");
+            verify(agendamentoRepository).findIdByTokenConfirmacao("token-123");
+            verify(agendamentoRepository).lockAgendamento(1L);
         }
     }
 
@@ -388,7 +389,8 @@ class AgendamentoServiceTest {
             assertThatThrownBy(() -> agendamentoService.reagendar(1L, req, false, false, recepcionista))
                     .isInstanceOf(BusinessException.class)
                     .hasMessageContaining("em andamento não pode ser reagendado");
-            when(agendamentoRepository.findByTokenConfirmacao("token-123")).thenReturn(Optional.of(agendamento));
+            when(agendamentoRepository.findIdByTokenConfirmacao("token-123")).thenReturn(Optional.of(1L));
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
             assertThatThrownBy(() -> agendamentoService.cancelarPorToken("token-123", null))
                     .isInstanceOf(BusinessException.class)
                     .hasMessageContaining("em andamento não pode ser cancelado");
@@ -466,6 +468,33 @@ class AgendamentoServiceTest {
         }
 
         @Test
+        @DisplayName("Duplo clique: trava o agendamento antes de ler o status (BUG-024)")
+        void travaAntesDeLerOStatus() {
+            agendamento.setDataHora(LocalDateTime.now().plusDays(1));
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+            when(agendamentoRepository.save(any(Agendamento.class))).thenReturn(agendamento);
+
+            agendamentoService.cancelar(1L, new CancelamentoRequest("Motivo teste"));
+
+            // a segunda requisição espera a trava e lê o status já cancelado
+            org.mockito.InOrder ordem = org.mockito.Mockito.inOrder(agendamentoRepository);
+            ordem.verify(agendamentoRepository).lockAgendamento(1L);
+            ordem.verify(agendamentoRepository).findById(1L);
+        }
+
+        @Test
+        @DisplayName("Duplo clique: o segundo cancelamento é recusado com mensagem (BUG-024)")
+        void segundoCancelamentoRecusado() {
+            agendamento.setStatus(StatusAgendamento.CANCELADO);
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
+
+            assertThatThrownBy(() -> agendamentoService.cancelar(1L, new CancelamentoRequest("de novo")))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("não pode ser cancelado");
+            verify(agendamentoRepository, never()).save(any(Agendamento.class));
+        }
+
+        @Test
         @DisplayName("Cliente não cancela dentro do prazo mínimo de cancelamento do salão")
         void shouldThrowExceptionWhenCancelingTooClose() {
             // Given: salão exige 2 h; faltam 30 min
@@ -484,7 +513,8 @@ class AgendamentoServiceTest {
         @DisplayName("Link de cancelamento do e-mail segue o mesmo prazo do cliente")
         void cancelamentoPorLinkDentroDoPrazo() {
             agendamento.setDataHora(LocalDateTime.now().plusMinutes(30));
-            when(agendamentoRepository.findByTokenConfirmacao("token-123")).thenReturn(Optional.of(agendamento));
+            when(agendamentoRepository.findIdByTokenConfirmacao("token-123")).thenReturn(Optional.of(1L));
+            when(agendamentoRepository.findById(1L)).thenReturn(Optional.of(agendamento));
 
             assertThatThrownBy(() -> agendamentoService.cancelarPorToken("token-123", null))
                     .isInstanceOf(BusinessException.class)

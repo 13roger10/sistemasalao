@@ -131,4 +131,16 @@ class ComissaoServiceTest {
 
         verify(comissaoRepository, never()).save(any());
     }
+
+    @Test
+    @DisplayName("Comissão já calculada não marca a transação de concluir para rollback (BUG-024)")
+    void erroDeNegocioNaoEnvenenaATransacaoDeQuemChama() throws Exception {
+        // concluir() trata o erro de comissão com try/catch; se este método marcasse a transação
+        // como rollback-only, o "finalizar" respondia 500 (UnexpectedRollbackException)
+        var tx = ComissaoService.class.getMethod("calcularComissao", Agendamento.class)
+                .getAnnotation(org.springframework.transaction.annotation.Transactional.class);
+
+        assertThat(tx).isNotNull();
+        assertThat(tx.noRollbackFor()).contains(BusinessException.class);
+    }
 }

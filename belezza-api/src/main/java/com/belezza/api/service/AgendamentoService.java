@@ -579,8 +579,7 @@ public class AgendamentoService {
 
     @Transactional
     public AgendamentoResponse confirmarPorToken(String token) {
-        Agendamento agendamento = agendamentoRepository.findByTokenConfirmacao(token)
-                .orElseThrow(() -> new ResourceNotFoundException("Agendamento", "token", token));
+        Agendamento agendamento = getAgendamentoPorToken(token);
 
         if (agendamento.getStatus() != StatusAgendamento.PENDENTE) {
             throw new BusinessException("Apenas agendamentos pendentes podem ser confirmados");
@@ -627,8 +626,7 @@ public class AgendamentoService {
 
     @Transactional
     public AgendamentoResponse cancelarPorToken(String token, String motivo) {
-        Agendamento agendamento = agendamentoRepository.findByTokenConfirmacao(token)
-                .orElseThrow(() -> new ResourceNotFoundException("Agendamento", "token", token));
+        Agendamento agendamento = getAgendamentoPorToken(token);
 
         if (agendamento.getStatus() == StatusAgendamento.CONCLUIDO ||
             agendamento.getStatus() == StatusAgendamento.CANCELADO ||
@@ -1290,9 +1288,21 @@ public class AgendamentoService {
         }
     }
 
+    /**
+     * Agendamento para mudar de status: trava a linha antes de ler (BUG-024), então pedidos
+     * simultâneos sobre o mesmo agendamento são atendidos um de cada vez.
+     */
     private Agendamento getAgendamento(Long id) {
+        agendamentoRepository.lockAgendamento(id);
         return agendamentoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento", id));
+    }
+
+    /** Mesmo que {@link #getAgendamento}, pelo token do link enviado ao cliente. */
+    private Agendamento getAgendamentoPorToken(String token) {
+        Long id = agendamentoRepository.findIdByTokenConfirmacao(token)
+                .orElseThrow(() -> new ResourceNotFoundException("Agendamento", "token", token));
+        return getAgendamento(id);
     }
 
     private DiaSemana toDiaSemana(DayOfWeek dayOfWeek) {

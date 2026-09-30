@@ -38,7 +38,12 @@ public class ComissaoService {
      * Calculate commission for a completed appointment.
      * Called automatically when an appointment is marked as completed.
      */
-    @Transactional
+    /**
+     * Chamado ao concluir o atendimento, dentro da transação da conclusão. Erro de regra aqui (ex.:
+     * comissão já calculada) não pode desfazer a conclusão: antes marcava a transação inteira para
+     * rollback e o "finalizar" respondia 500 mesmo com o erro tratado por quem chamou (BUG-024).
+     */
+    @Transactional(noRollbackFor = BusinessException.class)
     @Auditable(action = "CREATE", entityType = "Comissao", captureNewState = true)
     public Comissao calcularComissao(Agendamento agendamento) {
         log.info("Calculando comissao para agendamento: {}", agendamento.getId());

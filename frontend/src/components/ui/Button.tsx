@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, ButtonHTMLAttributes } from "react";
+import { forwardRef, useRef, useState, ButtonHTMLAttributes, MouseEvent } from "react";
 import { Loader2 } from "lucide-react";
 
 type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "danger";
@@ -46,11 +46,34 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       className = "",
       disabled,
       children,
+      onClick,
       ...props
     },
     ref
   ) => {
-    const isDisabled = disabled || isLoading;
+    // Duplo clique (BUG-024): enquanto a ação assíncrona do clique não termina, os cliques
+    // seguintes são ignorados — o isLoading da tela só desabilita depois do próximo render.
+    const emAndamento = useRef(false);
+    const [aguardando, setAguardando] = useState(false);
+    const isDisabled = disabled || isLoading || aguardando;
+
+    const handleClick = (e: MouseEvent<HTMLButtonElement>) => {
+      if (emAndamento.current) {
+        e.preventDefault();
+        return;
+      }
+      const resultado = onClick?.(e) as unknown;
+      if (resultado instanceof Promise) {
+        emAndamento.current = true;
+        setAguardando(true);
+        resultado
+          .catch(() => {})
+          .finally(() => {
+            emAndamento.current = false;
+            setAguardando(false);
+          });
+      }
+    };
 
     return (
       <button
@@ -67,6 +90,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           ${className}
         `}
         {...props}
+        onClick={handleClick}
       >
         {isLoading ? (
           <Loader2 className="h-4 w-4 animate-spin" />
