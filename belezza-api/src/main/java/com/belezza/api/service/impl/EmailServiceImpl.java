@@ -11,6 +11,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.web.util.HtmlUtils;
 
 /**
  * Implementation of EmailService for sending emails.
@@ -153,7 +154,7 @@ public class EmailServiceImpl implements EmailService {
                 </div>
             </body>
             </html>
-            """.formatted(userName, postId, safeError, postsUrl);
+            """.formatted(esc(userName), esc(postId), esc(safeError), esc(postsUrl));
     }
 
     @SuppressWarnings("null")
@@ -208,7 +209,7 @@ public class EmailServiceImpl implements EmailService {
                   </div>
                   <div class="footer"><p>&copy; 2025 Belezza.ai</p></div>
                 </div></body></html>
-                """.formatted(userName, servico, profissional, data, hora, linkConfirmacao);
+                """.formatted(esc(userName), esc(servico), esc(profissional), esc(data), esc(hora), esc(linkConfirmacao));
             sendHtmlEmail(email, subject, html);
             log.info("Appointment confirmation email sent to: {}", email);
         } catch (Exception e) {
@@ -255,7 +256,7 @@ public class EmailServiceImpl implements EmailService {
                   </div>
                   <div class="footer"><p>&copy; 2025 Belezza.ai</p></div>
                 </div></body></html>
-                """.formatted(userName, servico, data, hora, motivoTexto, linkReagendar);
+                """.formatted(esc(userName), esc(servico), esc(data), esc(hora), esc(motivoTexto), esc(linkReagendar));
             sendHtmlEmail(email, subject, html);
             log.info("Appointment cancellation email sent to: {}", email);
         } catch (Exception e) {
@@ -298,7 +299,7 @@ public class EmailServiceImpl implements EmailService {
                   </div>
                   <div class="footer"><p>&copy; 2025 Belezza.ai</p></div>
                 </div></body></html>
-                """.formatted(userName, servico, novaData, novaHora);
+                """.formatted(esc(userName), esc(servico), esc(novaData), esc(novaHora));
             sendHtmlEmail(email, subject, html);
             log.info("Appointment rescheduled email sent to: {}", email);
         } catch (Exception e) {
@@ -347,7 +348,7 @@ public class EmailServiceImpl implements EmailService {
                 </div>
             </body>
             </html>
-            """.formatted(userName, resetUrl, resetUrl, resetUrl);
+            """.formatted(esc(userName), esc(resetUrl), esc(resetUrl), esc(resetUrl));
     }
 
     private String buildEmailVerificationEmail(String userName, String verificationUrl) {
@@ -390,7 +391,7 @@ public class EmailServiceImpl implements EmailService {
                 </div>
             </body>
             </html>
-            """.formatted(userName, verificationUrl, verificationUrl, verificationUrl);
+            """.formatted(esc(userName), esc(verificationUrl), esc(verificationUrl), esc(verificationUrl));
     }
 
     private String buildWelcomeEmail(String userName) {
@@ -453,6 +454,15 @@ public class EmailServiceImpl implements EmailService {
                 </div>
             </body>
             </html>
-            """.formatted(userName, frontendUrl + "/login");
+            """.formatted(esc(userName), esc(frontendUrl + "/login"));
+    }
+
+    /**
+     * Escapa o valor para o corpo HTML do e-mail. Nome, serviço, motivo e erro vêm de cadastros
+     * que o próprio usuário edita: sem isto, um nome com "<a href=…>" injetava links falsos
+     * (phishing) em e-mails legítimos do salão.
+     */
+    private static String esc(Object valor) {
+        return valor == null ? "" : HtmlUtils.htmlEscape(String.valueOf(valor), "UTF-8");
     }
 }

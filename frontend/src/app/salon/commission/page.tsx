@@ -36,6 +36,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
 import { DataTable, Column, ActionMenuItem } from "@/components/ui/DataTable";
 import { useToast } from "@/components/ui/Toast";
+import { escaparHtml } from "@/utils/html";
 import { commissionService } from "@/services/salon";
 import { dataLocal } from "@/services/salon/financeService";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
@@ -580,15 +581,18 @@ export default function CommissionPage() {
     const statusLabel = (s: string) =>
       s === 'paid' ? 'Pago' : s === 'pending' ? 'Pendente' : 'Cancelado';
 
+    // Todo valor passa por escaparHtml: nomes vêm de cadastros que clientes e profissionais editam
+    // (um nome "<img onerror=…>" executava no navegador de quem exportava e lia o token de sessão)
+    const e = escaparHtml;
     const rows = filteredCommissions.map(c => `
       <tr>
-        <td>${isProfessional ? (c.clientName || '—') : (c.professionalName || '—')}</td>
-        <td>${c.serviceName || '—'}</td>
-        <td>${formatCurrency(c.servicePrice)}</td>
-        <td>${c.commissionType === 'percentage' ? c.commissionRate + '%' : formatCurrency(c.commissionRate)}</td>
-        <td class="value">${formatCurrency(c.commissionValue)}</td>
-        <td class="status-${c.status}">${statusLabel(c.status)}</td>
-        <td>${formatDate(c.appointmentDate)}</td>
+        <td>${e(isProfessional ? (c.clientName || '—') : (c.professionalName || '—'))}</td>
+        <td>${e(c.serviceName || '—')}</td>
+        <td>${e(formatCurrency(c.servicePrice))}</td>
+        <td>${e(c.commissionType === 'percentage' ? c.commissionRate + '%' : formatCurrency(c.commissionRate))}</td>
+        <td class="value">${e(formatCurrency(c.commissionValue))}</td>
+        <td class="status-${e(c.status)}">${e(statusLabel(c.status))}</td>
+        <td>${e(formatDate(c.appointmentDate))}</td>
       </tr>`).join('');
 
     const totalComissoes = filteredCommissions.reduce((s, c) => s + c.commissionValue, 0);
@@ -602,6 +606,8 @@ export default function CommissionPage() {
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8"/>
+  <!-- Nenhum script roda nesta janela, mesmo que algum valor escape do escaparHtml -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:"/>
   <title>Relatório de Comissões</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -632,7 +638,7 @@ export default function CommissionPage() {
 </head>
 <body>
   <h1>Relatório de Comissões</h1>
-  <p class="subtitle">Gerado em ${geradoEm} · ${filteredCommissions.length} registro(s)</p>
+  <p class="subtitle">Gerado em ${e(geradoEm)} · ${filteredCommissions.length} registro(s)</p>
   <div class="summary">
     <div class="summary-item">
       <div class="label">Total comissões</div>
@@ -650,19 +656,24 @@ export default function CommissionPage() {
   <table>
     <thead>
       <tr>
-        <th>${colLabel}</th><th>Serviço</th><th>Valor Serviço</th>
+        <th>${e(colLabel)}</th><th>Serviço</th><th>Valor Serviço</th>
         <th>Taxa</th><th>Comissão</th><th>Status</th><th>Data</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
   </table>
-  <div class="footer">Belezza · ${geradoEm}</div>
-  <script>window.onload = () => { window.print(); }<\/script>
+  <div class="footer">Belezza · ${e(geradoEm)}</div>
 </body>
 </html>`;
 
     const w = window.open('', '_blank');
-    if (w) { w.document.write(html); w.document.close(); }
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+      // A impressão é chamada daqui: a CSP da janela não deixa rodar script dentro dela
+      w.focus();
+      w.print();
+    }
   };
 
   const handleExportExcel = () => {
