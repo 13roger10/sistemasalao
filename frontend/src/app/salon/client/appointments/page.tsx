@@ -607,7 +607,7 @@ export default function ClientAppointmentsPage() {
                       {/* Price */}
                       {appointment.totalPrice > 0 && (
                         <div className="text-sm font-medium text-violet-600 dark:text-violet-400">
-                          R$ {appointment.totalPrice.toFixed(2)}
+                          {formatCurrency(appointment.totalPrice)}
                         </div>
                       )}
 

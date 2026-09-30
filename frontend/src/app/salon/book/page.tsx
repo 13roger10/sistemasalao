@@ -27,6 +27,7 @@ import { professionalService } from "@/services/salon/professionalService";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import { useUnit } from "@/contexts/UnitContext";
 import { cn } from "@/lib/utils";
+import { formatCurrency } from '@/utils/formatters';
 import type { Service, Professional, TimeSlot, Client } from "@/types/salon";
 
 // ===== TIPOS =====
@@ -503,9 +504,14 @@ function BookingPageContent() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Novo Agendamento</h1>
-            <p className="text-gray-500 dark:text-gray-400">Crie um novo agendamento para um cliente</p>
+            <p className="text-gray-500 dark:text-gray-400">
+              {user?.role === 'CLIENT'
+                ? "Escolha o serviço, o profissional e o horário"
+                : "Crie um novo agendamento para um cliente"}
+            </p>
           </div>
-          <Button variant="outline" onClick={() => router.push("/salon/appointments")}>
+          {/* O cliente volta para a própria agenda (antes ia para a agenda da equipe) */}
+          <Button variant="outline" onClick={() => router.push(user?.role === 'CLIENT' ? "/salon/client/appointments" : "/salon/appointments")}>
             <X className="mr-2 h-4 w-4" />
             Cancelar
           </Button>
@@ -543,7 +549,7 @@ function BookingPageContent() {
                 </p>
                 {bookingData.services.length > 0 && (
                   <p className="text-sm font-medium text-violet-600 dark:text-violet-400">
-                    {bookingData.services.length} selecionado(s) - R$ {totalPrice.toFixed(2)} ({totalDuration} min)
+                    {bookingData.services.length} selecionado(s) - {formatCurrency(totalPrice)} ({totalDuration} min)
                   </p>
                 )}
               </div>
@@ -653,7 +659,7 @@ function BookingPageContent() {
                       <p className="text-sm text-gray-500 dark:text-gray-400">{service.durationMinutes} min</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold text-gray-900 dark:text-white">R$ {service.price.toFixed(2)}</p>
+                      <p className="font-semibold text-gray-900 dark:text-white">{formatCurrency(service.price)}</p>
                       {bookingData.services.some((s) => s.id === service.id) && (
                         <Check className="ml-auto h-5 w-5 text-violet-500" />
                       )}
@@ -973,7 +979,7 @@ function BookingPageContent() {
                     <div className="flex items-center justify-between">
                       <span className="text-lg font-medium text-gray-900 dark:text-white">Total</span>
                       <span className="text-2xl font-bold text-violet-600 dark:text-violet-400">
-                        R$ {totalPrice.toFixed(2)}
+                        {formatCurrency(totalPrice)}
                       </span>
                     </div>
                   </div>

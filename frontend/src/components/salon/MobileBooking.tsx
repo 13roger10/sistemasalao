@@ -19,6 +19,7 @@ import { appointmentService } from '@/services/salon/appointmentService';
 import { serviceService } from '@/services/salon/serviceService';
 import { professionalService } from '@/services/salon/professionalService';
 import { notificationService } from '@/services/salon/notificationService';
+import { formatCurrency } from '@/utils/formatters';
 import type { Service, Professional, TimeSlot } from '@/types/salon';
 
 interface MobileBookingProps {
@@ -437,7 +438,7 @@ export function MobileBooking({
                 </div>
                 <div className="text-right">
                   <p className="font-semibold text-gray-900">
-                    R$ {service.price.toFixed(2)}
+                    {formatCurrency(service.price)}
                   </p>
                   {bookingData.services.some(s => s.id === service.id) && (
                     <Check className="ml-auto h-5 w-5 text-violet-500" />
@@ -684,7 +685,7 @@ export function MobileBooking({
                 <div className="flex items-center justify-between text-lg font-semibold">
                   <span>Total</span>
                   <span className="text-violet-600">
-                    R$ {totalPrice.toFixed(2)}
+                    {formatCurrency(totalPrice)}
                   </span>
                 </div>
               </div>
@@ -728,7 +729,7 @@ export function MobileBooking({
               {bookingData.services.length} servico(s) - {totalDuration} min
             </span>
             <span className="font-semibold text-violet-600">
-              R$ {totalPrice.toFixed(2)}
+              {formatCurrency(totalPrice)}
             </span>
           </div>
         )}
