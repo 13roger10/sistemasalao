@@ -865,6 +865,7 @@ function AppointmentsPageContent() {
   // Estados de loading
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingWaitlist, setIsLoadingWaitlist] = useState(false);
+  const [waitlistErro, setWaitlistErro] = useState<string | null>(null);
 
   // Estados de modais
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -1084,24 +1085,13 @@ function AppointmentsPageContent() {
     try {
       const data = await appointmentService.waitlist.list();
       setWaitlist(data);
+      setWaitlistErro(null);
     } catch (error) {
       console.error("Erro ao carregar lista de espera:", error);
-      // Mock data
-      setWaitlist([
-        {
-          id: "1",
-          clientId: "1",
-          client: { id: "1", name: "João Silva", email: "joao@email.com", phone: "(11) 99999-1111", totalVisits: 5, totalSpent: 500, loyaltyPoints: 50, loyaltyLevel: "bronze", status: "active", acceptsMarketing: true, acceptsWhatsApp: true, acceptsEmail: true, averageTicket: 100, createdAt: new Date(), updatedAt: new Date() },
-          serviceIds: ["1"],
-          preferredProfessionalId: "1",
-          preferredDate: new Date(),
-          preferredTimeRange: { start: "09:00", end: "12:00" },
-          status: "waiting",
-          unitId: "1",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ]);
+      // Sem dados de exemplo: antes a tela mostrava um "João Silva" fixo (09:00–12:00, aguardando)
+      // que não existe no sistema e parecia um cliente esquecido na lista
+      setWaitlist([]);
+      setWaitlistErro("Não foi possível carregar a lista de espera. O recurso ainda não está disponível no servidor.");
     } finally {
       setIsLoadingWaitlist(false);
     }
@@ -2185,10 +2175,17 @@ function AppointmentsPageContent() {
               <Button
                 onClick={() => setIsWaitlistModalOpen(true)}
                 leftIcon={<UserPlus className="h-4 w-4" />}
+                disabled={waitlistErro !== null}
               >
                 Adicionar à Lista
               </Button>
             </div>
+
+            {waitlistErro && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300">
+                {waitlistErro}
+              </div>
+            )}
 
             <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
               <DataTable
@@ -2197,7 +2194,7 @@ function AppointmentsPageContent() {
                 keyExtractor={(item) => item.id}
                 isLoading={isLoadingWaitlist}
                 emptyMessage="Nenhum cliente na lista de espera"
-                emptyAction={{
+                emptyAction={waitlistErro ? undefined : {
                   label: "Adicionar à lista",
                   onClick: () => setIsWaitlistModalOpen(true),
                 }}
