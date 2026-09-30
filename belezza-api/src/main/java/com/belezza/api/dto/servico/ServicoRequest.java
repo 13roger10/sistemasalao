@@ -28,6 +28,7 @@ public class ServicoRequest {
 
     @NotNull(message = "Duração é obrigatória")
     @Min(value = 1, message = "Duração mínima é 1 minuto")
+    @Max(value = 720, message = "Duração máxima é 720 minutos (12 horas)")
     private Integer duracaoMinutos;
 
     @NotNull(message = "Tipo é obrigatório")

@@ -435,9 +435,9 @@ export default function ServicesPage() {
       resetForm();
       loadServices();
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } } };
+      // O erro da API traz o motivo em message ("[HTTP 400] Duração máxima é 720 minutos...")
       setFormErrors({
-        submit: err.response?.data?.message || "Erro ao criar serviço",
+        submit: (error instanceof Error && error.message.replace(/^\[HTTP \d+\]\s*/, "")) || "Erro ao criar serviço",
       });
     } finally {
       setIsSubmitting(false);
@@ -466,9 +466,9 @@ export default function ServicesPage() {
       resetForm();
       loadServices();
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } } };
+      // O erro da API traz o motivo em message ("[HTTP 400] Duração máxima é 720 minutos...")
       setFormErrors({
-        submit: err.response?.data?.message || "Erro ao atualizar serviço",
+        submit: (error instanceof Error && error.message.replace(/^\[HTTP \d+\]\s*/, "")) || "Erro ao atualizar serviço",
       });
     } finally {
       setIsSubmitting(false);
@@ -601,6 +601,8 @@ export default function ServicesPage() {
 
     if (formData.durationMinutes <= 0) {
       errors.durationMinutes = "Duração deve ser maior que zero";
+    } else if (formData.durationMinutes > 720) {
+      errors.durationMinutes = "Duração máxima é 720 minutos (12 horas)";
     }
 
     if (formData.commissionPercentage !== undefined && (formData.commissionPercentage < 0 || formData.commissionPercentage > 100)) {

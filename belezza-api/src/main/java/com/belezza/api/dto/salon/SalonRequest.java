@@ -1,5 +1,7 @@
 package com.belezza.api.dto.salon;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -41,9 +43,21 @@ public class SalonRequest {
     private String horarioAbertura;
     private String horarioFechamento;
 
+    // Limites (BUG-032): antes qualquer número era salvo
+    @Min(value = 5, message = "Intervalo entre horários deve ser de pelo menos 5 minutos")
+    @Max(value = 240, message = "Intervalo entre horários deve ser de no máximo 240 minutos")
     private Integer intervaloAgendamentoMinutos;
+
+    @Min(value = 0, message = "Antecedência mínima não pode ser negativa")
+    @Max(value = 720, message = "Antecedência mínima deve ser de no máximo 720 horas (30 dias)")
     private Integer antecedenciaMinimaHoras;
+
+    @Min(value = 0, message = "Prazo de cancelamento não pode ser negativo")
+    @Max(value = 720, message = "Prazo de cancelamento deve ser de no máximo 720 horas (30 dias)")
     private Integer cancelamentoMinimoHoras;
+
+    @Min(value = 1, message = "Máximo de faltas deve ser de pelo menos 1")
+    @Max(value = 50, message = "Máximo de faltas deve ser de no máximo 50")
     private Integer maxNoShowsPermitidos;
     private Boolean aceitaAgendamentoOnline;
 }

@@ -3,6 +3,9 @@ package com.belezza.api.controller;
 import com.belezza.api.entity.*;
 import com.belezza.api.repository.HorarioFuncionamentoSalonRepository;
 import com.belezza.api.service.SalonService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -103,7 +106,7 @@ public class SalonScheduleController {
 
     @PutMapping
     public ResponseEntity<ScheduleSettingsResponse> updateSchedule(
-            @RequestBody ScheduleSettingsRequest request,
+            @Valid @RequestBody ScheduleSettingsRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
 
         log.info("Admin atualizando horários de funcionamento do salão");
@@ -112,6 +115,7 @@ public class SalonScheduleController {
         if (salon == null) {
             return ResponseEntity.badRequest().build();
         }
+        validarDias(request);
 
         // 1. Persist per-day config
         if (request.schedule() != null && request.schedule().days() != null) {
@@ -123,8 +127,8 @@ public class SalonScheduleController {
                 LocalTime inicio = null;
                 LocalTime fim = null;
                 if (dayReq.isOpen() && !dayReq.timeRanges().isEmpty()) {
-                    inicio = LocalTime.parse(dayReq.timeRanges().get(0).start(), TIME_FORMATTER);
-                    fim    = LocalTime.parse(dayReq.timeRanges().get(0).end(),   TIME_FORMATTER);
+                    inicio = SalonService.horario(dayReq.timeRanges().get(0).start(), "abertura");
+                    fim    = SalonService.horario(dayReq.timeRanges().get(0).end(), "fechamento");
                 }
 
                 // Upsert HorarioFuncionamentoSalon
@@ -146,8 +150,8 @@ public class SalonScheduleController {
                             && !d.timeRanges().isEmpty())
                     .findFirst()
                     .ifPresent(d -> {
-                        salon.setHorarioAbertura(LocalTime.parse(d.timeRanges().get(0).start(), TIME_FORMATTER));
-                        salon.setHorarioFechamento(LocalTime.parse(d.timeRanges().get(0).end(), TIME_FORMATTER));
+                        salon.setHorarioAbertura(SalonService.horario(d.timeRanges().get(0).start(), "abertura"));
+                        salon.setHorarioFechamento(SalonService.horario(d.timeRanges().get(0).end(), "fechamento"));
                     });
         }
 
@@ -173,6 +177,28 @@ public class SalonScheduleController {
 
         // Return updated schedule
         return getSchedule(userDetails);
+    }
+
+    private static final String[] NOME_DO_DIA =
+            {"domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"};
+
+    /**
+     * Confere todos os dias antes de gravar qualquer um (BUG-032): abertura depois do fechamento
+     * era salva e nenhum horário daquele dia cabia no expediente.
+     */
+    private void validarDias(ScheduleSettingsRequest request) {
+        if (request.schedule() == null || request.schedule().days() == null) {
+            return;
+        }
+        for (DayScheduleResponse dia : request.schedule().days()) {
+            if (dia.dayOfWeek() < 0 || dia.dayOfWeek() > 6 || !dia.isOpen()
+                    || dia.timeRanges() == null || dia.timeRanges().isEmpty()) {
+                continue;
+            }
+            TimeRangeResponse faixa = dia.timeRanges().get(0);
+            SalonService.validarExpediente(SalonService.horario(faixa.start(), "abertura"),
+                    SalonService.horario(faixa.end(), "fechamento"), "de " + NOME_DO_DIA[dia.dayOfWeek()]);
+        }
     }
 
     private Salon getSalon(UserDetails userDetails) {
@@ -299,10 +325,18 @@ public class SalonScheduleController {
     public record ScheduleSettingsRequest(
             WeekScheduleResponse schedule,
             String timezone,
+            @Min(value = 5, message = "Intervalo entre horários deve ser de pelo menos 5 minutos")
+            @Max(value = 240, message = "Intervalo entre horários deve ser de no máximo 240 minutos")
             Integer slotDuration,
+            @Min(value = 0, message = "Antecedência mínima não pode ser negativa")
+            @Max(value = 720, message = "Antecedência mínima deve ser de no máximo 720 horas (30 dias)")
             Integer minAdvanceBooking,
+            @Min(value = 1, message = "Antecedência máxima deve ser de pelo menos 1 dia")
+            @Max(value = 365, message = "Antecedência máxima deve ser de no máximo 365 dias")
             Integer maxAdvanceBooking,
             Boolean allowSameDayBooking,
+            @Min(value = 0, message = "Intervalo entre atendimentos não pode ser negativo")
+            @Max(value = 240, message = "Intervalo entre atendimentos deve ser de no máximo 240 minutos")
             Integer bufferBetweenAppointments
     ) {}
 

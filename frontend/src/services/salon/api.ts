@@ -108,12 +108,14 @@ async function fetchApi<T>(
     const fieldErrors = data.fieldErrors || data.details;
     let message = data.message || 'Erro desconhecido';
 
-    // Append field error details to message for better debugging
+    // Append field error details to message for better debugging — só os que ainda não estão
+    // na mensagem (o backend já põe o motivo da validação em "message")
     if (fieldErrors && Object.keys(fieldErrors).length > 0) {
       const errorDetails = Object.entries(fieldErrors)
+        .filter(([, msg]) => !message.includes(String(msg)))
         .map(([field, msg]) => `${field}: ${msg}`)
         .join('; ');
-      message = `${message} (${errorDetails})`;
+      if (errorDetails) message = `${message} (${errorDetails})`;
     }
 
     console.error(`[API] Error response (${response.status}):`, data);

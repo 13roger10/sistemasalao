@@ -382,7 +382,9 @@ export default function SchedulePage() {
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       console.error('Error saving schedule:', err);
-      setError('Erro ao salvar alteracoes');
+      // Mostra o motivo do backend (ex.: abertura depois do fechamento — BUG-032)
+      const motivo = err instanceof Error ? err.message.replace(/^\[HTTP \d+\]\s*/, '') : '';
+      setError(motivo ? `Erro ao salvar alteracoes: ${motivo}` : 'Erro ao salvar alteracoes');
     } finally {
       setIsSaving(false);
     }

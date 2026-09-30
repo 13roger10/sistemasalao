@@ -64,6 +64,7 @@ public class SalonService {
                 .aceitaAgendamentoOnline(request.getAceitaAgendamentoOnline() != null ? request.getAceitaAgendamentoOnline() : true)
                 .admin(admin)
                 .build();
+        validarExpediente(salon.getHorarioAbertura(), salon.getHorarioFechamento(), "do salão");
 
         salon = salonRepository.save(salon);
         log.info("Salão criado com id: {}", salon.getId());
@@ -110,8 +111,9 @@ public class SalonService {
         if (request.getCep() != null) salon.setCep(request.getCep());
         if (request.getTelefone() != null) salon.setTelefone(request.getTelefone());
         if (request.getCnpj() != null) salon.setCnpj(request.getCnpj());
-        if (request.getHorarioAbertura() != null) salon.setHorarioAbertura(LocalTime.parse(request.getHorarioAbertura()));
-        if (request.getHorarioFechamento() != null) salon.setHorarioFechamento(LocalTime.parse(request.getHorarioFechamento()));
+        if (request.getHorarioAbertura() != null) salon.setHorarioAbertura(horario(request.getHorarioAbertura(), "abertura"));
+        if (request.getHorarioFechamento() != null) salon.setHorarioFechamento(horario(request.getHorarioFechamento(), "fechamento"));
+        validarExpediente(salon.getHorarioAbertura(), salon.getHorarioFechamento(), "do salão");
         if (request.getIntervaloAgendamentoMinutos() != null) salon.setIntervaloAgendamentoMinutos(request.getIntervaloAgendamentoMinutos());
         if (request.getAntecedenciaMinimaHoras() != null) salon.setAntecedenciaMinimaHoras(request.getAntecedenciaMinimaHoras());
         if (request.getCancelamentoMinimoHoras() != null) salon.setCancelamentoMinimoHoras(request.getCancelamentoMinimoHoras());
@@ -167,7 +169,27 @@ public class SalonService {
         if (time == null || time.isBlank()) {
             return LocalTime.parse(defaultTime);
         }
-        return LocalTime.parse(time);
+        return horario(time, "funcionamento");
+    }
+
+    /** Horário "HH:mm"; um valor inválido ("25:00") vira mensagem de negócio em vez de erro 500. */
+    public static LocalTime horario(String valor, String campo) {
+        try {
+            return LocalTime.parse(valor.trim());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new BusinessException("Horário de " + campo + " inválido: \"" + valor + "\" (use HH:mm)");
+        }
+    }
+
+    /**
+     * Abertura antes do fechamento (BUG-032): abertura 19:00 e fechamento 08:00 era salvo e
+     * travava todos os agendamentos — nenhum horário cabia no expediente.
+     */
+    public static void validarExpediente(LocalTime abertura, LocalTime fechamento, String deQuem) {
+        if (abertura != null && fechamento != null && !abertura.isBefore(fechamento)) {
+            throw new BusinessException(String.format("O horário de abertura %s (%s) deve ser antes do de fechamento (%s)",
+                    deQuem, abertura, fechamento));
+        }
     }
 
     /**
