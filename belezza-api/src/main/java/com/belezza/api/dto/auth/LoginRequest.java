@@ -25,4 +25,9 @@ public class LoginRequest {
 
     // Optional: required only when the user has 2FA enabled
     private String totpCode;
+
+    /** Espaços nas pontas não invalidam o e-mail ("  ana@x.com " → "ana@x.com") — BUG-041. */
+    public void setEmail(String email) {
+        this.email = email != null ? email.trim() : null;
+    }
 }

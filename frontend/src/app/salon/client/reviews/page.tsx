@@ -139,8 +139,13 @@ const PendingReviewCard = ({
   );
 };
 
+/** Prazo, em dias, para o cliente editar a própria avaliação (mesma regra do backend — BUG-041). */
+const DIAS_PARA_EDITAR = 7;
+const podeEditar = (review: Review) =>
+  Date.now() - new Date(review.createdAt).getTime() <= DIAS_PARA_EDITAR * 24 * 60 * 60 * 1000;
+
 // Card de Avaliação Já Feita
-const CompletedReviewCard = ({ review }: { review: Review }) => {
+const CompletedReviewCard = ({ review, onEdit }: { review: Review; onEdit?: () => void }) => {
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleDateString("pt-BR", {
       day: "2-digit",
@@ -176,6 +181,14 @@ const CompletedReviewCard = ({ review }: { review: Review }) => {
       {review.comment && (
         <div className="mt-4">
           <p className="text-gray-600 dark:text-gray-300">&quot;{review.comment}&quot;</p>
+        </div>
+      )}
+
+      {onEdit && podeEditar(review) && (
+        <div className="mt-3 flex justify-end">
+          <Button variant="outline" size="sm" onClick={onEdit}>
+            Editar avaliação
+          </Button>
         </div>
       )}
 
@@ -220,6 +233,8 @@ export default function ClientReviewsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  // Avaliação sendo editada (o mesmo modal serve para avaliar e para editar)
+  const [editingReview, setEditingReview] = useState<Review | null>(null);
 
   // Load the client's own appointments + their own reviews
   useEffect(() => {
@@ -269,7 +284,18 @@ export default function ClientReviewsPage() {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }, [appointments, reviews]);
 
+  const handleOpenEdit = (review: Review) => {
+    setEditingReview(review);
+    setSelectedAppointment(appointments.find((apt) => apt.id === String(review.appointmentId)) ?? null);
+    setRating(review.rating);
+    setComment(review.comment ?? "");
+    setSubmitError(null);
+    setSubmitSuccess(false);
+    setShowReviewModal(true);
+  };
+
   const handleOpenReview = (appointment: Appointment) => {
+    setEditingReview(null);
     setSelectedAppointment(appointment);
     setRating(0);
     setComment("");
@@ -279,7 +305,26 @@ export default function ClientReviewsPage() {
   };
 
   const handleSubmitReview = async () => {
-    if (!selectedAppointment || rating === 0) return;
+    if (rating === 0) return;
+    if (editingReview) {
+      setIsSubmitting(true);
+      setSubmitError(null);
+      try {
+        const editada = await reviewService.editMine(editingReview.id, { nota: rating, comentario: comment });
+        setReviews((prev) => prev.map((r) => (r.id === editada.id ? { ...editada, serviceNames: editingReview.serviceNames } : r)));
+        setSubmitSuccess(true);
+        setTimeout(() => {
+          setShowReviewModal(false);
+          setEditingReview(null);
+        }, 1500);
+      } catch (err) {
+        setSubmitError(err instanceof Error ? err.message.replace(/^\[HTTP \d+\] /, "") : "Não foi possível salvar a edição.");
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+    if (!selectedAppointment) return;
 
     setIsSubmitting(true);
     setSubmitError(null);
@@ -480,7 +525,7 @@ export default function ClientReviewsPage() {
               </div>
             ) : (
               completedReviews.map((review) => (
-                <CompletedReviewCard key={review.id} review={review} />
+                <CompletedReviewCard key={review.id} review={review} onEdit={() => handleOpenEdit(review)} />
               ))
             )}
           </div>
@@ -491,9 +536,9 @@ export default function ClientReviewsPage() {
       <Modal
         isOpen={showReviewModal}
         onClose={() => !isSubmitting && setShowReviewModal(false)}
-        title={submitSuccess ? "Avaliação Enviada!" : "Avaliar Atendimento"}
+        title={submitSuccess ? (editingReview ? "Avaliação Atualizada!" : "Avaliação Enviada!") : (editingReview ? "Editar Avaliação" : "Avaliar Atendimento")}
       >
-        {selectedAppointment && (
+        {(selectedAppointment || editingReview) && (
           <div className="space-y-6">
             {submitSuccess ? (
               <div className="py-8 text-center">
@@ -517,10 +562,10 @@ export default function ClientReviewsPage() {
                     </div>
                     <div>
                       <p className="font-medium text-gray-900 dark:text-white">
-                        {selectedAppointment.professional?.name || "Profissional"}
+                        {selectedAppointment?.professional?.name || editingReview?.professionalName || "Profissional"}
                       </p>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {selectedAppointment.services?.[0]?.service?.name || "Atendimento"}
+                        {selectedAppointment?.services?.[0]?.service?.name || editingReview?.serviceNames?.[0] || "Atendimento"}
                       </p>
                     </div>
                   </div>
@@ -592,7 +637,7 @@ export default function ClientReviewsPage() {
                     ) : (
                       <>
                         <Send className="mr-2 h-4 w-4" />
-                        Enviar Avaliação
+                        {editingReview ? "Salvar Alterações" : "Enviar Avaliação"}
                       </>
                     )}
                   </Button>

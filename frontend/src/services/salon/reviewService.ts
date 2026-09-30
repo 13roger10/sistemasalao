@@ -294,4 +294,11 @@ export const reviewService = {
       })
       .then(mapAvaliacaoToFrontend);
   },
+
+  // PUT /api/avaliacoes/{id} — o cliente corrige a própria avaliação por até 7 dias (BUG-041)
+  editMine: (id: string, data: { nota: number; comentario?: string }): Promise<Review> => {
+    return api
+      .put<Record<string, unknown>>(`/avaliacoes/${id}`, { nota: data.nota, comentario: data.comentario || undefined })
+      .then(mapAvaliacaoToFrontend);
+  },
 };

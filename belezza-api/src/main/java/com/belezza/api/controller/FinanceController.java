@@ -7,6 +7,7 @@ import com.belezza.api.entity.StatusPagamento;
 import com.belezza.api.entity.TipoMovimentacaoCaixa;
 import com.belezza.api.exception.BusinessException;
 import com.belezza.api.repository.MovimentacaoCaixaRepository;
+import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.security.TenantContext;
 import com.belezza.api.service.CaixaService;
 import com.belezza.api.entity.Cliente;
@@ -364,6 +365,7 @@ public class FinanceController {
     }
 
     @GetMapping("/stats")
+    @AdminOnly // recepção vê só o dia: caixa e relatório diário (BUG-041)
     @Transactional(readOnly = true)
     @Operation(summary = "Estatísticas financeiras", description = "Resumo do dia, da semana e do mês, com os valores reais recebidos e as despesas do caixa")
     public ResponseEntity<FinanceStatsResponse> getStats(@RequestParam(required = false) String unitId) {
@@ -402,6 +404,7 @@ public class FinanceController {
     }
 
     @GetMapping("/reports/monthly")
+    @AdminOnly // recepção vê só o dia: caixa e relatório diário (BUG-041)
     @Transactional(readOnly = true)
     @Operation(summary = "Relatório mensal", description = "Relatório financeiro do mês com os valores reais recebidos, despesas do caixa e atendimentos")
     public ResponseEntity<MonthlyReportResponse> getMonthlyReport(

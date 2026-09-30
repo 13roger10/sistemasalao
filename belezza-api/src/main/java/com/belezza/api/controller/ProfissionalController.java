@@ -1,6 +1,7 @@
 package com.belezza.api.controller;
 
 import com.belezza.api.dto.profissional.CategoriaResponse;
+import com.belezza.api.dto.profissional.MeuPerfilProfissionalRequest;
 import com.belezza.api.dto.profissional.NivelResponse;
 import com.belezza.api.dto.profissional.ProfissionalRequest;
 import com.belezza.api.dto.profissional.ProfissionalResponse;
@@ -18,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -119,6 +121,15 @@ public class ProfissionalController {
         tenantIsolationService.assertRequestedSalon(salonId);
         List<ProfissionalResponse> response = profissionalService.listarDisponiveisOnline(salonId);
         return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/me")
+    @PreAuthorize("hasRole('PROFISSIONAL')")
+    @Operation(summary = "Atualizar meu perfil de profissional", description = "O próprio profissional altera a especialidade e a bio. Serviços, comissão e expediente ficam com o admin.")
+    public ResponseEntity<ProfissionalResponse> atualizarMeuPerfil(
+            @Valid @RequestBody MeuPerfilProfissionalRequest request,
+            @AuthenticationPrincipal Usuario operador) {
+        return ResponseEntity.ok(profissionalService.atualizarMeuPerfil(operador, request));
     }
 
     @PutMapping("/{id}")

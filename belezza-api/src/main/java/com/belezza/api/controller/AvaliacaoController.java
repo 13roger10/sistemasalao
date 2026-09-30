@@ -1,5 +1,6 @@
 package com.belezza.api.controller;
 
+import com.belezza.api.dto.avaliacao.AvaliacaoEdicaoRequest;
 import com.belezza.api.dto.avaliacao.AvaliacaoRequest;
 import com.belezza.api.dto.avaliacao.AvaliacaoResponse;
 import com.belezza.api.dto.avaliacao.RankingAvaliacaoDTO;
@@ -43,6 +44,16 @@ public class AvaliacaoController {
             @AuthenticationPrincipal Usuario operador) {
         AvaliacaoResponse response = avaliacaoService.criar(request, operador);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('CLIENTE')")
+    @Operation(summary = "Editar avaliação", description = "O cliente altera nota e comentário da própria avaliação por até 7 dias após publicá-la.")
+    public ResponseEntity<AvaliacaoResponse> editar(
+            @PathVariable Long id,
+            @Valid @RequestBody AvaliacaoEdicaoRequest request,
+            @AuthenticationPrincipal Usuario operador) {
+        return ResponseEntity.ok(avaliacaoService.editar(id, request, operador));
     }
 
     @GetMapping("/me")

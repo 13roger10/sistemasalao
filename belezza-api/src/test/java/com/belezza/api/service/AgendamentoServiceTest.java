@@ -482,6 +482,39 @@ class AgendamentoServiceTest {
     }
 
     @Nested
+    @DisplayName("Grade de horários do cliente (BUG-041)")
+    class GradeDoCliente {
+
+        private void validar(LocalDateTime quando) {
+            ReflectionTestUtils.invokeMethod(agendamentoService, "validarGradeDoCliente", profissional, salon, quando);
+        }
+
+        @BeforeEach
+        void expedienteDasNove() {
+            salon.setIntervaloAgendamentoMinutos(30);
+            HorarioTrabalho expediente = HorarioTrabalho.builder().profissional(profissional)
+                    .horaInicio(LocalTime.of(9, 0)).horaFim(LocalTime.of(18, 0)).ativo(true).build();
+            lenient().when(horarioTrabalhoRepository.findByProfissionalIdAndDiaSemana(any(), any())).thenReturn(Optional.of(expediente));
+            lenient().when(horarioFuncionamentoSalonRepository.findBySalonIdAndDiaSemana(any(), any())).thenReturn(Optional.empty());
+        }
+
+        @Test
+        @DisplayName("13:07 numa grade de 30 em 30 min a partir das 09:00 é recusado")
+        void foraDaGrade() {
+            LocalDateTime quando = LocalDateTime.now().plusDays(2).withHour(13).withMinute(7).withSecond(0).withNano(0);
+            assertThatThrownBy(() -> validar(quando))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("de 30 em 30 minutos a partir das 09:00");
+        }
+
+        @Test
+        @DisplayName("13:30 está na grade")
+        void naGrade() {
+            validar(LocalDateTime.now().plusDays(2).withHour(13).withMinute(30).withSecond(0).withNano(0));
+        }
+    }
+
+    @Nested
     @DisplayName("Cancelar Agendamento Tests")
     class CancelarAgendamentoTests {
 

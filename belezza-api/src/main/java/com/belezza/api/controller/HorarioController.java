@@ -11,6 +11,7 @@ import com.belezza.api.entity.Usuario;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.ProfissionalRepository;
 import com.belezza.api.security.TenantContext;
+import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.security.annotation.ProfissionalOrAdmin;
 import com.belezza.api.service.BloqueioHorarioService;
 import com.belezza.api.service.HorarioTrabalhoService;
@@ -66,16 +67,27 @@ public class HorarioController {
         }
     }
 
+    /**
+     * O expediente é definido pelo admin do salão (BUG-041: o profissional mudava o próprio horário
+     * de trabalho sem aprovação). Ausências (bloqueios) o próprio profissional continua lançando.
+     */
+    private void verificarPermissaoExpediente(Long profissionalId, Usuario operador) {
+        if (operador.getRole() != Role.ADMIN) {
+            throw new AccessDeniedException("O horário de trabalho é definido pelo administrador do salão");
+        }
+        verificarPermissaoAgenda(profissionalId, operador);
+    }
+
     // --- Horários de Trabalho ---
 
     @PostMapping("/horarios")
-    @ProfissionalOrAdmin
+    @AdminOnly
     @Operation(summary = "Criar horário de trabalho", description = "Define horário de trabalho para um dia da semana")
     public ResponseEntity<HorarioTrabalhoResponse> criarHorario(
             @PathVariable Long profissionalId,
             @Valid @RequestBody HorarioTrabalhoRequest request,
             @AuthenticationPrincipal Usuario operador) {
-        verificarPermissaoAgenda(profissionalId, operador);
+        verificarPermissaoExpediente(profissionalId, operador);
         HorarioTrabalhoResponse response = horarioTrabalhoService.criar(profissionalId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -88,26 +100,26 @@ public class HorarioController {
     }
 
     @PutMapping("/horarios/{diaSemana}")
-    @ProfissionalOrAdmin
+    @AdminOnly
     @Operation(summary = "Atualizar horário", description = "Atualiza horário de trabalho de um dia da semana")
     public ResponseEntity<HorarioTrabalhoResponse> atualizarHorario(
             @PathVariable Long profissionalId,
             @PathVariable DiaSemana diaSemana,
             @Valid @RequestBody HorarioTrabalhoRequest request,
             @AuthenticationPrincipal Usuario operador) {
-        verificarPermissaoAgenda(profissionalId, operador);
+        verificarPermissaoExpediente(profissionalId, operador);
         HorarioTrabalhoResponse response = horarioTrabalhoService.atualizar(profissionalId, diaSemana, request);
         return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/horarios/{diaSemana}")
-    @ProfissionalOrAdmin
+    @AdminOnly
     @Operation(summary = "Desativar horário", description = "Desativa horário de trabalho de um dia")
     public ResponseEntity<Void> desativarHorario(
             @PathVariable Long profissionalId,
             @PathVariable DiaSemana diaSemana,
             @AuthenticationPrincipal Usuario operador) {
-        verificarPermissaoAgenda(profissionalId, operador);
+        verificarPermissaoExpediente(profissionalId, operador);
         horarioTrabalhoService.desativar(profissionalId, diaSemana);
         return ResponseEntity.noContent().build();
     }

@@ -108,13 +108,17 @@ class HorarioControllerTest {
     }
 
     @Test
-    @DisplayName("Profissional altera a própria agenda")
+    @DisplayName("Profissional lança a própria ausência, mas não muda o próprio expediente (BUG-041)")
     void profissionalPropriaAgenda() {
         controller.criarBloqueio(6L, bloqueio(), null, usuarioProfA);
-        controller.desativarHorario(6L, DiaSemana.SEGUNDA, usuarioProfA);
-
         verify(indisponibilidadeService).bloquear(eq(6L), any(), isNull(), any());
-        verify(horarioTrabalhoService).desativar(6L, DiaSemana.SEGUNDA);
+
+        assertThatThrownBy(() -> controller.desativarHorario(6L, DiaSemana.SEGUNDA, usuarioProfA))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("administrador");
+        assertThatThrownBy(() -> controller.criarHorario(6L, horario(), usuarioProfA)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.atualizarHorario(6L, DiaSemana.SEGUNDA, horario(), usuarioProfA)).isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(horarioTrabalhoService);
     }
 
     @Test

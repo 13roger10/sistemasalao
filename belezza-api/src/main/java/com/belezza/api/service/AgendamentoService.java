@@ -105,6 +105,10 @@ public class AgendamentoService {
             throw new BusinessException("É necessário estar autenticado como cliente ou informar um clienteId válido do estabelecimento");
         }
 
+        if (isCliente) {
+            validarGradeDoCliente(profissional, salon, request.getDataHora());
+        }
+
         // Check if multiple services or single service
         if (request.hasMultipleServices()) {
             return criarComMultiplosServicos(request, profissional, salon, cliente, operador);
@@ -983,6 +987,9 @@ public class AgendamentoService {
         // (single or multi, possibly just replaced above)
         int duracaoTotal = agendamento.getDuracaoTotalMinutos();
         validarAgendamento(salon, profissional, servico, cliente, request.getNovaDataHora(), duracaoTotal);
+        if (operador != null && operador.getRole() == Role.CLIENTE) {
+            validarGradeDoCliente(profissional, salon, request.getNovaDataHora());
+        }
 
         LocalDateTime novoFim = request.getNovaDataHora().plusMinutes(duracaoTotal);
         validarConflitos(profissional.getId(), request.getNovaDataHora(), novoFim, agendamento.getId());
@@ -1313,6 +1320,43 @@ public class AgendamentoService {
         Long id = agendamentoRepository.findIdByTokenConfirmacao(token)
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento", "token", token));
         return getAgendamento(id);
+    }
+
+    /**
+     * O cliente só agenda nos horários da grade — os mesmos que a tela de horários livres oferece:
+     * a partir do início do expediente do dia (o mais tarde entre o do profissional e o do salão),
+     * de intervalo em intervalo. Antes 13:07 era aceito numa grade de 30 em 30 minutos. A equipe
+     * pode encaixar em qualquer minuto (BUG-041).
+     */
+    private void validarGradeDoCliente(Profissional profissional, Salon salon, LocalDateTime dataHora) {
+        int intervalo = salon.getIntervaloAgendamentoMinutos();
+        if (dataHora == null || intervalo <= 0) {
+            return;
+        }
+        DiaSemana dia = toDiaSemana(dataHora.getDayOfWeek());
+        HorarioTrabalho expediente = horarioTrabalhoRepository
+                .findByProfissionalIdAndDiaSemana(profissional.getId(), dia)
+                .filter(HorarioTrabalho::isAtivo)
+                .orElse(null);
+        if (expediente == null) {
+            return; // dia de folga: validarAgendamento recusa com a mensagem própria
+        }
+        LocalTime inicio = expediente.getHoraInicio();
+        HorarioFuncionamentoSalon doDia = horarioFuncionamentoSalonRepository
+                .findBySalonIdAndDiaSemana(salon.getId(), dia).orElse(null);
+        LocalTime aberturaSalao = doDia != null && doDia.getHoraInicio() != null
+                ? doDia.getHoraInicio() : salon.getHorarioAbertura();
+        if (aberturaSalao != null && aberturaSalao.isAfter(inicio)) {
+            inicio = aberturaSalao;
+        }
+        LocalTime horario = dataHora.toLocalTime();
+        long minutos = java.time.Duration.between(inicio, horario).toMinutes();
+        boolean foraDaGrade = minutos % intervalo != 0 || horario.getSecond() != 0 || horario.getNano() != 0;
+        if (minutos >= 0 && foraDaGrade) {
+            throw new BusinessException(String.format(
+                    "Escolha um dos horários disponíveis: a agenda é de %d em %d minutos a partir das %s",
+                    intervalo, intervalo, inicio));
+        }
     }
 
     private DiaSemana toDiaSemana(DayOfWeek dayOfWeek) {

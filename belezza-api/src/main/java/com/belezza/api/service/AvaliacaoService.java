@@ -1,5 +1,6 @@
 package com.belezza.api.service;
 
+import com.belezza.api.dto.avaliacao.AvaliacaoEdicaoRequest;
 import com.belezza.api.dto.avaliacao.AvaliacaoRequest;
 import com.belezza.api.dto.avaliacao.AvaliacaoResponse;
 import com.belezza.api.dto.avaliacao.RankingAvaliacaoDTO;
@@ -27,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -91,6 +93,36 @@ public class AvaliacaoService {
             log.error("Erro ao notificar profissional sobre avaliação: {}", e.getMessage());
         }
 
+        return AvaliacaoResponse.fromEntity(avaliacao);
+    }
+
+    /** Prazo para o cliente corrigir a própria avaliação depois de publicá-la. */
+    static final int DIAS_PARA_EDITAR = 7;
+
+    /**
+     * O cliente corrige nota e comentário da própria avaliação por até {@value #DIAS_PARA_EDITAR}
+     * dias (BUG-041: antes a avaliação publicada não podia ser editada).
+     */
+    @Transactional
+    public AvaliacaoResponse editar(Long id, AvaliacaoEdicaoRequest request, Usuario operador) {
+        Avaliacao avaliacao = avaliacaoRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Avaliação", id));
+
+        var autor = avaliacao.getAgendamento() != null && avaliacao.getAgendamento().getCliente() != null
+                ? avaliacao.getAgendamento().getCliente().getUsuario() : null;
+        if (operador == null || operador.getRole() != Role.CLIENTE || autor == null || !autor.getId().equals(operador.getId())) {
+            throw new AccessDeniedException("Só quem fez a avaliação pode editá-la");
+        }
+        if (avaliacao.getCriadoEm() != null
+                && LocalDateTime.now().isAfter(avaliacao.getCriadoEm().plusDays(DIAS_PARA_EDITAR))) {
+            throw new BusinessException("O prazo para editar esta avaliação terminou ("
+                    + DIAS_PARA_EDITAR + " dias após a publicação)");
+        }
+
+        avaliacao.setNota(request.nota());
+        avaliacao.setComentario(request.comentario());
+        avaliacao = avaliacaoRepository.save(avaliacao);
+        log.info("Avaliação {} editada pelo cliente {}", id, operador.getId());
         return AvaliacaoResponse.fromEntity(avaliacao);
     }
 

@@ -19,4 +19,9 @@ public class ForgotPasswordRequest {
     @NotBlank(message = "Email é obrigatório")
     @Email(message = "Email deve ser válido")
     private String email;
+
+    /** Espaços nas pontas não invalidam o e-mail ("  ana@x.com " → "ana@x.com") — BUG-041. */
+    public void setEmail(String email) {
+        this.email = email != null ? email.trim() : null;
+    }
 }

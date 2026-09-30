@@ -38,4 +38,9 @@ public class RegisterRequest {
 
     // ID do salão para vincular o cliente (obrigatório quando role = CLIENTE)
     private Long salonId;
+
+    /** Espaços nas pontas não invalidam o e-mail ("  ana@x.com " → "ana@x.com") — BUG-041. */
+    public void setEmail(String email) {
+        this.email = email != null ? email.trim() : null;
+    }
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Clock, KeyRound, Save, User } from "lucide-react";
+import { Clock, KeyRound, Save, Scissors, User } from "lucide-react";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -50,6 +50,10 @@ export default function MeuPerfilPage() {
   const toast = useToast();
   const [me, setMe] = useState<UsuarioMe | null>(null);
   const [horarios, setHorarios] = useState<Horario[] | null>(null);
+  // Especialidade e bio: o próprio profissional altera (BUG-041)
+  const [especialidade, setEspecialidade] = useState("");
+  const [bio, setBio] = useState("");
+  const [salvandoProf, setSalvandoProf] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [nome, setNome] = useState("");
   const [telefone, setTelefone] = useState("");
@@ -67,6 +71,27 @@ export default function MeuPerfilPage() {
       })
       .catch((e) => setErro(semPrefixoHttp(e)));
   }, []);
+
+  useEffect(() => {
+    if (!user?.professionalId) return;
+    api.get<{ especialidade?: string; bio?: string }>(`/profissionais/${user.professionalId}`)
+      .then((p) => { setEspecialidade(p.especialidade ?? ""); setBio(p.bio ?? ""); })
+      .catch(() => {});
+  }, [user?.professionalId]);
+
+  const salvarProfissional = async () => {
+    setSalvandoProf(true);
+    try {
+      const p = await api.put<{ especialidade?: string; bio?: string }>("/profissionais/me", { especialidade, bio });
+      setEspecialidade(p.especialidade ?? "");
+      setBio(p.bio ?? "");
+      toast.success("Perfil profissional atualizado", "Especialidade e bio salvas.");
+    } catch (e) {
+      toast.error("Não foi possível salvar", semPrefixoHttp(e));
+    } finally {
+      setSalvandoProf(false);
+    }
+  };
 
   useEffect(() => {
     if (!user?.professionalId) return;
@@ -172,6 +197,29 @@ export default function MeuPerfilPage() {
             </Button>
           </div>
         </section>
+
+        {user?.professionalId && (
+          <section className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+            <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
+              <Scissors className="h-5 w-5 text-violet-500" /> Perfil profissional
+            </h3>
+            <div className="space-y-4">
+              <Input label="Especialidade" value={especialidade} maxLength={300}
+                placeholder="Ex.: Cortes, Coloração, Barba" onChange={(e) => setEspecialidade(e.target.value)} />
+              <div>
+                <label htmlFor="bio" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Bio</label>
+                <textarea id="bio" value={bio} maxLength={500} rows={3} onChange={(e) => setBio(e.target.value)}
+                  placeholder="Conte sua experiência para os clientes"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <Button onClick={salvarProfissional} isLoading={salvandoProf} leftIcon={<Save className="h-4 w-4" />}>
+                Salvar perfil profissional
+              </Button>
+            </div>
+          </section>
+        )}
 
         {user?.professionalId && (
           <section className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">

@@ -1,6 +1,7 @@
 package com.belezza.api.service;
 
 import com.belezza.api.dto.profissional.CategoriaResponse;
+import com.belezza.api.dto.profissional.MeuPerfilProfissionalRequest;
 import com.belezza.api.dto.profissional.ProfissionalRequest;
 import com.belezza.api.dto.profissional.ProfissionalResponse;
 import com.belezza.api.entity.CategoriaProfissional;
@@ -160,6 +161,21 @@ public class ProfissionalService {
         return profissionalRepository.findOnlineAvailableBySalonId(salonId).stream()
                 .map(ProfissionalResponse::fromEntity)
                 .toList();
+    }
+
+    /**
+     * O próprio profissional atualiza especialidade e bio (BUG-041: antes só o admin podia).
+     * Campo nulo fica como está; texto vazio limpa.
+     */
+    @Transactional
+    public ProfissionalResponse atualizarMeuPerfil(Usuario operador, MeuPerfilProfissionalRequest request) {
+        Profissional profissional = profissionalRepository.findByUsuarioId(operador.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Profissional", "usuário", operador.getEmail()));
+        if (request.especialidade() != null) profissional.setEspecialidade(request.especialidade().trim());
+        if (request.bio() != null) profissional.setBio(request.bio().trim());
+        profissional = profissionalRepository.save(profissional);
+        log.info("Profissional {} atualizou a própria especialidade/bio", profissional.getId());
+        return ProfissionalResponse.fromEntity(profissional);
     }
 
     @Transactional
