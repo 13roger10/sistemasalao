@@ -101,8 +101,8 @@ class ClienteServiceTest {
             when(usuarioRepository.existsByEmail("joao@teste.com")).thenReturn(true);
 
             assertThatThrownBy(() -> clienteService.atualizar(10L, pedido("Maria", "11912345678", "joao@teste.com"), 1L))
-                    .isInstanceOf(BusinessException.class)
-                    .hasMessageContaining("Já existe uma conta com este e-mail");
+                    .isInstanceOf(com.belezza.api.exception.DuplicateResourceException.class)
+                    .hasMessageContaining("Já existe uma conta com este email");
             verify(usuarioRepository, never()).save(any());
         }
 

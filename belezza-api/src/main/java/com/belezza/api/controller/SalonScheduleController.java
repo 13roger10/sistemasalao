@@ -2,6 +2,8 @@ package com.belezza.api.controller;
 
 import com.belezza.api.entity.*;
 import com.belezza.api.repository.HorarioFuncionamentoSalonRepository;
+import com.belezza.api.exception.BusinessException;
+import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.service.SalonService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -105,6 +107,7 @@ public class SalonScheduleController {
     }
 
     @PutMapping
+    @AdminOnly
     public ResponseEntity<ScheduleSettingsResponse> updateSchedule(
             @Valid @RequestBody ScheduleSettingsRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
@@ -113,7 +116,7 @@ public class SalonScheduleController {
 
         Salon salon = getSalon(userDetails);
         if (salon == null) {
-            return ResponseEntity.badRequest().build();
+            throw new BusinessException("Nenhum salão vinculado a este administrador");
         }
         validarDias(request);
 
@@ -259,6 +262,7 @@ public class SalonScheduleController {
     }
 
     @PostMapping("/holidays")
+    @AdminOnly
     public ResponseEntity<HolidayResponse> addHoliday(@RequestBody HolidayRequest request) {
         HolidayResponse holiday = new HolidayResponse(
                 java.util.UUID.randomUUID().toString(),
@@ -271,6 +275,7 @@ public class SalonScheduleController {
     }
 
     @PutMapping("/holidays/{id}")
+    @AdminOnly
     public ResponseEntity<HolidayResponse> updateHoliday(
             @PathVariable String id, @RequestBody HolidayRequest request) {
         HolidayResponse holiday = new HolidayResponse(
@@ -285,6 +290,7 @@ public class SalonScheduleController {
     }
 
     @DeleteMapping("/holidays/{id}")
+    @AdminOnly
     public ResponseEntity<Void> deleteHoliday(@PathVariable String id) {
         return ResponseEntity.ok().build();
     }
@@ -297,6 +303,7 @@ public class SalonScheduleController {
     }
 
     @PostMapping("/special-dates")
+    @AdminOnly
     public ResponseEntity<SpecialDateResponse> addSpecialDate(@RequestBody SpecialDateRequest request) {
         SpecialDateResponse sd = new SpecialDateResponse(
                 java.util.UUID.randomUUID().toString(),
@@ -306,6 +313,7 @@ public class SalonScheduleController {
     }
 
     @DeleteMapping("/special-dates/{id}")
+    @AdminOnly
     public ResponseEntity<Void> deleteSpecialDate(@PathVariable String id) {
         return ResponseEntity.ok().build();
     }

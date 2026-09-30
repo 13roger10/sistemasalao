@@ -35,7 +35,7 @@ import { Modal, ConfirmModal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { isStrongPassword } from "@/utils/validators";
 import { clientService } from "@/services/salon/clientService";
-import { api } from "@/services/salon/api";
+import { api, ApiException } from "@/services/salon/api";
 import { userService } from "@/services/user";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import { useUnit } from "@/contexts/UnitContext";
@@ -174,6 +174,34 @@ const LoyaltyProgress = ({ current, total = 10 }: { current: number; total?: num
     </div>
   );
 };
+
+/**
+ * Status e mensagem de um erro de API, venha do cliente do salão (ApiException, com status) ou do
+ * axios (response.status). Antes a tela só lia o formato do axios e nunca via o 409 do cliente
+ * duplicado (BUG-039).
+ */
+function erroDaApi(error: unknown): { status?: number; mensagem: string } {
+  if (error instanceof ApiException) {
+    return { status: error.status, mensagem: error.message.replace(/^\[HTTP \d+\]\s*/, "") };
+  }
+  const axios = error as { response?: { status?: number; data?: { message?: string } } };
+  if (axios?.response) {
+    return { status: axios.response.status, mensagem: axios.response.data?.message ?? "" };
+  }
+  return { mensagem: error instanceof Error ? error.message : "" };
+}
+
+/** 409 com o campo na mensagem marca o campo; o resto vira a mensagem geral do formulário. */
+function errosDoBackend(error: unknown, padrao: string, campos: Record<string, string>): Record<string, string> {
+  const { status, mensagem } = erroDaApi(error);
+  if (status === 409) {
+    const texto = mensagem.toLowerCase();
+    for (const [palavra, campo] of Object.entries(campos)) {
+      if (texto.includes(palavra)) return { [campo]: mensagem };
+    }
+  }
+  return { submit: mensagem || padrao };
+}
 
 export default function ClientsPage() {
   const { user } = useSalonAuth();
@@ -427,10 +455,7 @@ export default function ClientsPage() {
       resetForm();
       loadClients();
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } } };
-      setFormErrors({
-        submit: err.response?.data?.message || "Erro ao criar cliente",
-      });
+      setFormErrors(errosDoBackend(error, "Erro ao criar cliente", { telefone: "phone", email: "email" }));
     } finally {
       setIsSubmitting(false);
     }
@@ -484,13 +509,7 @@ export default function ClientsPage() {
       resetForm();
       loadClients();
     } catch (error: unknown) {
-      // O cliente HTTP (fetch) lança Error com a mensagem do backend, prefixada por "[HTTP nnn]"
-      const err = error as { response?: { data?: { message?: string } } };
-      const mensagem = err.response?.data?.message
-        || (error instanceof Error ? error.message.replace(/^\[HTTP \d+\]\s*/, "") : "");
-      setFormErrors({
-        submit: mensagem || "Erro ao atualizar cliente",
-      });
+      setFormErrors(errosDoBackend(error, "Erro ao atualizar cliente", { telefone: "phone", email: "email" }));
     } finally {
       setIsSubmitting(false);
     }
@@ -706,20 +725,20 @@ export default function ClientsPage() {
       setNewClientFormErrors({});
       loadClients();
     } catch (error: unknown) {
-      const err = error as { response?: { status?: number; data?: { message?: string } } };
-      if (err?.response?.status === 409) {
+      const { status, mensagem } = erroDaApi(error);
+      if (status === 409) {
         // O backend informa o campo em conflito ("Usuário já existe com telefone: ...")
-        const message = err.response?.data?.message?.toLowerCase() ?? "";
+        const message = mensagem.toLowerCase();
         if (message.includes("telefone")) {
           setNewClientFormErrors({ telefone: "Este telefone já está cadastrado no sistema" });
         } else if (message.includes("email")) {
           setNewClientFormErrors({ email: "Este email já está cadastrado no sistema" });
         } else {
-          setNewClientFormErrors({ submit: err.response?.data?.message || "Cliente já cadastrado" });
+          setNewClientFormErrors({ submit: mensagem || "Cliente já cadastrado" });
         }
       } else {
         setNewClientFormErrors({
-          submit: err.response?.data?.message || "Erro ao criar cliente",
+          submit: mensagem || "Erro ao criar cliente",
         });
       }
     } finally {

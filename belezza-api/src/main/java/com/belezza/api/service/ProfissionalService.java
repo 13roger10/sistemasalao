@@ -19,6 +19,7 @@ import com.belezza.api.repository.ServicoRepository;
 import com.belezza.api.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -170,7 +171,7 @@ public class ProfissionalService {
                 .orElseThrow(() -> new ResourceNotFoundException("Profissional", id));
 
         if (!profissional.getSalon().getId().equals(salon.getId())) {
-            throw new BusinessException("Profissional não pertence a este salão");
+            throw new AccessDeniedException("Profissional não pertence a este salão");
         }
 
         if (request.getCategoria() != null) profissional.setCategoria(request.getCategoria());
@@ -205,7 +206,7 @@ public class ProfissionalService {
                 .orElseThrow(() -> new ResourceNotFoundException("Profissional", id));
 
         if (!profissional.getSalon().getId().equals(salon.getId())) {
-            throw new BusinessException("Profissional não pertence a este salão");
+            throw new AccessDeniedException("Profissional não pertence a este salão");
         }
 
         profissional.setAtivo(false);
@@ -222,7 +223,7 @@ public class ProfissionalService {
                 .orElseThrow(() -> new ResourceNotFoundException("Profissional", id));
 
         if (!profissional.getSalon().getId().equals(salon.getId())) {
-            throw new BusinessException("Profissional não pertence a este salão");
+            throw new AccessDeniedException("Profissional não pertence a este salão");
         }
 
         if (profissional.isAtivo()) {

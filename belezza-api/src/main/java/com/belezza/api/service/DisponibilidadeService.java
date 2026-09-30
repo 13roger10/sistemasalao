@@ -15,6 +15,7 @@ import com.belezza.api.repository.ProfissionalRepository;
 import com.belezza.api.repository.ServicoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -89,7 +90,7 @@ public class DisponibilidadeService {
                     .orElseThrow(() -> new ResourceNotFoundException("Profissional", request.getProfissionalId()));
 
             if (!profissional.getSalon().getId().equals(request.getSalonId())) {
-                throw new BusinessException("Profissional não pertence a este salão");
+                throw new AccessDeniedException("Profissional não pertence a este salão");
             }
             // BUG-022: só oferece horários de quem realiza os serviços pedidos
             if (!realizaTodos(profissional, request.getServicoIds())) {

@@ -9,6 +9,7 @@ import com.belezza.api.repository.*;
 import com.belezza.api.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -144,7 +145,7 @@ public class FidelidadeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", clienteId));
 
         if (!cliente.getSalon().getId().equals(salon.getId())) {
-            throw new BusinessException("Cliente não pertence a este salão");
+            throw new AccessDeniedException("Cliente não pertence a este salão");
         }
 
         FidelidadePrograma programa = programaRepository.findByIdAndSalonIdAndAtivoTrue(programaId, salon.getId())
@@ -197,7 +198,7 @@ public class FidelidadeService {
         Cliente cliente = clienteRepository.findById(clienteId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", clienteId));
         if (!cliente.getSalon().getId().equals(salonId)) {
-            throw new BusinessException("Cliente não pertence a este salão");
+            throw new AccessDeniedException("Cliente não pertence a este salão");
         }
         return fidelidadeClienteRepository.findAllActiveByCliente(clienteId).stream()
                 .map(FidelidadeClienteResponse::fromEntity)
@@ -295,7 +296,7 @@ public class FidelidadeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Inscrição de fidelidade", fidelidadeClienteId));
 
         if (!fidelidadeCliente.getPrograma().getSalon().getId().equals(salonId)) {
-            throw new BusinessException("Inscrição não pertence a este salão");
+            throw new AccessDeniedException("Inscrição não pertence a este salão");
         }
 
         if (fidelidadeCliente.getCreditosDisponiveis() <= 0) {
@@ -332,7 +333,7 @@ public class FidelidadeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Inscrição de fidelidade", fidelidadeClienteId));
 
         if (!fidelidadeCliente.getPrograma().getSalon().getId().equals(salonId)) {
-            throw new BusinessException("Inscrição não pertence a este salão");
+            throw new AccessDeniedException("Inscrição não pertence a este salão");
         }
 
         if (creditos <= 0) {
@@ -364,7 +365,7 @@ public class FidelidadeService {
         FidelidadeCliente fidelidadeCliente = fidelidadeClienteRepository.findById(fidelidadeClienteId)
                 .orElseThrow(() -> new ResourceNotFoundException("Inscrição de fidelidade", fidelidadeClienteId));
         if (!fidelidadeCliente.getPrograma().getSalon().getId().equals(salonId)) {
-            throw new BusinessException("Inscrição não pertence a este salão");
+            throw new AccessDeniedException("Inscrição não pertence a este salão");
         }
     }
 

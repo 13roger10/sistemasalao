@@ -14,6 +14,7 @@ import com.belezza.api.repository.UsuarioRepository;
 import com.belezza.api.repository.ProfissionalRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -144,7 +145,7 @@ public class SalonService {
                 .orElseThrow(() -> new ResourceNotFoundException("Salão", salonId));
 
         if (!salon.getAdmin().getId().equals(admin.getId())) {
-            throw new BusinessException("Você não tem permissão para gerenciar este salão");
+            throw new AccessDeniedException("Você não tem permissão para gerenciar este salão");
         }
 
         return salon;

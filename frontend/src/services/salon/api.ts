@@ -26,16 +26,20 @@ export interface ApiError {
   code: string;
   details?: Record<string, string[]>;
   agendamentosAfetados?: AgendamentoAfetado[];
+  /** Status HTTP da resposta (ex.: 409 para duplicado, 403 para acesso negado) */
+  status?: number;
 }
 
 export class ApiException extends Error {
   code: string;
   details?: Record<string, string[]>;
   agendamentosAfetados?: AgendamentoAfetado[];
+  status?: number;
 
   constructor(error: ApiError) {
     super(error.message);
     this.code = error.code;
+    this.status = error.status;
     this.details = error.details;
     this.agendamentosAfetados = error.agendamentosAfetados;
   }
@@ -138,6 +142,7 @@ async function fetchApi<T>(
       code: data.errorCode || data.code || 'UNKNOWN_ERROR',
       details: fieldErrors,
       agendamentosAfetados: data.agendamentosAfetados,
+      status: response.status,
     });
   }
 

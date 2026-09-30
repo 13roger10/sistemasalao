@@ -98,7 +98,7 @@ public class AgendamentoService {
             cliente = clienteRepository.findById(request.getClienteId())
                     .orElseThrow(() -> new ResourceNotFoundException("Cliente", request.getClienteId()));
             if (cliente.getSalon() == null || !cliente.getSalon().getId().equals(salon.getId())) {
-                throw new BusinessException("Cliente não pertence a este estabelecimento");
+                throw new AccessDeniedException("Cliente não pertence a este estabelecimento");
             }
             log.info("Equipe/API criando agendamento para cliente {} no salão {}", cliente.getId(), salon.getId());
         } else {
@@ -1141,12 +1141,12 @@ public class AgendamentoService {
 
         // 3. Professional belongs to salon
         if (!profissional.getSalon().getId().equals(salon.getId())) {
-            throw new BusinessException("Profissional não pertence a este salão");
+            throw new AccessDeniedException("Profissional não pertence a este salão");
         }
 
         // 4. Service belongs to salon
         if (!servico.getSalon().getId().equals(salon.getId())) {
-            throw new BusinessException("Serviço não pertence a este salão");
+            throw new AccessDeniedException("Serviço não pertence a este salão");
         }
 
         // 5. Client is not blocked

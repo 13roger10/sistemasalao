@@ -6,7 +6,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
@@ -16,6 +22,7 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import jakarta.validation.ConstraintViolationException;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -133,7 +140,7 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.FORBIDDEN.value())
                 .error(HttpStatus.FORBIDDEN.getReasonPhrase())
                 .errorCode("ACCESS_DENIED")
-                .message("Você não tem permissão para acessar este recurso")
+                .message(mensagemDeAcessoNegado(ex))
                 .path(extractPath(request))
                 .build();
 
@@ -168,17 +175,24 @@ public class GlobalExceptionHandler {
             HttpMessageNotReadableException ex, WebRequest request) {
         log.error("JSON parsing error: {}", ex.getMessage());
 
-        String message = "Erro ao processar o JSON da requisição";
+        // Mensagem em português e sem detalhes internos do Jackson (BUG-039: antes saía
+        // "Erro no campo 'unknown': Cannot construct instance of ...")
+        String message = "Corpo da requisição inválido: envie um JSON válido";
         Throwable cause = ex.getCause();
         if (cause instanceof JsonMappingException jsonEx) {
-            String path = jsonEx.getPath().stream()
+            String campo = jsonEx.getPath().stream()
                 .map(ref -> ref.getFieldName())
                 .filter(name -> name != null)
                 .reduce((a, b) -> a + "." + b)
-                .orElse("unknown");
-            message = "Erro no campo '" + path + "': " + jsonEx.getOriginalMessage();
-        } else if (cause != null) {
-            message = "Erro de formato: " + cause.getMessage();
+                .orElse(null);
+            if (campo != null && cause instanceof com.fasterxml.jackson.databind.exc.InvalidFormatException formato) {
+                Class<?> alvo = formato.getTargetType();
+                String aceitos = alvo != null && alvo.isEnum()
+                        ? " (valores aceitos: " + java.util.Arrays.toString(alvo.getEnumConstants()) + ")" : "";
+                message = "Valor inválido para o campo '" + campo + "': \"" + formato.getValue() + "\"" + aceitos;
+            } else if (campo != null) {
+                message = "Valor inválido para o campo '" + campo + "'";
+            }
         }
 
         ErrorResponse error = ErrorResponse.builder()
@@ -242,6 +256,76 @@ public class GlobalExceptionHandler {
                 .build();
 
         return ResponseEntity.badRequest().body(error);
+    }
+
+    // --- Erros de requisição que antes caíam no genérico e respondiam 500 (BUG-039) ---
+
+    /** Rota inexistente: 404, não 500. */
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    public ResponseEntity<ErrorResponse> handleRotaInexistente(Exception ex, WebRequest request) {
+        return erro(HttpStatus.NOT_FOUND, "NOT_FOUND", "Rota não encontrada: " + extractPath(request), request);
+    }
+
+    /** Parâmetro em formato errado (data "31-12-2026", id "abc"): 400 dizendo qual e o formato esperado. */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleParametroInvalido(MethodArgumentTypeMismatchException ex, WebRequest request) {
+        Class<?> tipo = ex.getRequiredType();
+        String esperado = tipo == null ? "" : switch (tipo.getSimpleName()) {
+            case "LocalDate" -> " (use o formato AAAA-MM-DD, ex.: 2026-12-31)";
+            case "LocalDateTime" -> " (use o formato AAAA-MM-DDTHH:MM, ex.: 2026-12-31T14:30)";
+            case "LocalTime" -> " (use o formato HH:MM)";
+            case "Long", "long", "Integer", "int" -> " (esperado um número)";
+            default -> tipo.isEnum() ? " (valores aceitos: " + java.util.Arrays.toString(tipo.getEnumConstants()) + ")" : "";
+        };
+        return erro(HttpStatus.BAD_REQUEST, "INVALID_PARAMETER",
+                "Valor inválido para '" + ex.getName() + "': \"" + ex.getValue() + "\"" + esperado, request);
+    }
+
+    /** Data/hora escrita errada fora dos parâmetros tipados: 400. */
+    @ExceptionHandler(DateTimeParseException.class)
+    public ResponseEntity<ErrorResponse> handleDataInvalida(DateTimeParseException ex, WebRequest request) {
+        return erro(HttpStatus.BAD_REQUEST, "INVALID_PARAMETER",
+                "Data ou horário inválido: \"" + ex.getParsedString() + "\" (use AAAA-MM-DD e HH:MM)", request);
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleParametroAusente(MissingServletRequestParameterException ex, WebRequest request) {
+        return erro(HttpStatus.BAD_REQUEST, "MISSING_PARAMETER", "Parâmetro obrigatório ausente: " + ex.getParameterName(), request);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMetodoNaoSuportado(HttpRequestMethodNotSupportedException ex, WebRequest request) {
+        return erro(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED",
+                "Método " + ex.getMethod() + " não é aceito nesta rota", request);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleTipoNaoSuportado(HttpMediaTypeNotSupportedException ex, WebRequest request) {
+        return erro(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "UNSUPPORTED_MEDIA_TYPE",
+                "Tipo de conteúdo não suportado: " + ex.getContentType() + " (envie JSON)", request);
+    }
+
+    private ResponseEntity<ErrorResponse> erro(HttpStatus status, String codigo, String mensagem, WebRequest request) {
+        log.warn("{} {}: {}", status.value(), codigo, mensagem);
+        return ResponseEntity.status(status).body(ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(status.value())
+                .error(status.getReasonPhrase())
+                .errorCode(codigo)
+                .message(mensagem)
+                .path(extractPath(request))
+                .build());
+    }
+
+    /**
+     * Motivo em português quando o código informou um ("Profissional não pertence a este salão");
+     * a mensagem interna do Spring ("Access Denied") vira o texto genérico.
+     */
+    private static String mensagemDeAcessoNegado(AccessDeniedException ex) {
+        String msg = ex.getMessage();
+        return msg == null || msg.isBlank() || msg.equalsIgnoreCase("Access Denied")
+                ? "Você não tem permissão para acessar este recurso"
+                : msg;
     }
 
     /**

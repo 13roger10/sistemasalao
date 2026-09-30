@@ -14,6 +14,7 @@ import com.belezza.api.entity.StatusAgendamento;
 import com.belezza.api.entity.StatusPagamento;
 import com.belezza.api.entity.Usuario;
 import com.belezza.api.exception.BusinessException;
+import com.belezza.api.exception.DuplicateResourceException;
 import org.springframework.security.access.AccessDeniedException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.AgendamentoRepository;
@@ -79,7 +80,7 @@ public class ClienteService {
 
         // Verificar se já é cliente deste salão
         if (clienteRepository.findByUsuarioIdAndSalonId(usuario.getId(), salonId).isPresent()) {
-            throw new BusinessException("Cliente já cadastrado neste salão");
+            throw clienteDuplicado(usuario, request);
         }
 
         // Criar cliente
@@ -120,7 +121,7 @@ public class ClienteService {
         }
 
         if (clienteRepository.findByUsuarioIdAndSalonId(usuario.getId(), salonId).isPresent()) {
-            throw new BusinessException("Cliente já cadastrado neste salão");
+            throw clienteDuplicado(usuario, request);
         }
 
         Cliente cliente = Cliente.builder()
@@ -148,6 +149,15 @@ public class ClienteService {
         return usuarioRepository.findByEmailAndAtivoTrue(request.getEmail())
                 .orElseGet(() -> usuarioRepository.findByTelefoneDigitos(Telefones.digitos(request.getPhone()))
                         .stream().findFirst().orElse(null));
+    }
+
+    /**
+     * Cliente já cadastrado no salão: 409 dizendo o campo que bateu (BUG-039 — antes era 400
+     * genérico, e a tela não tinha como marcar o telefone ou o email como duplicado).
+     */
+    private static DuplicateResourceException clienteDuplicado(Usuario existente, ClienteRequest request) {
+        boolean peloEmail = request.getEmail() != null && request.getEmail().equalsIgnoreCase(existente.getEmail());
+        return new DuplicateResourceException("Cliente já cadastrado neste salão com este " + (peloEmail ? "email" : "telefone"));
     }
 
     /** E-mail provisório de quem não informou e-mail: só dígitos (antes saía "(11) 96203-5710@…"). */
@@ -450,7 +460,7 @@ public class ClienteService {
             // formatação passa — contas antigas podem compartilhar o telefone (BUG-031)
             boolean mudou = !Telefones.digitos(request.getPhone()).equals(Telefones.digitos(usuario.getTelefone()));
             if (mudou && usuarioRepository.telefoneEmUso(request.getPhone(), usuario.getId())) {
-                throw new BusinessException("Já existe uma conta com este telefone");
+                throw new DuplicateResourceException("Já existe uma conta com este telefone");
             }
             usuario.setTelefone(request.getPhone().trim());
         }
@@ -458,7 +468,7 @@ public class ClienteService {
                 && !request.getEmail().equalsIgnoreCase(usuario.getEmail())) {
             // E-mail de outra conta: antes estourava na restrição única do banco (erro 500)
             if (usuarioRepository.existsByEmail(request.getEmail())) {
-                throw new BusinessException("Já existe uma conta com este e-mail");
+                throw new DuplicateResourceException("Já existe uma conta com este email");
             }
             usuario.setEmail(request.getEmail());
         }
@@ -502,7 +512,7 @@ public class ClienteService {
 
         Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
         if (!cliente.getSalon().getId().equals(salon.getId())) {
-            throw new BusinessException("Cliente não pertence a este salão");
+            throw new AccessDeniedException("Cliente não pertence a este salão");
         }
 
         cliente.setAtivo(false);
@@ -555,7 +565,7 @@ public class ClienteService {
 
         Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
         if (!cliente.getSalon().getId().equals(salon.getId())) {
-            throw new BusinessException("Cliente não pertence a este salão");
+            throw new AccessDeniedException("Cliente não pertence a este salão");
         }
 
         cliente.setObservacoes(observacoes);
@@ -573,7 +583,7 @@ public class ClienteService {
 
         Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
         if (!cliente.getSalon().getId().equals(salon.getId())) {
-            throw new BusinessException("Cliente não pertence a este salão");
+            throw new AccessDeniedException("Cliente não pertence a este salão");
         }
 
         cliente.setBloqueado(true);
@@ -590,7 +600,7 @@ public class ClienteService {
 
         Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
         if (!cliente.getSalon().getId().equals(salon.getId())) {
-            throw new BusinessException("Cliente não pertence a este salão");
+            throw new AccessDeniedException("Cliente não pertence a este salão");
         }
 
         cliente.setBloqueado(false);
