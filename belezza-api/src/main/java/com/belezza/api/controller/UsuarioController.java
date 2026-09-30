@@ -136,6 +136,15 @@ public class UsuarioController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{id}/desbloquear-login")
+    @AdminOnly
+    @Operation(summary = "Desbloquear login", description = "Libera a conta bloqueada após 6 senhas erradas seguidas")
+    public ResponseEntity<UsuarioListResponse> desbloquearLogin(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(usuarioService.desbloquearLogin(id, userDetails.getUsername()));
+    }
+
     @PostMapping("/{id}/reativar")
     @AdminOnly
     @Operation(summary = "Reativar usuário", description = "Reativa um usuário desativado")

@@ -481,6 +481,25 @@ public class UsuarioService {
     }
 
     /**
+     * O admin libera a conta bloqueada por senhas erradas (a outra saída é o próprio usuário
+     * redefinir a senha pelo e-mail).
+     */
+    @Transactional
+    public UsuarioListResponse desbloquearLogin(Long id, String emailAdmin) {
+        Usuario usuarioLogado = getUsuarioByEmail(emailAdmin);
+        Usuario usuario = usuarioRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário", id));
+        verificarAcessoUsuario(usuarioLogado, usuario);
+
+        loginAttemptService.desbloquear(usuario.getEmail());
+        usuario.setTentativasLoginFalhas(0);
+        usuario.setLoginBloqueadoEm(null);
+        log.info("Login do usuário {} desbloqueado por {}", id, emailAdmin);
+        return UsuarioListResponse.fromEntityWithProfissional(usuario,
+                profissionalRepository.findByUsuarioId(usuario.getId()).orElse(null));
+    }
+
+    /**
      * Reactivate a user.
      */
     @Transactional

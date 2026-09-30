@@ -76,6 +76,12 @@ export const userService = {
   /**
    * Reativa um usuário
    */
+  async unlockLogin(id: number): Promise<UsuarioListItem> {
+    // Libera a conta bloqueada por senhas erradas
+    const response = await api.post<UsuarioListItem>(`/usuarios/${id}/desbloquear-login`);
+    return response.data;
+  },
+
   async reactivate(id: number): Promise<UsuarioListItem> {
     const response = await api.post<UsuarioListItem>(`/usuarios/${id}/reativar`);
     return response.data;

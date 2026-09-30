@@ -10,6 +10,8 @@ import {
   RefreshCw,
   UserCheck,
   UserX,
+  Lock,
+  Unlock,
   Shield,
   User as UserIcon,
   Building2,
@@ -413,6 +415,16 @@ export default function SalonUsersPage() {
     setSelectedUser(null);
   };
 
+  // Conta bloqueada após 6 senhas erradas: o admin libera (ou o usuário redefine a senha)
+  const handleUnlockLogin = async (usuario: UsuarioListItem) => {
+    try {
+      await userService.unlockLogin(usuario.id);
+      loadUsuarios();
+    } catch (error) {
+      console.error("Erro ao desbloquear login:", error);
+    }
+  };
+
   const handleReactivate = async (usuario: UsuarioListItem) => {
     try {
       await userService.reactivate(usuario.id);
@@ -602,7 +614,16 @@ export default function SalonUsersPage() {
     {
       key: "ativo",
       header: "Status",
-      render: (item) => <StatusBadge ativo={item.ativo} />,
+      render: (item) => (
+        <div className="flex flex-wrap items-center gap-1">
+          <StatusBadge ativo={item.ativo} />
+          {item.loginBloqueado && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+              <Lock className="h-3 w-3" /> Login bloqueado
+            </span>
+          )}
+        </div>
+      ),
     },
     {
       key: "criadoEm",
@@ -693,6 +714,14 @@ export default function SalonUsersPage() {
                 >
                   Editar
                 </ActionMenuItem>
+                {item.loginBloqueado && (
+                  <ActionMenuItem
+                    onClick={() => handleUnlockLogin(item)}
+                    icon={<Unlock className="h-4 w-4" />}
+                  >
+                    Desbloquear login
+                  </ActionMenuItem>
+                )}
                 {item.ativo ? (
                   <ActionMenuItem
                     onClick={() => openDeleteModal(item)}

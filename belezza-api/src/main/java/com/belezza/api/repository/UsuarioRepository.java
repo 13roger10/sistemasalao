@@ -54,6 +54,25 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
 
     List<Usuario> findByRoleAndAtivoTrue(Role role);
 
+    // --- Bloqueio da conta por senhas erradas (e-mail já normalizado: minúsculas, sem espaços) ---
+
+    @Modifying
+    @Query("UPDATE Usuario u SET u.tentativasLoginFalhas = u.tentativasLoginFalhas + 1 WHERE LOWER(u.email) = :email")
+    int incrementarFalhasLogin(@Param("email") String email);
+
+    @Modifying
+    @Query("UPDATE Usuario u SET u.loginBloqueadoEm = :agora WHERE LOWER(u.email) = :email " +
+           "AND u.tentativasLoginFalhas >= :max AND u.loginBloqueadoEm IS NULL")
+    int bloquearLoginSeAtingiuLimite(@Param("email") String email, @Param("max") int max, @Param("agora") LocalDateTime agora);
+
+    @Modifying
+    @Query("UPDATE Usuario u SET u.tentativasLoginFalhas = 0, u.loginBloqueadoEm = NULL WHERE LOWER(u.email) = :email " +
+           "AND (u.tentativasLoginFalhas > 0 OR u.loginBloqueadoEm IS NOT NULL)")
+    int zerarFalhasLogin(@Param("email") String email);
+
+    @Query("SELECT COUNT(u) > 0 FROM Usuario u WHERE LOWER(u.email) = :email AND u.loginBloqueadoEm IS NOT NULL")
+    boolean isLoginBloqueado(@Param("email") String email);
+
     @Modifying
     @Query("UPDATE Usuario u SET u.ultimoLogin = :loginTime WHERE u.id = :userId")
     void updateLastLogin(@Param("userId") Long userId, @Param("loginTime") LocalDateTime loginTime);

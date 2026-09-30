@@ -32,6 +32,8 @@ public class UsuarioListResponse {
     private boolean emailVerificado;
     private LocalDateTime criadoEm;
     private LocalDateTime ultimoLogin;
+    /** Conta bloqueada por senhas erradas: o admin pode desbloquear. */
+    private boolean loginBloqueado;
 
     // Informações do salão (para multi-unidade)
     private Long salonId;
@@ -54,6 +56,7 @@ public class UsuarioListResponse {
                 .emailVerificado(usuario.isEmailVerificado())
                 .criadoEm(usuario.getCriadoEm())
                 .ultimoLogin(usuario.getUltimoLogin())
+                .loginBloqueado(usuario.getLoginBloqueadoEm() != null)
                 .build();
     }
 

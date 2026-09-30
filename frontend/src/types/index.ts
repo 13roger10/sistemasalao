@@ -392,6 +392,8 @@ export interface UsuarioListItem {
   emailVerificado: boolean;
   criadoEm: string;
   ultimoLogin?: string;
+  /** Conta bloqueada após 6 senhas erradas seguidas */
+  loginBloqueado?: boolean;
   salonId?: number;
   salonNome?: string;
   profissionalId?: number;

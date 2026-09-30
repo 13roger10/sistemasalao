@@ -289,6 +289,8 @@ public class AuthService {
         usuario.setResetPasswordToken(null);
         usuario.setResetPasswordExpires(null);
         usuarioRepository.save(usuario);
+        // Quem provou ser o dono do e-mail ao redefinir a senha tem a conta desbloqueada
+        loginAttemptService.desbloquear(usuario.getEmail());
 
         log.info("Password reset successful for user: {}", usuario.getId());
     }

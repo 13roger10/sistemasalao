@@ -100,6 +100,19 @@ public class Usuario implements UserDetails {
 
     private LocalDateTime ultimoLogin;
 
+    /** Senhas (ou códigos 2FA) erradas seguidas desde o último login certo. */
+    @JsonIgnore
+    @Column(name = "tentativas_login_falhas", nullable = false)
+    @Builder.Default
+    private int tentativasLoginFalhas = 0;
+
+    /**
+     * Conta bloqueada por excesso de senhas erradas: só volta com a redefinição de senha ou o
+     * desbloqueio pelo admin. Nulo = não bloqueada.
+     */
+    @Column(name = "login_bloqueado_em")
+    private LocalDateTime loginBloqueadoEm;
+
     // 2FA / TOTP fields
     // SEC-020: o segredo TOTP nunca deve ser serializado em JSON.
     @JsonIgnore
