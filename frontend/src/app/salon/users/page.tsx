@@ -341,10 +341,10 @@ export default function SalonUsersPage() {
       if (formData.role === "PROFISSIONAL" && selectedUser.profissionalId) {
         // Atualizar serviços vinculados
         try {
+          // Só os serviços: especialidade, bio e agendamento online ficam como estão
           await professionalService.update(String(selectedUser.profissionalId), {
             userId: String(selectedUser.id),
             serviceIds: selectedServiceIds,
-            acceptsOnlineBooking: true,
           });
         } catch (serviceError) {
           console.error("Erro ao atualizar serviços do profissional:", serviceError);

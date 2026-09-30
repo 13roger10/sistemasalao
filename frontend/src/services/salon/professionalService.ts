@@ -164,16 +164,19 @@ export const professionalService = {
 
   // Update existing professional
   // Backend usa PUT, não PATCH
+  // Só os campos informados vão ao backend (que ignora os ausentes). Antes o que não vinha era
+  // enviado vazio: a tela de Usuários, que atualiza só os serviços, apagava a especialidade e a
+  // bio do profissional a cada edição.
   update: (id: string, data: ProfessionalUpdateInput): Promise<Professional> => {
     const backendData = {
       usuarioId: data.userId ? Number(data.userId) : undefined,
       categoria: data.category,
       nivel: data.level,
-      especialidade: data.specialties?.join(", ") || data.specialty || "",
-      especializacoes: data.specializations || "",
-      bio: data.bio || "",
-      aceitaAgendamentoOnline: data.acceptsOnlineBooking ?? true,
-      servicoIds: data.serviceIds?.map(id => Number(id)) || [],
+      especialidade: data.specialties !== undefined ? data.specialties.join(", ") : data.specialty,
+      especializacoes: data.specializations,
+      bio: data.bio,
+      aceitaAgendamentoOnline: data.acceptsOnlineBooking,
+      servicoIds: data.serviceIds?.map(id => Number(id)),
     };
     return api.put<ProfissionalBackend>(`${BASE_PATH}/${id}`, backendData)
       .then(mapProfessional);
