@@ -31,6 +31,7 @@ import { dashboardService } from "@/services/salon/dashboardService";
 import { api, type AgendamentoAfetado } from "@/services/salon/api";
 import { AgendamentosAfetadosModal, agendamentosAfetadosDoErro } from "@/components/salon/AgendamentosAfetadosModal";
 import { useToast } from "@/components/ui/Toast";
+import { contemTexto } from "@/utils/texto";
 import type { Professional, ProfessionalCreateInput, ProfessionalUpdateInput, Service } from "@/types/salon";
 
 // Tipo para usuário do backend
@@ -152,8 +153,8 @@ export default function ProfessionalsPage() {
   const filteredUsers = availableUsers.filter(user => {
     // Filtro de busca por texto
     const matchesSearch = !userSearchTerm ||
-      user.nome?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-      user.email?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+      contemTexto(user.nome, userSearchTerm) ||
+      contemTexto(user.email, userSearchTerm) ||
       user.telefone?.includes(userSearchTerm);
 
     // Filtro por role

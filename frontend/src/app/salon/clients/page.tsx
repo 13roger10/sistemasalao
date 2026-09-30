@@ -65,6 +65,7 @@ import type {
   LoyaltyLevel,
 } from "@/types/salon";
 import type { PaginatedResponse } from "@/types/salon/common";
+import { contemTexto } from "@/utils/texto";
 
 // Badge de Nível de Fidelidade
 const LoyaltyBadge = ({ level }: { level: LoyaltyLevel }) => {
@@ -371,8 +372,8 @@ export default function ClientsPage() {
   // Filtrar usuários pela busca e filtros avançados (em tempo real)
   const filteredUsers = availableUsers.filter(user => {
     const matchesSearch = !userSearchTerm ||
-      user.nome?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-      user.email?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+      contemTexto(user.nome, userSearchTerm) ||
+      contemTexto(user.email, userSearchTerm) ||
       user.telefone?.includes(userSearchTerm);
 
     const matchesRole = !roleFilter || user.role === roleFilter;

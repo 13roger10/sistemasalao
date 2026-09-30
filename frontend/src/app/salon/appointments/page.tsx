@@ -54,6 +54,7 @@ import type {
 } from "@/types/salon";
 import type { Professional } from "@/types/salon/professional";
 import type { Client } from "@/types/salon/client";
+import { contemTexto } from "@/utils/texto";
 import type { Service } from "@/types/salon/service";
 
 // ===== TIPOS =====
@@ -2114,7 +2115,7 @@ function AppointmentsPageContent() {
             <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
               <DataTable
                 data={appointments.filter((a) => {
-                  if (listFilters.search && !a.client?.name?.toLowerCase().includes(listFilters.search.toLowerCase())) {
+                  if (listFilters.search && !contemTexto(a.client?.name, listFilters.search)) {
                     return false;
                   }
                   if (listFilters.status && a.status !== listFilters.status) {

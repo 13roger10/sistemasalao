@@ -19,6 +19,7 @@ import {
   isSameDay, isSameMonth, isToday, eachDayOfInterval,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { contemTexto } from "@/utils/texto";
 import { useSalaoAtual } from "@/hooks/useSalaoAtual";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -297,7 +298,7 @@ function CreateModal({
   }, []);
 
   const filteredClients = clients.filter((c) =>
-    c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+    contemTexto(c.name, clientSearch) ||
     (c.phone && c.phone.includes(clientSearch))
   );
 

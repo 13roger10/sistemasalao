@@ -242,6 +242,16 @@ class ClienteServiceTest {
         }
 
         @Test
+        @DisplayName("Nome sem acentos e em maiúsculas encontra o cliente acentuado (BUG-040)")
+        void nomeSemAcentos() {
+            cliente.getUsuario().setNome("José Ção");
+
+            assertThat(clienteService.listarPorSalon(1L, "jose cao", null, null, false)).hasSize(1);
+            assertThat(clienteService.listarPorSalon(1L, "JOSÉ", null, null, true)).hasSize(1);
+            assertThat(clienteService.listarPorSalon(1L, "joana", null, null, false)).isEmpty();
+        }
+
+        @Test
         @DisplayName("Número que não bate não traz o cliente")
         void naoBate() {
             assertThat(clienteService.listarPorSalon(1L, "11900000000", null, null, false)).isEmpty();

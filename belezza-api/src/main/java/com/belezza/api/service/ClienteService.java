@@ -31,6 +31,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.belezza.api.security.annotation.Auditable;
 import com.belezza.api.util.Telefones;
+import com.belezza.api.util.Textos;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -390,12 +391,12 @@ public class ClienteService {
         return clientes.stream()
                 .filter(c -> {
                     // Filtro de busca — usa nome mesmo para PROFISSIONAL
-                    if (search != null && !search.isEmpty()) {
-                        String searchLower = search.toLowerCase();
-                        return c.getUsuario().getNome().toLowerCase().contains(searchLower)
+                    if (search != null && !search.isBlank()) {
+                        // Sem acentos e maiúsculas: "jose cao" encontra "José Ção" (BUG-040)
+                        return Textos.contem(c.getUsuario().getNome(), search)
                                 || (!restrictSensitiveData && (telefoneContem(c.getUsuario().getTelefone(), search)
                                         || telefoneContem(c.getWhatsapp(), search)))
-                                || (!restrictSensitiveData && c.getUsuario().getEmail() != null && c.getUsuario().getEmail().toLowerCase().contains(searchLower));
+                                || (!restrictSensitiveData && Textos.contem(c.getUsuario().getEmail(), search));
                     }
                     return true;
                 })
