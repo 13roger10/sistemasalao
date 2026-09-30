@@ -8,6 +8,7 @@ import com.belezza.api.repository.ProfissionalRepository;
 import com.belezza.api.security.TenantContext;
 import com.belezza.api.service.BloqueioHorarioService;
 import com.belezza.api.service.HorarioTrabalhoService;
+import com.belezza.api.service.IndisponibilidadeService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -35,6 +36,9 @@ class HorarioControllerTest {
 
     @Mock
     private BloqueioHorarioService bloqueioHorarioService;
+
+    @Mock
+    private IndisponibilidadeService indisponibilidadeService;
 
     @Mock
     private ProfissionalRepository profissionalRepository;
@@ -83,11 +87,11 @@ class HorarioControllerTest {
     @DisplayName("Admin altera agenda de profissional do próprio salão")
     void adminMesmoSalao() {
         controller.criarHorario(7L, horario(), admin);
-        controller.criarBloqueio(7L, bloqueio(), admin);
+        controller.criarBloqueio(7L, bloqueio(), null, admin);
         controller.removerBloqueio(7L, 99L, admin);
 
         verify(horarioTrabalhoService).criar(eq(7L), any());
-        verify(bloqueioHorarioService).criar(eq(7L), any());
+        verify(indisponibilidadeService).bloquear(eq(7L), any(), isNull(), any());
         verify(bloqueioHorarioService).remover(7L, 99L);
     }
 
@@ -97,19 +101,19 @@ class HorarioControllerTest {
         assertThatThrownBy(() -> controller.criarHorario(10L, horario(), admin)).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.atualizarHorario(10L, DiaSemana.SEGUNDA, horario(), admin)).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.desativarHorario(10L, DiaSemana.SEGUNDA, admin)).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.criarBloqueio(10L, bloqueio(), admin)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.criarBloqueio(10L, bloqueio(), null, admin)).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.removerBloqueio(10L, 99L, admin)).isInstanceOf(AccessDeniedException.class);
 
-        verifyNoInteractions(horarioTrabalhoService, bloqueioHorarioService);
+        verifyNoInteractions(horarioTrabalhoService, bloqueioHorarioService, indisponibilidadeService);
     }
 
     @Test
     @DisplayName("Profissional altera a própria agenda")
     void profissionalPropriaAgenda() {
-        controller.criarBloqueio(6L, bloqueio(), usuarioProfA);
+        controller.criarBloqueio(6L, bloqueio(), null, usuarioProfA);
         controller.desativarHorario(6L, DiaSemana.SEGUNDA, usuarioProfA);
 
-        verify(bloqueioHorarioService).criar(eq(6L), any());
+        verify(indisponibilidadeService).bloquear(eq(6L), any(), isNull(), any());
         verify(horarioTrabalhoService).desativar(6L, DiaSemana.SEGUNDA);
     }
 
@@ -117,24 +121,24 @@ class HorarioControllerTest {
     @DisplayName("Profissional NÃO altera a agenda de um colega")
     void profissionalAgendaDeColega() {
         assertThatThrownBy(() -> controller.criarHorario(7L, horario(), usuarioProfA)).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.criarBloqueio(7L, bloqueio(), usuarioProfA)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.criarBloqueio(7L, bloqueio(), null, usuarioProfA)).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.removerBloqueio(7L, 99L, usuarioProfA)).isInstanceOf(AccessDeniedException.class);
 
-        verifyNoInteractions(horarioTrabalhoService, bloqueioHorarioService);
+        verifyNoInteractions(horarioTrabalhoService, bloqueioHorarioService, indisponibilidadeService);
     }
 
     @Test
     @DisplayName("Sem salão no token, nenhuma alteração é permitida")
     void semTenant() {
         TenantContext.clear();
-        assertThatThrownBy(() -> controller.criarBloqueio(6L, bloqueio(), admin)).isInstanceOf(AccessDeniedException.class);
-        verifyNoInteractions(bloqueioHorarioService);
+        assertThatThrownBy(() -> controller.criarBloqueio(6L, bloqueio(), null, admin)).isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(bloqueioHorarioService, indisponibilidadeService);
     }
 
     @Test
     @DisplayName("Profissional inexistente responde 404")
     void profissionalInexistente() {
         when(profissionalRepository.findById(anyLong())).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> controller.criarBloqueio(999L, bloqueio(), admin)).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> controller.criarBloqueio(999L, bloqueio(), null, admin)).isInstanceOf(ResourceNotFoundException.class);
     }
 }

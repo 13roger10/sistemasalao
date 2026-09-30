@@ -14,6 +14,7 @@ import com.belezza.api.security.TenantContext;
 import com.belezza.api.security.annotation.ProfissionalOrAdmin;
 import com.belezza.api.service.BloqueioHorarioService;
 import com.belezza.api.service.HorarioTrabalhoService;
+import com.belezza.api.service.IndisponibilidadeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -38,6 +39,7 @@ public class HorarioController {
 
     private final HorarioTrabalhoService horarioTrabalhoService;
     private final BloqueioHorarioService bloqueioHorarioService;
+    private final IndisponibilidadeService indisponibilidadeService;
     private final ProfissionalRepository profissionalRepository;
 
     /**
@@ -114,13 +116,14 @@ public class HorarioController {
 
     @PostMapping("/bloqueios")
     @ProfissionalOrAdmin
-    @Operation(summary = "Criar bloqueio", description = "Cria bloqueio de horário (férias, folga, etc)")
+    @Operation(summary = "Criar bloqueio", description = "Cria bloqueio de horário (férias, folga, etc). acao=cancelar (cancela e avisa os clientes) ou acao=manter (remanejar à mão). Sem acao, havendo agendamentos marcados, responde 409 com a lista em agendamentosAfetados.")
     public ResponseEntity<BloqueioHorarioResponse> criarBloqueio(
             @PathVariable Long profissionalId,
             @Valid @RequestBody BloqueioHorarioRequest request,
+            @RequestParam(required = false) String acao,
             @AuthenticationPrincipal Usuario operador) {
         verificarPermissaoAgenda(profissionalId, operador);
-        BloqueioHorarioResponse response = bloqueioHorarioService.criar(profissionalId, request);
+        BloqueioHorarioResponse response = indisponibilidadeService.bloquear(profissionalId, request, acao, operador);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 

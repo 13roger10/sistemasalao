@@ -29,6 +29,9 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal, ConfirmModal } from "@/components/ui/Modal";
 import { serviceService } from "@/services/salon/serviceService";
+import type { AgendamentoAfetado } from "@/services/salon/api";
+import { AgendamentosAfetadosModal, agendamentosAfetadosDoErro } from "@/components/salon/AgendamentosAfetadosModal";
+import { useToast } from "@/components/ui/Toast";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import type {
   Service,
@@ -160,6 +163,9 @@ export default function ServicesPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  // Agendamentos atingidos pela desativação, aguardando a escolha (BUG-033)
+  const [afetados, setAfetados] = useState<AgendamentoAfetado[] | null>(null);
+  const toast = useToast();
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -475,19 +481,43 @@ export default function ServicesPage() {
     }
   };
 
-  const handleDeleteService = async () => {
+  // Desativar com agendamentos marcados pede a escolha: cancelar avisando ou manter (BUG-033)
+  const handleDeleteService = async (acao?: "cancelar" | "manter") => {
     if (!selectedService) return;
 
     setIsSubmitting(true);
     try {
-      await serviceService.delete(selectedService.id);
+      await serviceService.delete(selectedService.id, acao);
       setIsDeleteModalOpen(false);
+      setAfetados(null);
       setSelectedService(null);
+      if (acao === "cancelar") toast.success("Serviço desativado", "Os agendamentos foram cancelados e os clientes avisados.");
+      if (acao === "manter") toast.info("Serviço desativado", "Remaneje os agendamentos mantidos pela agenda.");
       loadServices();
     } catch (error) {
-      console.error("Erro ao excluir serviço:", error);
+      const lista = agendamentosAfetadosDoErro(error);
+      if (lista && !acao) {
+        // Não é erro: o backend pede a escolha sobre os agendamentos marcados
+        setIsDeleteModalOpen(false);
+        setAfetados(lista);
+      } else {
+        console.error("Erro ao excluir serviço:", error);
+        toast.error("Não foi possível desativar o serviço",
+          error instanceof Error ? error.message.replace(/^\[HTTP \d+\]\s*/, "") : "Tente novamente.");
+      }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleReactivateService = async (service: Service) => {
+    try {
+      await serviceService.reactivate(service.id);
+      toast.success("Serviço reativado", `"${service.name}" voltou a ser oferecido.`);
+      loadServices();
+    } catch (error) {
+      toast.error("Não foi possível reativar o serviço",
+        error instanceof Error ? error.message.replace(/^\[HTTP \d+\]\s*/, "") : "Tente novamente.");
     }
   };
 
@@ -1072,16 +1102,25 @@ export default function ServicesPage() {
                     >
                       Duplicar
                     </ActionMenuItem>
-                    <ActionMenuItem
-                      onClick={() => {
-                        setSelectedService(item);
-                        setIsDeleteModalOpen(true);
-                      }}
-                      icon={<Trash2 className="h-4 w-4" />}
-                      variant="danger"
-                    >
-                      Excluir
-                    </ActionMenuItem>
+                    {item.status === "inactive" ? (
+                      <ActionMenuItem
+                        onClick={() => handleReactivateService(item)}
+                        icon={<RefreshCw className="h-4 w-4" />}
+                      >
+                        Reativar
+                      </ActionMenuItem>
+                    ) : (
+                      <ActionMenuItem
+                        onClick={() => {
+                          setSelectedService(item);
+                          setIsDeleteModalOpen(true);
+                        }}
+                        icon={<Trash2 className="h-4 w-4" />}
+                        variant="danger"
+                      >
+                        Desativar
+                      </ActionMenuItem>
+                    )}
                   </>
                 )}
                 striped
@@ -1585,10 +1624,10 @@ export default function ServicesPage() {
           setIsDeleteModalOpen(false);
           setSelectedService(null);
         }}
-        onConfirm={handleDeleteService}
-        title="Excluir Serviço"
-        message={`Tem certeza que deseja excluir o serviço "${selectedService?.name}"? Esta ação não pode ser desfeita.`}
-        confirmText="Excluir"
+        onConfirm={() => handleDeleteService()}
+        title="Desativar Serviço"
+        message={`Desativar o serviço "${selectedService?.name}"? Ele deixa de aparecer para agendamento; dá para reativar depois pelo filtro "Inativos".`}
+        confirmText="Desativar"
         cancelText="Cancelar"
         variant="danger"
         isLoading={isSubmitting}
@@ -1815,6 +1854,18 @@ export default function ServicesPage() {
         cancelText="Cancelar"
         variant="danger"
         isLoading={isSubmitting}
+      />
+
+      <AgendamentosAfetadosModal
+        isOpen={afetados !== null}
+        titulo={`Desativar o serviço "${selectedService?.name ?? ""}"`}
+        afetados={afetados ?? []}
+        isLoading={isSubmitting}
+        onEscolher={(acao) => handleDeleteService(acao)}
+        onClose={() => {
+          setAfetados(null);
+          setSelectedService(null);
+        }}
       />
     </SalonLayout>
   );

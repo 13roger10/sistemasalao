@@ -6,7 +6,9 @@ import com.belezza.api.dto.profissional.ProfissionalRequest;
 import com.belezza.api.dto.profissional.ProfissionalResponse;
 import com.belezza.api.entity.CategoriaProfissional;
 import com.belezza.api.entity.NivelProfissional;
+import com.belezza.api.entity.Usuario;
 import com.belezza.api.security.annotation.AdminOnly;
+import com.belezza.api.service.IndisponibilidadeService;
 import com.belezza.api.service.ProfissionalService;
 import com.belezza.api.service.TenantIsolationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,6 +39,7 @@ import java.util.List;
 public class ProfissionalController {
 
     private final ProfissionalService profissionalService;
+    private final IndisponibilidadeService indisponibilidadeService;
     private final TenantIsolationService tenantIsolationService;
 
     @GetMapping("/categorias")
@@ -131,11 +134,12 @@ public class ProfissionalController {
 
     @DeleteMapping("/{id}")
     @AdminOnly
-    @Operation(summary = "Desativar profissional", description = "Desativa um profissional (soft delete)")
+    @Operation(summary = "Desativar profissional", description = "Desativa um profissional (soft delete). acao=cancelar (cancela e avisa os clientes) ou acao=manter (remanejar à mão). Sem acao, havendo agendamentos marcados, responde 409 com a lista em agendamentosAfetados.")
     public ResponseEntity<Void> desativar(
             @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        profissionalService.desativar(id, userDetails.getUsername());
+            @RequestParam(required = false) String acao,
+            @AuthenticationPrincipal Usuario operador) {
+        indisponibilidadeService.desativarProfissional(id, acao, operador);
         return ResponseEntity.noContent().build();
     }
 

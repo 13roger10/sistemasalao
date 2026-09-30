@@ -3,7 +3,9 @@ package com.belezza.api.controller;
 import com.belezza.api.dto.servico.ServicoRequest;
 import com.belezza.api.dto.servico.ServicoResponse;
 import com.belezza.api.entity.TipoServico;
+import com.belezza.api.entity.Usuario;
 import com.belezza.api.security.annotation.AdminOnly;
+import com.belezza.api.service.IndisponibilidadeService;
 import com.belezza.api.service.ServicoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,6 +28,7 @@ import java.util.List;
 public class ServicoController {
 
     private final ServicoService servicoService;
+    private final IndisponibilidadeService indisponibilidadeService;
 
     @PostMapping
     @AdminOnly
@@ -68,9 +71,11 @@ public class ServicoController {
     }
 
     @GetMapping("/salon/{salonId}")
-    @Operation(summary = "Listar serviços do salão", description = "Lista todos os serviços ativos de um salão")
-    public ResponseEntity<List<ServicoResponse>> listarPorSalon(@PathVariable Long salonId) {
-        List<ServicoResponse> response = servicoService.listarPorSalon(salonId);
+    @Operation(summary = "Listar serviços do salão", description = "Lista os serviços ativos de um salão; status=inactive lista os desativados")
+    public ResponseEntity<List<ServicoResponse>> listarPorSalon(
+            @PathVariable Long salonId,
+            @RequestParam(required = false) String status) {
+        List<ServicoResponse> response = servicoService.listarPorSalon(salonId, status);
         return ResponseEntity.ok(response);
     }
 
@@ -96,11 +101,21 @@ public class ServicoController {
 
     @DeleteMapping("/{id:\\d+}")
     @AdminOnly
-    @Operation(summary = "Desativar serviço", description = "Desativa um serviço (soft delete)")
+    @Operation(summary = "Desativar serviço", description = "Desativa um serviço (soft delete). acao=cancelar (cancela e avisa os clientes) ou acao=manter (remanejar à mão). Sem acao, havendo agendamentos marcados, responde 409 com a lista em agendamentosAfetados.")
     public ResponseEntity<Void> desativar(
             @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        servicoService.desativar(id, userDetails.getUsername());
+            @RequestParam(required = false) String acao,
+            @AuthenticationPrincipal Usuario operador) {
+        indisponibilidadeService.desativarServico(id, acao, operador);
         return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id:\\d+}/reativar")
+    @AdminOnly
+    @Operation(summary = "Reativar serviço", description = "Volta a oferecer um serviço desativado")
+    public ResponseEntity<ServicoResponse> reativar(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(servicoService.reativar(id, userDetails.getUsername()));
     }
 }

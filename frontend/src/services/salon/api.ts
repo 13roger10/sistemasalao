@@ -10,20 +10,34 @@ export interface ApiResponse<T> {
   success: boolean;
 }
 
+/** Agendamento atingido por ausência/desativação (erro AGENDAMENTOS_AFETADOS — BUG-033). */
+export interface AgendamentoAfetado {
+  id: number;
+  dataHora: string;
+  status: string;
+  clienteNome?: string;
+  clienteTelefone?: string;
+  profissionalNome?: string;
+  servicos: string[];
+}
+
 export interface ApiError {
   message: string;
   code: string;
   details?: Record<string, string[]>;
+  agendamentosAfetados?: AgendamentoAfetado[];
 }
 
 export class ApiException extends Error {
   code: string;
   details?: Record<string, string[]>;
+  agendamentosAfetados?: AgendamentoAfetado[];
 
   constructor(error: ApiError) {
     super(error.message);
     this.code = error.code;
     this.details = error.details;
+    this.agendamentosAfetados = error.agendamentosAfetados;
   }
 }
 
@@ -123,6 +137,7 @@ async function fetchApi<T>(
       message: `[HTTP ${response.status}] ${message}`,
       code: data.errorCode || data.code || 'UNKNOWN_ERROR',
       details: fieldErrors,
+      agendamentosAfetados: data.agendamentosAfetados,
     });
   }
 

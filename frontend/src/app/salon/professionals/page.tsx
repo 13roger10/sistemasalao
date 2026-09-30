@@ -28,7 +28,9 @@ import { useUnit } from "@/contexts/UnitContext";
 import { professionalService } from "@/services/salon/professionalService";
 import { serviceService } from "@/services/salon/serviceService";
 import { dashboardService } from "@/services/salon/dashboardService";
-import { api } from "@/services/salon/api";
+import { api, type AgendamentoAfetado } from "@/services/salon/api";
+import { AgendamentosAfetadosModal, agendamentosAfetadosDoErro } from "@/components/salon/AgendamentosAfetadosModal";
+import { useToast } from "@/components/ui/Toast";
 import type { Professional, ProfessionalCreateInput, ProfessionalUpdateInput, Service } from "@/types/salon";
 
 // Tipo para usuário do backend
@@ -113,6 +115,9 @@ export default function ProfessionalsPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  // Agendamentos atingidos pela desativação, aguardando a escolha (BUG-033)
+  const [afetados, setAfetados] = useState<AgendamentoAfetado[] | null>(null);
+  const toast = useToast();
   const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -316,17 +321,30 @@ export default function ProfessionalsPage() {
     }
   };
 
-  const handleDelete = async () => {
+  // Desativar com agendamentos marcados pede a escolha: cancelar avisando ou manter (BUG-033)
+  const handleDelete = async (acao?: "cancelar" | "manter") => {
     if (!selectedProfessional) return;
 
     setIsSubmitting(true);
     try {
-      await professionalService.delete(selectedProfessional.id);
+      await professionalService.delete(selectedProfessional.id, acao);
       setIsDeleteModalOpen(false);
+      setAfetados(null);
       setSelectedProfessional(null);
+      if (acao === "cancelar") toast.success("Profissional desativado", "Os agendamentos foram cancelados e os clientes avisados.");
+      if (acao === "manter") toast.info("Profissional desativado", "Remaneje os agendamentos mantidos pela agenda.");
       loadProfessionals();
     } catch (error) {
-      console.error("Erro ao desativar profissional:", error);
+      const lista = agendamentosAfetadosDoErro(error);
+      if (lista && !acao) {
+        // Não é erro: o backend pede a escolha sobre os agendamentos marcados
+        setIsDeleteModalOpen(false);
+        setAfetados(lista);
+      } else {
+        console.error("Erro ao desativar profissional:", error);
+        toast.error("Não foi possível desativar o profissional",
+          error instanceof Error ? error.message.replace(/^\[HTTP \d+\]\s*/, "") : "Tente novamente.");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -1145,13 +1163,25 @@ export default function ProfessionalsPage() {
           setIsDeleteModalOpen(false);
           setSelectedProfessional(null);
         }}
-        onConfirm={handleDelete}
+        onConfirm={() => handleDelete()}
         title="Desativar Profissional"
         message={`Tem certeza que deseja desativar o profissional "${selectedProfessional?.name}"? Ele não poderá receber novos agendamentos.`}
         confirmText="Desativar"
         cancelText="Cancelar"
         variant="danger"
         isLoading={isSubmitting}
+      />
+
+      <AgendamentosAfetadosModal
+        isOpen={afetados !== null}
+        titulo={`Desativar o profissional "${selectedProfessional?.name ?? ""}"`}
+        afetados={afetados ?? []}
+        isLoading={isSubmitting}
+        onEscolher={(acao) => handleDelete(acao)}
+        onClose={() => {
+          setAfetados(null);
+          setSelectedProfessional(null);
+        }}
       />
     </SalonLayout>
   );

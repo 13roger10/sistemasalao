@@ -182,9 +182,15 @@ export const serviceService = {
       .then(mapBackendToFrontend);
   },
 
-  // Delete service (soft delete)
-  delete: (id: string): Promise<void> => {
-    return api.delete(`${BASE_PATH}/${id}`);
+  // Soft delete. Com agendamentos marcados o backend responde AGENDAMENTOS_AFETADOS (409) com a
+  // lista; repita com acao 'cancelar' (cancela e avisa os clientes) ou 'manter' (BUG-033)
+  delete: (id: string, acao?: 'cancelar' | 'manter'): Promise<void> => {
+    return api.delete(`${BASE_PATH}/${id}${acao ? `?acao=${acao}` : ''}`);
+  },
+
+  // Reactivate service (BUG-033: antes não havia como voltar a oferecer um serviço desativado)
+  reactivate: (id: string): Promise<void> => {
+    return api.put(`${BASE_PATH}/${id}/reativar`, {});
   },
 
   // Get service statistics

@@ -283,6 +283,22 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long> 
         @Param("fim") LocalDateTime fim
     );
 
+    // --- Agendamentos atingidos por ausência/desativação (BUG-033): pendentes e confirmados que ainda não terminaram ---
+
+    @Query("SELECT a FROM Agendamento a WHERE a.profissional.id = :profId AND a.status IN ('PENDENTE', 'CONFIRMADO') " +
+           "AND a.dataHora < :fim AND a.fimPrevisto > :inicio AND a.fimPrevisto > :agora ORDER BY a.dataHora")
+    List<Agendamento> findAfetadosNoPeriodo(@Param("profId") Long profissionalId, @Param("inicio") LocalDateTime inicio,
+                                            @Param("fim") LocalDateTime fim, @Param("agora") LocalDateTime agora);
+
+    @Query("SELECT a FROM Agendamento a WHERE a.profissional.id = :profId AND a.status IN ('PENDENTE', 'CONFIRMADO') " +
+           "AND a.fimPrevisto > :agora ORDER BY a.dataHora")
+    List<Agendamento> findAfetadosDoProfissional(@Param("profId") Long profissionalId, @Param("agora") LocalDateTime agora);
+
+    @Query("SELECT DISTINCT a FROM Agendamento a LEFT JOIN a.servico legado LEFT JOIN a.servicos item " +
+           "WHERE (legado.id = :servicoId OR item.servico.id = :servicoId) AND a.status IN ('PENDENTE', 'CONFIRMADO') " +
+           "AND a.fimPrevisto > :agora ORDER BY a.dataHora")
+    List<Agendamento> findAfetadosDoServico(@Param("servicoId") Long servicoId, @Param("agora") LocalDateTime agora);
+
     /** Atendimentos ainda por fazer do profissional (pendentes, confirmados ou em andamento). */
     @Query("SELECT COUNT(a) FROM Agendamento a WHERE a.profissional.id = :profId " +
            "AND a.status IN ('PENDENTE', 'CONFIRMADO', 'EM_ANDAMENTO') AND a.fimPrevisto > :agora")

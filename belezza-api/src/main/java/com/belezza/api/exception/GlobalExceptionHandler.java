@@ -63,6 +63,7 @@ public class GlobalExceptionHandler {
                 .errorCode(ex.getErrorCode())
                 .message(ex.getMessage())
                 .path(extractPath(request))
+                .agendamentosAfetados(ex instanceof AgendamentosAfetadosException afetados ? afetados.getAfetados() : null)
                 .build();
 
         return ResponseEntity.status(ex.getStatus()).body(error);

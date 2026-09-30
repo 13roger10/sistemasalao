@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -26,4 +27,6 @@ public class ErrorResponse {
     private String message;
     private String path;
     private Map<String, String> fieldErrors;
+    /** Agendamentos atingidos pela ação recusada (AGENDAMENTOS_AFETADOS — BUG-033). */
+    private List<?> agendamentosAfetados;
 }

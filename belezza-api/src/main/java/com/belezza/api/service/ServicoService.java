@@ -60,6 +60,21 @@ public class ServicoService {
                 .toList();
     }
 
+    /**
+     * Com {@code status=inactive} lista os desativados (para reativar — BUG-033); qualquer outro
+     * valor mantém a lista de ativos, que é a usada no agendamento.
+     */
+    @Transactional(readOnly = true)
+    public List<ServicoResponse> listarPorSalon(Long salonId, String status) {
+        if (!"inactive".equalsIgnoreCase(status)) {
+            return listarPorSalon(salonId);
+        }
+        return servicoRepository.findBySalonId(salonId).stream()
+                .filter(s -> !s.isAtivo())
+                .map(ServicoResponse::fromEntity)
+                .toList();
+    }
+
     @Transactional(readOnly = true)
     public List<ServicoResponse> listarPorSalonETipo(Long salonId, TipoServico tipo) {
         return servicoRepository.findBySalonIdAndTipoAndAtivoTrue(salonId, tipo).stream()
@@ -96,6 +111,20 @@ public class ServicoService {
         servico.setAtivo(false);
         servicoRepository.save(servico);
         log.info("Serviço desativado: {}", id);
+    }
+
+    /** Volta a oferecer um serviço desativado (BUG-033: antes não havia como reativar). */
+    @Transactional
+    public ServicoResponse reativar(Long id, String emailAdmin) {
+        Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
+
+        Servico servico = servicoRepository.findByIdAndSalonId(id, salon.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Serviço", id));
+
+        servico.setAtivo(true);
+        servico = servicoRepository.save(servico);
+        log.info("Serviço reativado: {}", id);
+        return ServicoResponse.fromEntity(servico);
     }
 
     public Servico getServicoEntity(Long id) {
