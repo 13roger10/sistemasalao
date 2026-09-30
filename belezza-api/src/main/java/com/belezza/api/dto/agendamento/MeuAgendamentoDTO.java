@@ -2,6 +2,7 @@ package com.belezza.api.dto.agendamento;
 
 import com.belezza.api.entity.Agendamento;
 import com.belezza.api.entity.StatusAgendamento;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -32,6 +33,8 @@ public class MeuAgendamentoDTO {
     private String endTime;
     private String status;
     private String source;
+    // Sem o @JsonProperty o Jackson publicava "paid" (getter isPaid()), e a tela lê "isPaid"
+    @JsonProperty("isPaid")
     private boolean isPaid;
     private BigDecimal totalPrice;
     private BigDecimal finalPrice;
@@ -112,6 +115,11 @@ public class MeuAgendamentoDTO {
     }
 
     public static MeuAgendamentoDTO fromEntity(Agendamento a) {
+        return fromEntity(a, false);
+    }
+
+    /** @param pago atendimento quitado (pagamentos aprovados cobrem o valor) — ver PagamentoService.idsPagos */
+    public static MeuAgendamentoDTO fromEntity(Agendamento a, boolean pago) {
         DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
 
@@ -162,7 +170,7 @@ public class MeuAgendamentoDTO {
             .endTime(a.getFimPrevisto() != null ? a.getFimPrevisto().format(timeFormatter) : null)
             .status(mapStatus(a.getStatus()))
             .source("online")
-            .isPaid(false) // TODO: integrate with payment when available
+            .isPaid(pago)
             .totalPrice(a.getValorCobrado())
             .finalPrice(a.getValorCobrado())
             .totalDurationMinutes(a.getDuracaoTotalMinutos())

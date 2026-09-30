@@ -458,4 +458,40 @@ class PagamentoServiceTest {
             verify(comissaoService).reativarAposPagamento(100L);
         }
     }
+
+    @Nested
+    @DisplayName("Atendimentos pagos — Meus agendamentos (BUG-025)")
+    class IdsPagosTests {
+
+        private Pagamento parte(Agendamento a, String valor, StatusPagamento status) {
+            return Pagamento.builder().agendamento(a).valor(new BigDecimal(valor)).status(status).build();
+        }
+
+        @Test
+        @DisplayName("Pago só quando os pagamentos aprovados cobrem o valor; estorno e parcial não contam")
+        void pagoQuandoAprovadosCobremOValor() {
+            Agendamento pagoEmDuasPartes = agendamentoConcluido(salonA);
+            Agendamento parcial = agendamentoConcluido(salonA);
+            parcial.setId(101L);
+            Agendamento estornado = agendamentoConcluido(salonA);
+            estornado.setId(102L);
+            Agendamento semPagamento = agendamentoConcluido(salonA);
+            semPagamento.setId(103L);
+            List<Agendamento> lista = List.of(pagoEmDuasPartes, parcial, estornado, semPagamento);
+            when(pagamentoRepository.findByAgendamentoIdIn(List.of(100L, 101L, 102L, 103L))).thenReturn(List.of(
+                    parte(pagoEmDuasPartes, "50.00", StatusPagamento.APROVADO),
+                    parte(pagoEmDuasPartes, "30.00", StatusPagamento.APROVADO),
+                    parte(parcial, "30.00", StatusPagamento.APROVADO),
+                    parte(estornado, "80.00", StatusPagamento.ESTORNADO)));
+
+            assertThat(pagamentoService.idsPagos(lista)).containsExactly(100L);
+        }
+
+        @Test
+        @DisplayName("Lista vazia não consulta o banco")
+        void listaVazia() {
+            assertThat(pagamentoService.idsPagos(List.of())).isEmpty();
+            verifyNoInteractions(pagamentoRepository);
+        }
+    }
 }

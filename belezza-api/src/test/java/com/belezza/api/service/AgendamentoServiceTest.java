@@ -79,6 +79,9 @@ class AgendamentoServiceTest {
     @Mock
     private TenantIsolationService tenantIsolationService;
 
+    @Mock
+    private PagamentoService pagamentoService;
+
     @InjectMocks
     private AgendamentoService agendamentoService;
 
@@ -429,6 +432,39 @@ class AgendamentoServiceTest {
             assertThatThrownBy(() -> agendamentoService.concluir(1L))
                     .isInstanceOf(BusinessException.class)
                     .hasMessageContaining("em andamento");
+        }
+    }
+
+    @Nested
+    @DisplayName("Meus agendamentos — status de pagamento (BUG-025)")
+    class MeusAgendamentosPagamentoTests {
+
+        @Test
+        @DisplayName("Atendimento quitado aparece como pago; os demais, não")
+        void marcaSoOsAtendimentosPagos() {
+            agendamento.setStatus(StatusAgendamento.CONCLUIDO);
+            Agendamento outro = Agendamento.builder()
+                    .id(2L).salon(salon).cliente(cliente).profissional(profissional)
+                    .dataHora(LocalDateTime.now().minusDays(2)).fimPrevisto(LocalDateTime.now().minusDays(2).plusMinutes(30))
+                    .status(StatusAgendamento.CONCLUIDO).build();
+            when(agendamentoRepository.findByClienteUsuarioId(eq(9L), any()))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(agendamento, outro)));
+            when(pagamentoService.idsPagos(List.of(agendamento, outro))).thenReturn(java.util.Set.of(1L));
+
+            var resposta = agendamentoService.listarMeusAgendamentos(9L, 1, 10, null, null, null);
+
+            assertThat(resposta.getItems()).extracting(i -> i.getId() + ":" + i.isPaid())
+                    .containsExactly("1:true", "2:false");
+        }
+
+        @Test
+        @DisplayName("O JSON publica o campo como isPaid, o nome que a tela lê")
+        void jsonUsaIsPaid() throws Exception {
+            var json = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .findAndRegisterModules()
+                    .writeValueAsString(com.belezza.api.dto.agendamento.MeuAgendamentoDTO.fromEntity(agendamento, true));
+
+            assertThat(json).contains("\"isPaid\":true").doesNotContain("\"paid\"");
         }
     }
 

@@ -35,6 +35,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -54,6 +55,7 @@ public class AgendamentoService {
     private final BloqueioHorarioService bloqueioHorarioService;
     private final WhatsAppService whatsAppService;
     private final ComissaoService comissaoService;
+    private final PagamentoService pagamentoService;
     private final NotificacaoService notificacaoService;
     private final EmailService emailService;
     @Lazy
@@ -488,8 +490,9 @@ public class AgendamentoService {
         }
 
         // Convert to DTOs
+        Set<Long> pagos = pagamentoService.idsPagos(appointmentsPage.getContent());
         List<MeuAgendamentoDTO> items = appointmentsPage.getContent().stream()
-            .map(MeuAgendamentoDTO::fromEntity)
+            .map(a -> MeuAgendamentoDTO.fromEntity(a, pagos.contains(a.getId())))
             .collect(Collectors.toList());
 
         // Build response

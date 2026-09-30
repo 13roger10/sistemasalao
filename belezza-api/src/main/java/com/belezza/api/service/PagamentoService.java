@@ -163,6 +163,41 @@ public class PagamentoService {
         return partes;
     }
 
+    /**
+     * Atendimentos já pagos por inteiro: soma dos pagamentos aprovados (sem estornos) cobrindo o
+     * valor do atendimento. Uma consulta só para a lista toda — "Meus agendamentos" do cliente
+     * mostrava todo atendimento como não pago (BUG-025).
+     */
+    @Transactional(readOnly = true)
+    public java.util.Set<Long> idsPagos(java.util.Collection<Agendamento> agendamentos) {
+        if (agendamentos == null || agendamentos.isEmpty()) {
+            return java.util.Set.of();
+        }
+        java.util.Map<Long, BigDecimal> pagoPorAtendimento = new java.util.HashMap<>();
+        for (Pagamento p : pagamentoRepository.findByAgendamentoIdIn(
+                agendamentos.stream().map(Agendamento::getId).toList())) {
+            if (p.getStatus() == StatusPagamento.APROVADO) {
+                pagoPorAtendimento.merge(p.getAgendamento().getId(), p.getValor(), BigDecimal::add);
+            }
+        }
+        java.util.Set<Long> pagos = new java.util.HashSet<>();
+        for (Agendamento agendamento : agendamentos) {
+            BigDecimal pago = pagoPorAtendimento.get(agendamento.getId());
+            if (pago == null || pago.signum() <= 0) {
+                continue;
+            }
+            try {
+                if (pago.compareTo(valorDoAtendimento(agendamento)) >= 0) {
+                    pagos.add(agendamento.getId());
+                }
+            } catch (BusinessException semValor) {
+                // sem valor definido: qualquer pagamento aprovado quita o atendimento
+                pagos.add(agendamento.getId());
+            }
+        }
+        return pagos;
+    }
+
     /** Valor do atendimento: o valor cobrado no agendamento ou, na falta dele, a soma dos serviços. */
     @SuppressWarnings("deprecation")
     private BigDecimal valorDoAtendimento(Agendamento agendamento) {

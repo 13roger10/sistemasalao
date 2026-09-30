@@ -610,6 +610,20 @@ export default function ClientAppointmentsPage() {
                           R$ {appointment.totalPrice.toFixed(2)}
                         </div>
                       )}
+
+                      {/* Pagamento (BUG-025): só faz sentido depois que o atendimento começou */}
+                      {["completed", "in_progress"].includes(appointment.status) && (
+                        <span
+                          className={cn(
+                            "inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
+                            appointment.isPaid
+                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                              : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                          )}
+                        >
+                          {appointment.isPaid ? "Pago" : "Pagamento pendente"}
+                        </span>
+                      )}
                     </div>
 
                     {/* Right side - Status and actions */}
