@@ -97,7 +97,7 @@ export default function ProfessionalHomePage() {
             <QuickActionCard
               title="Meu Perfil"
               description="Gerencie seus dados e horários de trabalho"
-              href="/salon/profile"
+              href="/salon/meu-perfil"
               icon={<User className="h-6 w-6 text-blue-600 dark:text-blue-400" />}
               iconBg="bg-blue-100 dark:bg-blue-900/40"
             />

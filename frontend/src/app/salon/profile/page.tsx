@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SalonLayout } from '@/components/layout/SalonLayout';
+import { useSalonAuth } from '@/contexts/SalonAuthContext';
 import { businessService } from '@/services/salon/businessService';
 import type { BusinessProfile, BusinessStats } from '@/types/salon/business';
 import type { DaySchedule } from '@/types/salon/common';
@@ -162,6 +163,9 @@ function Textarea({ label, value, onChange, placeholder, rows = 3 }: TextareaPro
 }
 
 export default function BusinessProfilePage() {
+  // Perfil do NEGÓCIO: só o admin (BUG-037 — o funcionário caía aqui e via "Erro ao carregar dados do negócio")
+  const { user } = useSalonAuth();
+  const isAdmin = user?.role === 'ADMIN';
   const [profile, setProfile] = useState<BusinessProfile | null>(null);
   const [stats, setStats] = useState<BusinessStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -176,6 +180,7 @@ export default function BusinessProfilePage() {
 
   // Load data
   useEffect(() => {
+    if (!isAdmin) return;
     const loadData = async () => {
       setIsLoading(true);
       try {
@@ -194,7 +199,7 @@ export default function BusinessProfilePage() {
     };
 
     loadData();
-  }, []);
+  }, [isAdmin]);
 
   const handleChange = <K extends keyof BusinessProfile>(field: K, value: BusinessProfile[K]) => {
     if (!profile) return;
@@ -324,7 +329,7 @@ export default function BusinessProfilePage() {
 
   if (isLoading) {
     return (
-      <SalonLayout>
+      <SalonLayout requiredRole="ADMIN">
         <div className="flex min-h-[400px] items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-200 border-t-violet-500" />
         </div>
@@ -334,7 +339,7 @@ export default function BusinessProfilePage() {
 
   if (!profile) {
     return (
-      <SalonLayout>
+      <SalonLayout requiredRole="ADMIN">
         <div className="flex min-h-[400px] flex-col items-center justify-center text-gray-500">
           <AlertCircle className="h-12 w-12 text-gray-300" />
           <p className="mt-4">Erro ao carregar dados do negocio</p>
@@ -344,7 +349,7 @@ export default function BusinessProfilePage() {
   }
 
   return (
-    <SalonLayout>
+    <SalonLayout requiredRole="ADMIN">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">

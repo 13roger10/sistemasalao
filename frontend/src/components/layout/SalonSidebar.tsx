@@ -71,6 +71,13 @@ const MENU_SECTIONS: MenuSection[] = [
         icon: LayoutDashboard,
         roles: ["PROFESSIONAL"],
       },
+      {
+        // Dados pessoais da equipe (BUG-037) — /salon/profile é o perfil do negócio, só do admin
+        label: "Meu Perfil",
+        href: "/salon/meu-perfil",
+        icon: UserCircle,
+        roles: ["PROFESSIONAL", "RECEPCIONIST"],
+      },
     ],
   },
   {
