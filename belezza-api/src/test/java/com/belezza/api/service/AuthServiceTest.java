@@ -27,12 +27,15 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -68,6 +71,9 @@ class AuthServiceTest {
 
     @Mock
     private LoginAttemptService loginAttemptService;
+
+    @Mock
+    private PasswordResetLimiter passwordResetLimiter;
 
     @InjectMocks
     private AuthService authService;
@@ -267,6 +273,50 @@ class AuthServiceTest {
             assertThatThrownBy(() -> authService.refreshToken(request))
                     .isInstanceOf(AuthenticationException.class)
                     .hasMessageContaining("Token inválido");
+        }
+    }
+
+    @Nested
+    @DisplayName("Esqueci minha senha - limite por e-mail")
+    class ForgotPasswordTests {
+
+        private final ForgotPasswordRequest request = new ForgotPasswordRequest("test@example.com");
+
+        @Test
+        @DisplayName("Dentro do limite: gera o token e envia o e-mail")
+        void enviaDentroDoLimite() {
+            when(passwordResetLimiter.permitir("test@example.com")).thenReturn(true);
+            when(usuarioRepository.findByEmailAndAtivoTrue("test@example.com")).thenReturn(Optional.of(usuario));
+
+            authService.forgotPassword(request);
+
+            assertThat(usuario.getResetPasswordToken()).isNotNull();
+            verify(emailService).sendPasswordResetEmail(eq("test@example.com"), eq(usuario.getResetPasswordToken()), any());
+        }
+
+        @Test
+        @DisplayName("Acima do limite: não procura a conta nem envia nada (e não lança erro)")
+        void acimaDoLimiteNaoEnvia() {
+            when(passwordResetLimiter.permitir("test@example.com")).thenReturn(false);
+
+            authService.forgotPassword(request);
+
+            verifyNoInteractions(usuarioRepository, emailService);
+        }
+
+        @Test
+        @DisplayName("Token gerado há menos de 2 minutos (outra instância da API): não reenvia")
+        void tokenRecenteNoBancoNaoReenvia() {
+            usuario.setResetPasswordToken("token-anterior");
+            usuario.setResetPasswordExpires(LocalDateTime.now().plusHours(2).minusSeconds(30));
+            when(passwordResetLimiter.permitir("test@example.com")).thenReturn(true);
+            when(passwordResetLimiter.intervaloMinimo()).thenReturn(Duration.ofMinutes(2));
+            when(usuarioRepository.findByEmailAndAtivoTrue("test@example.com")).thenReturn(Optional.of(usuario));
+
+            authService.forgotPassword(request);
+
+            assertThat(usuario.getResetPasswordToken()).isEqualTo("token-anterior");
+            verifyNoInteractions(emailService);
         }
     }
 }

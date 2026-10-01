@@ -26,6 +26,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -49,6 +50,9 @@ public class AuthService {
     private final TokenBlacklistService tokenBlacklistService;
     private final TwoFactorService twoFactorService;
     private final LoginAttemptService loginAttemptService;
+    private final PasswordResetLimiter passwordResetLimiter;
+
+    private static final Duration VALIDADE_TOKEN_RESET = Duration.ofHours(2);
 
     /**
      * Registers a new user.
@@ -252,10 +256,23 @@ public class AuthService {
     public void forgotPassword(ForgotPasswordRequest request) {
         log.info("Forgot password request for email: {}", request.getEmail());
 
+        // Limite por e-mail (conta antes de procurar a conta, para valer igual a quem não tem)
+        if (!passwordResetLimiter.permitir(request.getEmail())) {
+            return;
+        }
+
         usuarioRepository.findByEmailAndAtivoTrue(request.getEmail().toLowerCase().trim())
                 .ifPresent(usuario -> {
+                    // O limite acima é por instância da API; a data do último token, no banco,
+                    // segura o intervalo mínimo entre e-mails mesmo com várias instâncias
+                    LocalDateTime agora = LocalDateTime.now();
+                    if (usuario.getResetPasswordExpires() != null && agora.isBefore(
+                            usuario.getResetPasswordExpires().minus(VALIDADE_TOKEN_RESET).plus(passwordResetLimiter.intervaloMinimo()))) {
+                        log.warn("Pedido de redefinição ignorado: e-mail enviado há pouco para o usuário {}", usuario.getId());
+                        return;
+                    }
                     usuario.setResetPasswordToken(UUID.randomUUID().toString());
-                    usuario.setResetPasswordExpires(LocalDateTime.now().plusHours(2));
+                    usuario.setResetPasswordExpires(agora.plus(VALIDADE_TOKEN_RESET));
                     usuarioRepository.save(usuario);
 
                     // Send password reset email
