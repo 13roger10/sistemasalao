@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -43,6 +43,7 @@ import {
 import type { Service } from "@/types/salon";
 import { Clock } from "lucide-react";
 import { salaoAtual } from "@/lib/salao-atual";
+import { VinculoUnidadesEquipe, type VinculoUnidadesRef } from "@/components/salon/VinculoUnidadesCliente";
 
 // Componente de Badge para Role
 const RoleBadge = ({ role }: { role: UserRole }) => {
@@ -126,6 +127,8 @@ export default function SalonUsersPage() {
   const [permanentDeleteError, setPermanentDeleteError] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<UsuarioListItem | null>(null);
   const editandoAPropriaConta = !!selectedUser && !!user && String(selectedUser.id) === String(user.id);
+  // Vincular profissional/recepcionista a outras unidades (a tela é só do admin)
+  const vinculoUnidadesRef = useRef<VinculoUnidadesRef>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Estado para modal de erro de configuração do profissional
@@ -362,6 +365,15 @@ export default function SalonUsersPage() {
           await workScheduleService.saveAll(selectedUser.profissionalId, workSchedules);
         } catch (scheduleError) {
           falhas.push(`horários (${motivo(scheduleError)})`);
+        }
+      }
+
+      // Unidades do profissional/recepcionista (só quando o perfil não está sendo trocado)
+      if (selectedUser.role === formData.role) {
+        try {
+          await vinculoUnidadesRef.current?.salvar();
+        } catch (unidadesError) {
+          falhas.push(`unidades (${motivo(unidadesError)})`);
         }
       }
 
@@ -1331,6 +1343,16 @@ export default function SalonUsersPage() {
               )}
             </div>
           )}
+
+          {selectedUser &&
+            selectedUser.role === formData.role &&
+            (selectedUser.role === "PROFISSIONAL" || selectedUser.role === "RECEPCIONISTA") && (
+              <VinculoUnidadesEquipe
+                ref={vinculoUnidadesRef}
+                userId={String(selectedUser.id)}
+                papel={selectedUser.role}
+              />
+            )}
 
           {selectedUser && (
             <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50">

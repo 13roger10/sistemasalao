@@ -112,12 +112,14 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     @Query("SELECT DISTINCT u FROM Usuario u " +
            "LEFT JOIN Profissional p ON p.usuario = u " +
            "WHERE p.salon.id = :salonId OR u.salon.id = :salonId " +
+           "OR EXISTS (SELECT r FROM RecepcionistaUnidade r WHERE r.usuario = u AND r.salon.id = :salonId) " +
            "OR EXISTS (SELECT s FROM Salon s WHERE s.admin = u AND s.id = :salonId)")
     Page<Usuario> findBySalonId(@Param("salonId") Long salonId, Pageable pageable);
 
     @Query("SELECT DISTINCT u FROM Usuario u " +
            "LEFT JOIN Profissional p ON p.usuario = u " +
            "WHERE (p.salon.id = :salonId OR u.salon.id = :salonId " +
+           "OR EXISTS (SELECT r FROM RecepcionistaUnidade r WHERE r.usuario = u AND r.salon.id = :salonId) " +
            "OR EXISTS (SELECT s FROM Salon s WHERE s.admin = u AND s.id = :salonId)) AND u.role = :role")
     Page<Usuario> findBySalonIdAndRole(@Param("salonId") Long salonId, @Param("role") Role role, Pageable pageable);
 
@@ -126,6 +128,7 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     String VINCULADO_AO_SALAO =
            "(u.salon.id = :salonId " +
            "OR EXISTS (SELECT p FROM Profissional p WHERE p.usuario = u AND p.salon.id = :salonId) " +
+           "OR EXISTS (SELECT r FROM RecepcionistaUnidade r WHERE r.usuario = u AND r.salon.id = :salonId) " +
            "OR EXISTS (SELECT c FROM Cliente c WHERE c.usuario = u AND c.salon.id = :salonId) " +
            "OR EXISTS (SELECT s FROM Salon s WHERE s.admin = u AND s.id = :salonId))";
     String BUSCA_NOME_EMAIL =

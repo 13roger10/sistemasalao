@@ -2,6 +2,7 @@ package com.belezza.api.repository;
 
 import com.belezza.api.entity.CategoriaProfissional;
 import com.belezza.api.entity.Profissional;
+import com.belezza.api.security.TenantContext;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,9 +14,31 @@ import java.util.Optional;
 @Repository
 public interface ProfissionalRepository extends JpaRepository<Profissional, Long> {
 
-    Optional<Profissional> findByUsuarioId(Long usuarioId);
+    // Uma pessoa pode ter um cadastro de profissional em cada unidade do mesmo dono
+    List<Profissional> findAllByUsuarioIdOrderByIdAsc(Long usuarioId);
 
-    Optional<Profissional> findByUsuarioIdAndAtivoTrue(Long usuarioId);
+    Optional<Profissional> findByUsuarioIdAndSalonId(Long usuarioId, Long salonId);
+
+    /**
+     * O cadastro de profissional do usuário na unidade da requisição (claim salonId do token).
+     * Com unidade na requisição, só o cadastro daquela unidade (nunca o de outra — os dados de
+     * cada unidade são separados). Sem unidade (login, tarefas agendadas), o primeiro ativo — ou o
+     * primeiro. Quem chama "o profissional do usuário" passa a pegar o da unidade em uso.
+     */
+    default Optional<Profissional> findByUsuarioId(Long usuarioId) {
+        Long unidade = TenantContext.getCurrentTenant();
+        if (unidade != null) {
+            return findByUsuarioIdAndSalonId(usuarioId, unidade);
+        }
+        List<Profissional> cadastros = findAllByUsuarioIdOrderByIdAsc(usuarioId);
+        return cadastros.stream().filter(Profissional::isAtivo).findFirst()
+                .or(() -> cadastros.stream().findFirst());
+    }
+
+    /** Como {@link #findByUsuarioId}, mas só se o cadastro estiver ativo. */
+    default Optional<Profissional> findByUsuarioIdAndAtivoTrue(Long usuarioId) {
+        return findByUsuarioId(usuarioId).filter(Profissional::isAtivo);
+    }
 
     List<Profissional> findBySalonIdAndAtivoTrue(Long salonId);
 

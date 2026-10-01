@@ -46,6 +46,7 @@ public class UsuarioService {
     private final ProfissionalRepository profissionalRepository;
     private final SalonRepository salonRepository;
     private final SalonService salonService;
+    private final com.belezza.api.repository.RecepcionistaUnidadeRepository recepcionistaUnidadeRepository;
     private final PasswordEncoder passwordEncoder;
     private final AgendamentoRepository agendamentoRepository;
     private final ClienteRepository clienteRepository;
@@ -381,9 +382,9 @@ public class UsuarioService {
         usuario.setAtivo(false);
         usuarioRepository.save(usuario);
 
-        // Desativar profissional vinculado
-        profissionalRepository.findByUsuarioId(usuario.getId())
-                .ifPresent(p -> {
+        // Desativar os cadastros de profissional (um por unidade)
+        profissionalRepository.findAllByUsuarioIdOrderByIdAsc(usuario.getId())
+                .forEach(p -> {
                     p.setAtivo(false);
                     profissionalRepository.save(p);
                 });
@@ -447,7 +448,8 @@ public class UsuarioService {
             fidelidadeClienteRepository.deleteAllByClienteId(cliente.getId());
             clienteRepository.delete(cliente);
         }
-        profissionalRepository.findByUsuarioId(usuario.getId()).ifPresent(profissionalRepository::delete);
+        profissionalRepository.deleteAll(profissionalRepository.findAllByUsuarioIdOrderByIdAsc(usuario.getId()));
+        recepcionistaUnidadeRepository.deleteAll(recepcionistaUnidadeRepository.findByUsuarioId(usuario.getId()));
 
         try {
             usuarioRepository.delete(usuario);
@@ -473,8 +475,11 @@ public class UsuarioService {
                 .forEach(s -> saloesAlvo.add(s.getId()));
         clienteRepository.findByUsuarioId(usuarioAlvo.getId())
                 .forEach(c -> saloesAlvo.add(c.getSalon().getId()));
-        profissionalRepository.findByUsuarioId(usuarioAlvo.getId())
-                .ifPresent(p -> saloesAlvo.add(p.getSalon().getId()));
+        // Todas as unidades da pessoa (profissional e recepcionista podem atender várias)
+        profissionalRepository.findAllByUsuarioIdOrderByIdAsc(usuarioAlvo.getId())
+                .forEach(p -> saloesAlvo.add(p.getSalon().getId()));
+        recepcionistaUnidadeRepository.findByUsuarioId(usuarioAlvo.getId())
+                .forEach(v -> saloesAlvo.add(v.getSalon().getId()));
 
         if (!saloesAlvo.isEmpty() && (salonLogadoId == null || !saloesAlvo.contains(salonLogadoId))) {
             throw new AccessDeniedException("Acesso negado: usuário pertence a outro estabelecimento");

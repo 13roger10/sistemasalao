@@ -32,8 +32,10 @@ public class Profissional {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "usuario_id", nullable = false, unique = true)
+    // Um cadastro de profissional por unidade: a mesma pessoa pode trabalhar em várias unidades
+    // do mesmo dono, cada uma com seus serviços, horários e comissões (uk usuario_id + salon_id)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "usuario_id", nullable = false)
     private Usuario usuario;
 
     @ManyToOne(fetch = FetchType.LAZY)

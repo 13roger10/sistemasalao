@@ -2,21 +2,38 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { Building2 } from "lucide-react";
-import { clientService, type UnidadeDoCliente } from "@/services/salon/clientService";
+import { clientService } from "@/services/salon/clientService";
+import { equipeUnidadesService } from "@/services/salon/equipeUnidadesService";
+
+/** Unidade do estabelecimento no modal: vinculado = está ligado a ela; atual = a unidade em uso. */
+export interface UnidadeVinculavel {
+  id: number;
+  nome: string;
+  vinculado: boolean;
+  atual: boolean;
+}
 
 /** O modal chama salvar() junto com o "Salvar Alterações" (e Cancelar descarta a escolha). */
-export interface VinculoUnidadesClienteRef {
+export interface VinculoUnidadesRef {
   salvar: () => Promise<void>;
+}
+export type VinculoUnidadesClienteRef = VinculoUnidadesRef;
+
+interface VinculoUnidadesProps {
+  /** Muda quando é outra pessoa: recarrega a lista */
+  chave: string;
+  carregar: () => Promise<UnidadeVinculavel[]>;
+  gravar: (salonIds: number[]) => Promise<unknown>;
+  ajuda: string;
 }
 
 /**
- * Salões/barbearias (unidades do mesmo estabelecimento) a que o cliente está vinculado. Só o
- * administrador e a recepção usam — o backend também restringe. A unidade atual fica sempre
- * marcada: para tirar o cliente dela, use Excluir.
+ * Salões/barbearias (unidades do mesmo estabelecimento) a que a pessoa está vinculada. A unidade
+ * atual fica sempre marcada. Oculto quando o estabelecimento tem uma unidade só.
  */
-export const VinculoUnidadesCliente = forwardRef<VinculoUnidadesClienteRef, { clientId: string }>(
-  function VinculoUnidadesCliente({ clientId }, ref) {
-    const [unidades, setUnidades] = useState<UnidadeDoCliente[]>([]);
+export const VinculoUnidades = forwardRef<VinculoUnidadesRef, VinculoUnidadesProps>(
+  function VinculoUnidades({ chave, carregar, gravar, ajuda }, ref) {
+    const [unidades, setUnidades] = useState<UnidadeVinculavel[]>([]);
     const [marcadas, setMarcadas] = useState<Set<number>>(new Set());
     const [carregando, setCarregando] = useState(true);
     const [erro, setErro] = useState<string | null>(null);
@@ -25,8 +42,7 @@ export const VinculoUnidadesCliente = forwardRef<VinculoUnidadesClienteRef, { cl
       let ativo = true;
       setCarregando(true);
       setErro(null);
-      clientService
-        .units(clientId)
+      carregar()
         .then((lista) => {
           if (!ativo) return;
           setUnidades(lista);
@@ -41,7 +57,8 @@ export const VinculoUnidadesCliente = forwardRef<VinculoUnidadesClienteRef, { cl
       return () => {
         ativo = false;
       };
-    }, [clientId]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega só quando muda a pessoa
+    }, [chave]);
 
     useImperativeHandle(
       ref,
@@ -50,10 +67,10 @@ export const VinculoUnidadesCliente = forwardRef<VinculoUnidadesClienteRef, { cl
           const antes = unidades.filter((u) => u.vinculado).map((u) => u.id).sort().join(",");
           const depois = [...marcadas].sort().join(",");
           if (unidades.length === 0 || antes === depois) return;
-          await clientService.setUnits(clientId, [...marcadas]);
+          await gravar([...marcadas]);
         },
       }),
-      [clientId, unidades, marcadas]
+      [unidades, marcadas, gravar]
     );
 
     // Uma unidade só: não há o que vincular
@@ -98,11 +115,42 @@ export const VinculoUnidadesCliente = forwardRef<VinculoUnidadesClienteRef, { cl
             ))
           )}
         </div>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          O cliente passa a ser atendido e a agendar nas unidades marcadas. Histórico, pontos e
-          observações são de cada unidade.
-        </p>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{ajuda}</p>
       </div>
+    );
+  }
+);
+
+/** Cliente: só o administrador e a recepção (o backend também restringe). */
+export const VinculoUnidadesCliente = forwardRef<VinculoUnidadesRef, { clientId: string }>(
+  function VinculoUnidadesCliente({ clientId }, ref) {
+    return (
+      <VinculoUnidades
+        ref={ref}
+        chave={`cliente-${clientId}`}
+        carregar={() => clientService.units(clientId)}
+        gravar={(ids) => clientService.setUnits(clientId, ids)}
+        ajuda="O cliente passa a ser atendido e a agendar nas unidades marcadas. Histórico, pontos e observações são de cada unidade."
+      />
+    );
+  }
+);
+
+/** Profissional ou recepcionista: só o administrador (o backend também restringe). */
+export const VinculoUnidadesEquipe = forwardRef<VinculoUnidadesRef, { userId: string; papel: "PROFISSIONAL" | "RECEPCIONISTA" }>(
+  function VinculoUnidadesEquipe({ userId, papel }, ref) {
+    return (
+      <VinculoUnidades
+        ref={ref}
+        chave={`equipe-${userId}`}
+        carregar={() => equipeUnidadesService.doMembro(userId)}
+        gravar={(ids) => equipeUnidadesService.salvarDoMembro(userId, ids)}
+        ajuda={
+          papel === "PROFISSIONAL"
+            ? "O profissional passa a atender nas unidades marcadas, com o mesmo cadastro, comissão e horários; os serviços são vinculados em cada unidade. Ele troca de unidade pelo topo."
+            : "A recepcionista passa a trabalhar nas unidades marcadas e troca de unidade pelo topo."
+        }
+      />
     );
   }
 );

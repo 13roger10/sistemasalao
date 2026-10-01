@@ -68,8 +68,8 @@ export function UnitProvider({ children }: UnitProviderProps) {
 
   // Check permissions
   const canViewAllUnits = isRole("ADMIN");
-  // O cliente troca de salão só quando é cliente de mais de uma unidade
-  const canChangeUnit = isRole("ADMIN") || (isRole("CLIENT") && availableUnits.length > 1);
+  // Cliente e equipe trocam de unidade só quando estão vinculados a mais de uma
+  const canChangeUnit = isRole("ADMIN") || availableUnits.length > 1;
 
   // Load available units based on user role
   useEffect(() => {
@@ -160,14 +160,23 @@ export function UnitProvider({ children }: UnitProviderProps) {
     setSelectedUnitId(unidade || null);
     setIsLoading(false);
 
-    // Nome do salão para o topo: o do token (equipe) ou, para o cliente, o salão onde ele agenda
+    // Unidades em que o profissional/recepcionista trabalha (pode ser mais de uma do mesmo dono):
+    // dão o nome no topo e, se houver mais de uma, o seletor para trocar de unidade
     let cancelado = false;
     salonApi
-      .get<{ id: number; nome: string }>(`/salons/${unidade || salaoAtual()}`)
-      .then((s) => {
+      .get<{ id: number; nome: string; atual: boolean }[]>("/equipe/unidades/minhas")
+      .then((lista) => {
         if (cancelado) return;
-        setNomeDoSalao(s.nome);
-        if (unidade) setAvailableUnits([{ id: unidade, name: s.nome, isHeadquarters: true }]);
+        const atual = lista.find((u) => String(u.id) === unidade) ?? lista.find((u) => u.atual);
+        if (lista.length > 0) setAvailableUnits(lista.map((u) => ({ id: String(u.id), name: u.nome })));
+        if (atual) {
+          setNomeDoSalao(atual.nome);
+          return;
+        }
+        // Sem lista (ex.: vínculo ainda não carregado): o nome do salão do token
+        return salonApi
+          .get<{ id: number; nome: string }>(`/salons/${unidade || salaoAtual()}`)
+          .then((s) => { if (!cancelado) setNomeDoSalao(s.nome); });
       })
       .catch(() => {
         if (!cancelado) setNomeDoSalao(null);
@@ -184,13 +193,16 @@ export function UnitProvider({ children }: UnitProviderProps) {
     if (!canChangeUnit || unitId === selectedUnitId) return;
     if (canViewAllUnits) {
       await entrarNaUnidade(unitId);
+    } else if (isRole("PROFESSIONAL") || isRole("RECEPCIONIST")) {
+      // Equipe: o backend confere o vínculo e devolve a sessão da unidade
+      await entrarNaUnidade(unitId, "equipe");
     } else {
       // Cliente: o salão não vai no token; a escolha vale para esta sessão (apagada ao sair)
       if (!availableUnits.some((u) => u.id === unitId)) return;
       localStorage.setItem(SELECTED_UNIT_KEY, unitId);
     }
     window.location.reload();
-  }, [canChangeUnit, canViewAllUnits, availableUnits, selectedUnitId]);
+  }, [canChangeUnit, canViewAllUnits, availableUnits, selectedUnitId, isRole]);
 
   // Get selected unit object
   const selectedUnit = selectedUnitId

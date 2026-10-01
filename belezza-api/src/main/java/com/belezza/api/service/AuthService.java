@@ -4,6 +4,8 @@ import com.belezza.api.dto.auth.*;
 import com.belezza.api.dto.user.UserResponse;
 import com.belezza.api.entity.Cliente;
 import com.belezza.api.entity.Plano;
+import com.belezza.api.entity.Profissional;
+import com.belezza.api.entity.RecepcionistaUnidade;
 import com.belezza.api.entity.Role;
 import com.belezza.api.entity.Salon;
 import com.belezza.api.entity.Usuario;
@@ -13,6 +15,7 @@ import com.belezza.api.exception.DuplicateResourceException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.ClienteRepository;
 import com.belezza.api.repository.ProfissionalRepository;
+import com.belezza.api.repository.RecepcionistaUnidadeRepository;
 import com.belezza.api.repository.SalonRepository;
 import com.belezza.api.repository.UsuarioRepository;
 import com.belezza.api.security.JwtService;
@@ -29,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -52,6 +56,7 @@ public class AuthService {
     private final TwoFactorService twoFactorService;
     private final LoginAttemptService loginAttemptService;
     private final PasswordResetLimiter passwordResetLimiter;
+    private final RecepcionistaUnidadeRepository recepcionistaUnidadeRepository;
 
     private static final Duration VALIDADE_TOKEN_RESET = Duration.ofHours(2);
 
@@ -187,7 +192,7 @@ public class AuthService {
         String refreshToken = jwtService.generateRefreshToken(usuario);
 
         return AuthResponse.of(
-                buildUserResponse(usuario),
+                buildUserResponse(usuario, salonId),
                 accessToken,
                 refreshToken,
                 jwtService.getAccessTokenExpiration()
@@ -222,7 +227,7 @@ public class AuthService {
         // Mesmo usuário do login (com profissionalId): sem ele, a sessão renovada de um
         // profissional perdia o vínculo com a própria agenda
         return AuthResponse.of(
-                buildUserResponse(usuario),
+                buildUserResponse(usuario, salonId),
                 newAccessToken,
                 newRefreshToken,
                 jwtService.getAccessTokenExpiration()
@@ -230,43 +235,74 @@ public class AuthService {
     }
 
     /**
-     * Troca a unidade em que o ADMIN está trabalhando: grava a escolha (vale para o próximo login
-     * e as renovações) e devolve uma sessão nova com o salão no token. A unidade precisa ser do
-     * próprio admin — a de outro dono responde como inexistente — e estar ativa.
+     * Troca a unidade em que a pessoa está trabalhando e devolve uma sessão nova com o salão no
+     * token. Vale para o ADMIN (unidade dele), o PROFISSIONAL (unidade em que tem cadastro ativo) e
+     * a RECEPCIONISTA (unidade a que está vinculada). A escolha fica gravada para o próximo login e
+     * as renovações. Unidade que não é da pessoa responde como inexistente; desativada, é recusada.
      */
     @Transactional
     public AuthResponse trocarUnidade(String email, Long salonId) {
         Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(email)
                 .orElseThrow(AuthenticationException::invalidToken);
-        if (usuario.getRole() != Role.ADMIN) {
-            throw new AccessDeniedException("Apenas o administrador pode trocar de unidade");
-        }
-        Salon unidade = salonRepository.findByIdAndAdminId(salonId, usuario.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Unidade", salonId));
+        Salon unidade = switch (usuario.getRole()) {
+            case ADMIN -> salonRepository.findByIdAndAdminId(salonId, usuario.getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Unidade", salonId));
+            case PROFISSIONAL -> profissionalRepository.findByUsuarioIdAndSalonId(usuario.getId(), salonId)
+                    .filter(Profissional::isAtivo)
+                    .map(Profissional::getSalon)
+                    .orElseThrow(() -> new ResourceNotFoundException("Unidade", salonId));
+            case RECEPCIONISTA -> {
+                boolean daUnidade = usuario.getSalon() != null && usuario.getSalon().getId().equals(salonId);
+                if (!daUnidade && !recepcionistaUnidadeRepository.existsByUsuarioIdAndSalonId(usuario.getId(), salonId)) {
+                    throw new ResourceNotFoundException("Unidade", salonId);
+                }
+                yield salonRepository.findById(salonId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Unidade", salonId));
+            }
+            default -> throw new AccessDeniedException("Apenas a equipe do salão troca de unidade");
+        };
         if (!unidade.isAtivo()) {
             throw new BusinessException("Esta unidade está desativada. Ative-a antes de entrar nela.");
         }
 
-        usuario.setUnidadeAtiva(unidade);
+        if (usuario.getRole() == Role.RECEPCIONISTA) {
+            // A unidade em uso da recepcionista é Usuario.salon (usada para escopar os dados dela);
+            // a anterior continua vinculada, para ela poder voltar
+            Salon anterior = usuario.getSalon();
+            if (anterior != null && !anterior.getId().equals(unidade.getId())
+                    && !recepcionistaUnidadeRepository.existsByUsuarioIdAndSalonId(usuario.getId(), anterior.getId())) {
+                recepcionistaUnidadeRepository.save(RecepcionistaUnidade.builder().usuario(usuario).salon(anterior).build());
+            }
+            usuario.setSalon(unidade);
+        } else {
+            usuario.setUnidadeAtiva(unidade);
+        }
         usuarioRepository.save(usuario);
-        log.info("Admin {} passou a trabalhar na unidade {}", usuario.getId(), unidade.getId());
+        log.info("Usuário {} ({}) passou a trabalhar na unidade {}", usuario.getId(), usuario.getRole(), unidade.getId());
 
         return AuthResponse.of(
-                buildUserResponse(usuario),
+                buildUserResponse(usuario, unidade.getId()),
                 jwtService.generateAccessToken(usuario, unidade.getId()),
                 jwtService.generateRefreshToken(usuario),
                 jwtService.getAccessTokenExpiration()
         );
     }
 
-    private UserResponse buildUserResponse(Usuario usuario) {
+    /** Usuário da resposta do login; o profissionalId é o do cadastro na unidade da sessão. */
+    private UserResponse buildUserResponse(Usuario usuario, Long salonId) {
         if (usuario.getRole() == Role.PROFISSIONAL) {
-            Long profissionalId = profissionalRepository.findByUsuarioId(usuario.getId())
+            Long profissionalId = (salonId != null
+                    ? profissionalRepository.findByUsuarioIdAndSalonId(usuario.getId(), salonId)
+                    : profissionalRepository.findByUsuarioId(usuario.getId()))
                     .map(p -> p.getId())
                     .orElse(null);
             return UserResponse.fromEntity(usuario, profissionalId);
         }
         return UserResponse.fromEntity(usuario);
+    }
+
+    private UserResponse buildUserResponse(Usuario usuario) {
+        return buildUserResponse(usuario, null);
     }
 
     /**
@@ -413,9 +449,19 @@ public class AuthService {
                     .or(() -> salonRepository.findFirstByAdminIdOrderByIdAsc(usuario.getId()))
                     .map(s -> s.getId())
                     .orElse(null);
-            case PROFISSIONAL -> profissionalRepository.findByUsuarioId(usuario.getId())
-                    .map(p -> p.getSalon().getId())
-                    .orElse(null);
+            // Profissional pode ter cadastro em várias unidades: a escolhida, se ainda ativa; senão
+            // o primeiro cadastro ativo em unidade ativa; sem nenhum, o primeiro
+            case PROFISSIONAL -> {
+                List<Profissional> cadastros = profissionalRepository.findAllByUsuarioIdOrderByIdAsc(usuario.getId());
+                Long escolhida = usuario.getUnidadeAtiva() != null ? usuario.getUnidadeAtiva().getId() : null;
+                yield cadastros.stream()
+                        .filter(p -> p.isAtivo() && p.getSalon().isAtivo() && p.getSalon().getId().equals(escolhida))
+                        .findFirst()
+                        .or(() -> cadastros.stream().filter(p -> p.isAtivo() && p.getSalon().isAtivo()).findFirst())
+                        .or(() -> cadastros.stream().findFirst())
+                        .map(p -> p.getSalon().getId())
+                        .orElse(null);
+            }
             case RECEPCIONISTA -> usuario.getSalon() != null ? usuario.getSalon().getId() : null;
             default -> null;
         };

@@ -100,9 +100,11 @@ export function refreshSalonSession(): Promise<string | null> {
  * direto no backend, sem o cliente HTTP do salão, que registra as respostas no console — e esta
  * traz os tokens. Lança erro com a mensagem do backend.
  */
-export async function entrarNaUnidade(unidadeId: number | string): Promise<void> {
+export async function entrarNaUnidade(unidadeId: number | string, quem: "admin" | "equipe" = "admin"): Promise<void> {
+  // Admin: unidades dele; profissional/recepcionista: unidades a que está vinculado
+  const rota = quem === "admin" ? "salon/units" : "equipe/unidades";
   const chamar = () =>
-    fetch(`${env.apiUrl}/salon/units/${encodeURIComponent(String(unidadeId))}/entrar`, {
+    fetch(`${env.apiUrl}/${rota}/${encodeURIComponent(String(unidadeId))}/entrar`, {
       method: "POST",
       headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ""}` },
     });
@@ -111,7 +113,13 @@ export async function entrarNaUnidade(unidadeId: number | string): Promise<void>
   if (response.status === 401 && (await refreshSalonSession())) {
     response = await chamar();
   }
-  const data: { accessToken?: string; refreshToken?: string; expiresIn?: number; message?: string } =
+  const data: {
+    accessToken?: string;
+    refreshToken?: string;
+    expiresIn?: number;
+    message?: string;
+    user?: { profissionalId?: number | null };
+  } =
     await response.json().catch(() => ({}));
   if (!response.ok || !data.accessToken) {
     throw new Error(data.message || "Não foi possível entrar na unidade");
@@ -122,4 +130,15 @@ export async function entrarNaUnidade(unidadeId: number | string): Promise<void>
   if (data.expiresIn) localStorage.setItem(TOKEN_EXPIRY_KEY, String(Date.now() + data.expiresIn));
   localStorage.setItem(UNIDADE_SELECIONADA_KEY, String(unidadeId));
   gravarCookieSessao(data.accessToken);
+  // O profissional tem um cadastro por unidade: a agenda dele passa a ser a da unidade nova
+  try {
+    const salvo = localStorage.getItem(USER_KEY);
+    if (salvo && data.user && "profissionalId" in data.user) {
+      const usuario = JSON.parse(salvo);
+      usuario.professionalId = data.user.profissionalId != null ? String(data.user.profissionalId) : undefined;
+      localStorage.setItem(USER_KEY, JSON.stringify(usuario));
+    }
+  } catch {
+    /* usuário salvo ilegível: o próximo login corrige */
+  }
 }

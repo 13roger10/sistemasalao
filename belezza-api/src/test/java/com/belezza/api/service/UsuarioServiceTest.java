@@ -48,6 +48,7 @@ class UsuarioServiceTest {
     @Mock private PagamentoRepository pagamentoRepository;
     @Mock private CaixaRepository caixaRepository;
     @Mock private MovimentacaoCaixaRepository movimentacaoCaixaRepository;
+    @Mock private com.belezza.api.repository.RecepcionistaUnidadeRepository recepcionistaUnidadeRepository;
 
     @InjectMocks
     private UsuarioService usuarioService;
@@ -372,6 +373,7 @@ class UsuarioServiceTest {
             prof = Profissional.builder().id(8L).usuario(profUser).salon(salonA).ativo(true).build();
             lenient().when(usuarioRepository.findById(20L)).thenReturn(Optional.of(profUser));
             lenient().when(profissionalRepository.findByUsuarioId(20L)).thenReturn(Optional.of(prof));
+            lenient().when(profissionalRepository.findAllByUsuarioIdOrderByIdAsc(20L)).thenReturn(List.of(prof));
             lenient().when(salonRepository.findById(1L)).thenReturn(Optional.of(salonA));
             lenient().when(usuarioRepository.save(any(Usuario.class))).thenAnswer(inv -> inv.getArgument(0));
         }

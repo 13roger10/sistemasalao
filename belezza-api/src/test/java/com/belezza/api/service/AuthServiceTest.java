@@ -75,6 +75,9 @@ class AuthServiceTest {
     @Mock
     private PasswordResetLimiter passwordResetLimiter;
 
+    @Mock
+    private com.belezza.api.repository.RecepcionistaUnidadeRepository recepcionistaUnidadeRepository;
+
     @InjectMocks
     private AuthService authService;
 
@@ -367,13 +370,51 @@ class AuthServiceTest {
         }
 
         @Test
-        @DisplayName("Quem não é admin não troca de unidade")
-        void naoAdmin() {
-            usuario.setRole(Role.RECEPCIONISTA);
+        @DisplayName("Cliente não troca de unidade")
+        void cliente() {
+            usuario.setRole(Role.CLIENTE);
 
             assertThatThrownBy(() -> authService.trocarUnidade("test@example.com", 20L))
                     .isInstanceOf(AccessDeniedException.class);
             verifyNoInteractions(jwtService);
+        }
+
+        @Test
+        @DisplayName("Profissional entra só em unidade onde tem cadastro ativo; o token traz o profissionalId de lá")
+        void profissional() {
+            usuario.setRole(Role.PROFISSIONAL);
+            Salon filial = Salon.builder().id(20L).ativo(true).build();
+            com.belezza.api.entity.Profissional naFilial = com.belezza.api.entity.Profissional.builder()
+                    .id(77L).usuario(usuario).salon(filial).ativo(true).build();
+            when(profissionalRepository.findByUsuarioIdAndSalonId(1L, 20L)).thenReturn(Optional.of(naFilial));
+            when(profissionalRepository.findByUsuarioIdAndSalonId(1L, 30L)).thenReturn(Optional.empty());
+            when(jwtService.generateAccessToken(usuario, 20L)).thenReturn("tokenFilial");
+
+            AuthResponse resposta = authService.trocarUnidade("test@example.com", 20L);
+
+            assertThat(resposta.getAccessToken()).isEqualTo("tokenFilial");
+            assertThat(resposta.getUser().getProfissionalId()).isEqualTo(77L);
+            assertThat(usuario.getUnidadeAtiva()).isSameAs(filial);
+            assertThatThrownBy(() -> authService.trocarUnidade("test@example.com", 30L))
+                    .isInstanceOf(com.belezza.api.exception.ResourceNotFoundException.class);
+        }
+
+        @Test
+        @DisplayName("Recepcionista entra em unidade vinculada: vira a unidade em uso e a anterior fica vinculada")
+        void recepcionista() {
+            usuario.setRole(Role.RECEPCIONISTA);
+            Salon sede = Salon.builder().id(10L).ativo(true).build();
+            Salon filial = Salon.builder().id(20L).ativo(true).build();
+            usuario.setSalon(sede);
+            when(recepcionistaUnidadeRepository.existsByUsuarioIdAndSalonId(1L, 20L)).thenReturn(true);
+            when(recepcionistaUnidadeRepository.existsByUsuarioIdAndSalonId(1L, 10L)).thenReturn(false);
+            when(salonRepository.findById(20L)).thenReturn(Optional.of(filial));
+            when(jwtService.generateAccessToken(usuario, 20L)).thenReturn("tokenFilial");
+
+            authService.trocarUnidade("test@example.com", 20L);
+
+            assertThat(usuario.getSalon()).isSameAs(filial);
+            verify(recepcionistaUnidadeRepository).save(org.mockito.ArgumentMatchers.argThat(v -> v.getSalon() == sede));
         }
     }
 }
