@@ -985,12 +985,36 @@ class AgendamentoServiceTest {
         @Test
         @DisplayName("Profissional não cria agendamento na agenda de um colega")
         void naoCriaNaAgendaDoColega() {
-            when(profissionalService.getProfissionalEntity(1L)).thenReturn(profissional);
             AgendamentoRequest request = AgendamentoRequest.builder().clienteId(1L).profissionalId(1L).servicoId(1L)
                     .dataHora(LocalDateTime.now().plusDays(1).withHour(10).withMinute(0)).build();
 
             assertThatThrownBy(() -> agendamentoService.criar(request, colega))
                     .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Regra geral: profissional não agenda nem na própria agenda")
+        void naoCriaNemNaPropriaAgenda() {
+            AgendamentoRequest request = AgendamentoRequest.builder().clienteId(1L).profissionalId(1L).servicoId(1L)
+                    .dataHora(LocalDateTime.now().plusDays(1).withHour(10).withMinute(0)).build();
+
+            assertThatThrownBy(() -> agendamentoService.criar(request, dono))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class)
+                    .hasMessageContaining("administrador ou à recepção");
+            verifyNoInteractions(profissionalService);
+            verify(agendamentoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Regra geral: profissional não reagenda nem o próprio agendamento")
+        void naoReagendaOProprio() {
+            assertThatThrownBy(() -> agendamentoService.reagendar(1L,
+                    com.belezza.api.dto.agendamento.ReagendamentoRequest.builder()
+                            .novaDataHora(LocalDateTime.now().plusDays(2)).build(), true, false, dono))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class)
+                    .hasMessageContaining("reagendar");
+            assertThat(agendamento.getStatus()).isEqualTo(StatusAgendamento.PENDENTE);
             verify(agendamentoRepository, never()).save(any());
         }
     }

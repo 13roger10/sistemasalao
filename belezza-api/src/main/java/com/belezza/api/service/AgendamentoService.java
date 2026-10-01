@@ -69,6 +69,7 @@ public class AgendamentoService {
     public AgendamentoResponse criar(AgendamentoRequest request, Usuario operador) {
         log.info("Criando agendamento - operador: {}, clienteId fornecido: {}",
                 operador != null ? operador.getId() : "ANONIMO", request.getClienteId());
+        exigirQuemPodeAgendar(operador, "criar");
 
         // Validate request
         if (!request.isValid()) {
@@ -82,7 +83,7 @@ public class AgendamentoService {
         // agendamento não pode confiar cegamente no clienteId do corpo.
         //  - Um CLIENTE só agenda para si mesmo: qualquer clienteId enviado é IGNORADO e
         //    usamos sempre o cliente vinculado ao próprio usuário autenticado.
-        //  - Equipe (ADMIN/RECEPCIONISTA/PROFISSIONAL) ou a superfície pública /api/v1
+        //  - Equipe (ADMIN/RECEPCIONISTA) ou a superfície pública /api/v1
         //    (autenticada por API Key, operador = admin do salão) pode informar clienteId,
         //    mas o cliente PRECISA pertencer ao salão do profissional — impedindo vínculo
         //    entre estabelecimentos e o vazamento de PII de clientes de outro salão.
@@ -121,6 +122,18 @@ public class AgendamentoService {
      * Create appointment with single service (legacy approach).
      */
     @SuppressWarnings("deprecation")
+    /**
+     * Regra geral do sistema: na equipe, só o administrador e a recepção marcam e remarcam
+     * horários; o profissional atende a agenda, mas não agenda nem reagenda. O cliente continua
+     * agendando para si (agendamento online). Vale para todas as rotas, pois todas passam aqui.
+     */
+    private static void exigirQuemPodeAgendar(Usuario operador, String acao) {
+        if (operador != null && operador.getRole() == Role.PROFISSIONAL) {
+            throw new AccessDeniedException("Profissionais não podem " + acao
+                    + " agendamentos. Peça ao administrador ou à recepção.");
+        }
+    }
+
     private AgendamentoResponse criarComServicoUnico(AgendamentoRequest request,
                                                       Profissional profissional, Salon salon, Cliente cliente,
                                                       Usuario operador) {
@@ -912,6 +925,7 @@ public class AgendamentoService {
     @Transactional
     @Auditable(action = "RESCHEDULE", entityType = "Agendamento", captureOldState = true, captureNewState = true)
     public AgendamentoResponse reagendar(Long id, ReagendamentoRequest request, boolean restrictSensitiveData, boolean hideInternalNotes, Usuario operador) {
+        exigirQuemPodeAgendar(operador, "reagendar");
         Agendamento agendamento = getAgendamento(id);
         enforceModificationOwnership(agendamento, operador);
 

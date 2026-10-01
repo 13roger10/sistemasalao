@@ -336,6 +336,7 @@ const DaySchedulePanel = ({
   workingHours,
   formatCurrency,
   formatDuration,
+  podeAgendar = true,
 }: {
   selectedDay: Date;
   appointments: Appointment[];
@@ -345,6 +346,8 @@ const DaySchedulePanel = ({
   workingHours: string[];
   formatCurrency: (value: number) => string;
   formatDuration: (minutes: number) => string;
+  /** Profissional não agenda (só admin e recepção): sem atalhos para criar horário */
+  podeAgendar?: boolean;
 }) => {
   const dayAppointments = appointments.filter(a => {
     const appointmentDate = new Date(a.date);
@@ -443,19 +446,21 @@ const DaySchedulePanel = ({
             <p className="text-gray-500 dark:text-gray-400 mb-4">
               Nenhum agendamento neste dia
             </p>
-            <Button
-              size="sm"
-              onClick={() => onSlotClick("09:00")}
-              leftIcon={<Plus className="h-4 w-4" />}
-            >
-              Novo Agendamento
-            </Button>
+            {podeAgendar && (
+              <Button
+                size="sm"
+                onClick={() => onSlotClick("09:00")}
+                leftIcon={<Plus className="h-4 w-4" />}
+              >
+                Novo Agendamento
+              </Button>
+            )}
           </div>
         )}
       </div>
 
       {/* Horários disponíveis */}
-      {dayAppointments.length > 0 && (
+      {podeAgendar && dayAppointments.length > 0 && (
         <div className="border-t border-gray-200 dark:border-gray-700 p-4">
           <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Horários disponíveis:
@@ -834,6 +839,8 @@ const mensagemDeErro = (error: unknown): string =>
 // ===== COMPONENTE PRINCIPAL =====
 function AppointmentsPageContent() {
   const { user } = useSalonAuth();
+  // Regra geral: na equipe, só o administrador e a recepção agendam (o backend também recusa)
+  const podeAgendar = user?.role !== "PROFESSIONAL";
   const { selectedUnitId } = useUnit();
   const toast = useToast();
 
@@ -1400,6 +1407,7 @@ function AppointmentsPageContent() {
   };
 
   const handleSlotClick = (time: string, professionalId?: string) => {
+    if (!podeAgendar) return;
     setFormErrors({});
     const dateToUse = selectedDay || currentDate;
     setFormData({
@@ -1665,6 +1673,7 @@ function AppointmentsPageContent() {
             >
               Link Público
             </Button>
+            {podeAgendar && (
             <Button
               onClick={() => {
                 setFormErrors({});
@@ -1674,6 +1683,7 @@ function AppointmentsPageContent() {
             >
               Novo Agendamento
             </Button>
+            )}
           </div>
         </div>
 
@@ -1905,6 +1915,7 @@ function AppointmentsPageContent() {
                       workingHours={WORKING_HOURS}
                       formatCurrency={formatCurrency}
                       formatDuration={formatDuration}
+                      podeAgendar={podeAgendar}
                     />
                   ) : (
                     <div className="flex h-96 items-center justify-center rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
@@ -2202,6 +2213,7 @@ function AppointmentsPageContent() {
                 }}
                 rowActions={(item) => (
                   <>
+                    {podeAgendar && (
                     <ActionMenuItem
                       onClick={() => {
                         // Criar agendamento a partir da lista de espera
@@ -2221,6 +2233,7 @@ function AppointmentsPageContent() {
                     >
                       Agendar
                     </ActionMenuItem>
+                    )}
                     <ActionMenuItem
                       onClick={() => handleRemoveFromWaitlist(item.id)}
                       icon={<Trash2 className="h-4 w-4" />}

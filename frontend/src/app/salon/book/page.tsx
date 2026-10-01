@@ -498,6 +498,24 @@ function BookingPageContent() {
     );
   }
 
+  // Regra geral: na equipe, só o administrador e a recepção agendam (o backend também recusa)
+  if (user?.role === 'PROFESSIONAL') {
+    return (
+      <SalonLayout>
+        <div className="mx-auto max-w-md rounded-xl border bg-white p-8 text-center dark:border-gray-800 dark:bg-gray-900">
+          <CalendarIcon className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+          <h1 className="mb-2 text-lg font-semibold text-gray-900 dark:text-white">Agendamentos são feitos pela recepção</h1>
+          <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">
+            Profissionais não marcam nem remarcam horários. Peça ao administrador ou à recepção.
+          </p>
+          <Button variant="outline" onClick={() => router.push("/salon/appointments")}>
+            Ver minha agenda
+          </Button>
+        </div>
+      </SalonLayout>
+    );
+  }
+
   return (
     <SalonLayout>
       <div className="space-y-6">
