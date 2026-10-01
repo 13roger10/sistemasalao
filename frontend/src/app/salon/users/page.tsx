@@ -210,7 +210,7 @@ export default function SalonUsersPage() {
           setShowScheduleSection(true);
         }
         try {
-          const services = await serviceService.getAll({ salonId: "1", status: "active" });
+          const services = await serviceService.getAll({ salonId: salaoAtual(), status: "active" });
           setAvailableServices(services);
         } catch (error) {
           console.error("Erro ao carregar serviços:", error);
@@ -340,7 +340,11 @@ export default function SalonUsersPage() {
 
       await userService.update(selectedUser.id, updateData);
 
-      // Se for profissional, atualizar serviços e horários
+      // Se for profissional, atualizar serviços e horários. Uma falha aqui não pode sumir no
+      // console com o modal fechando como se estivesse tudo salvo: o modal fica aberto com o motivo.
+      const falhas: string[] = [];
+      const motivo = (e: unknown) =>
+        e instanceof Error && e.message ? e.message.replace(/^\[HTTP \d+\]\s*/, "") : "erro desconhecido";
       if (formData.role === "PROFISSIONAL" && selectedUser.profissionalId) {
         // Atualizar serviços vinculados
         try {
@@ -350,15 +354,23 @@ export default function SalonUsersPage() {
             serviceIds: selectedServiceIds,
           });
         } catch (serviceError) {
-          console.error("Erro ao atualizar serviços do profissional:", serviceError);
+          falhas.push(`serviços (${motivo(serviceError)})`);
         }
 
         // Atualizar horários de trabalho
         try {
           await workScheduleService.saveAll(selectedUser.profissionalId, workSchedules);
         } catch (scheduleError) {
-          console.error("Erro ao atualizar horários de trabalho:", scheduleError);
+          falhas.push(`horários (${motivo(scheduleError)})`);
         }
+      }
+
+      if (falhas.length > 0) {
+        loadUsuarios();
+        setFormErrors({
+          submit: `Os dados do usuário foram salvos, mas não foi possível salvar ${falhas.join(" e ")}.`,
+        });
+        return;
       }
 
       setIsEditModalOpen(false);
@@ -913,7 +925,11 @@ export default function SalonUsersPage() {
                 </div>
               ) : (
                 <p className="py-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                  Nenhum serviço disponível
+                  Nenhum serviço cadastrado nesta unidade.{" "}
+                  <a href="/salon/services" className="font-medium text-violet-600 underline dark:text-violet-400">
+                    Cadastre os serviços
+                  </a>{" "}
+                  e depois volte para vinculá-los.
                 </p>
               )}
               {selectedServiceIds.length > 0 && (
@@ -1198,7 +1214,11 @@ export default function SalonUsersPage() {
                 </div>
               ) : (
                 <p className="py-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                  Nenhum serviço disponível
+                  Nenhum serviço cadastrado nesta unidade.{" "}
+                  <a href="/salon/services" className="font-medium text-violet-600 underline dark:text-violet-400">
+                    Cadastre os serviços
+                  </a>{" "}
+                  e depois volte para vinculá-los.
                 </p>
               )}
               {selectedServiceIds.length > 0 && (

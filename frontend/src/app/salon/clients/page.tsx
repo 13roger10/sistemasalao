@@ -684,7 +684,7 @@ export default function ClientsPage() {
     if (!validateNewClientForm()) return;
     setIsCreatingNewClient(true);
     try {
-      const salonId = selectedUnitId ? Number(selectedUnitId) : 1;
+      const salonId = Number(selectedUnitId || salaoAtual());
 
       // 1. Criar o usuário com role CLIENTE
       await userService.create({

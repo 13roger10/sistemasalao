@@ -41,6 +41,7 @@ import type {
   ProfessionalRatingSummary,
   ReviewStats,
 } from "@/types/salon";
+import { salaoAtual } from "@/lib/salao-atual";
 
 // ===== COMPONENTES AUXILIARES =====
 
@@ -688,7 +689,7 @@ export default function ReviewsPage() {
         setReviews(response.data);
       } else {
         // ADMIN / RECEPCIONIST: listagem geral do salão
-        const response = await reviewService.listBySalon('1');
+        const response = await reviewService.listBySalon(salaoAtual());
         setReviews(response.data);
       }
     } catch (error) {

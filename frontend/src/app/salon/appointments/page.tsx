@@ -502,6 +502,21 @@ const DaySchedulePanel = ({
   );
 };
 
+// Unidade sem serviços (ex.: unidade recém-criada — serviços são cadastrados em cada unidade):
+// antes o campo aparecia vazio, sem explicar por que não havia o que selecionar
+const SemServicosNaUnidade = () => (
+  <div className="py-2 text-center text-sm text-gray-600 dark:text-gray-400">
+    <p>Nenhum serviço cadastrado nesta unidade.</p>
+    <p className="mt-1">
+      Cadastre os serviços em{" "}
+      <a href="/salon/services" className="font-medium text-violet-600 underline dark:text-violet-400">
+        Serviços
+      </a>{" "}
+      e vincule-os aos profissionais.
+    </p>
+  </div>
+);
+
 // Time Slot Component
 const TimeSlotCell = ({
   time,
@@ -1265,7 +1280,7 @@ function AppointmentsPageContent() {
         source: "admin",
         clientNotes: formData.clientNotes || undefined,
         internalNotes: formData.internalNotes || undefined,
-        unitId: "1",
+        unitId: salaoAtual(),
       };
 
       await appointmentService.create(input);
@@ -1383,7 +1398,7 @@ function AppointmentsPageContent() {
           ? { start: waitlistFormData.preferredTimeStart, end: waitlistFormData.preferredTimeEnd }
           : undefined,
         notes: waitlistFormData.notes || undefined,
-        unitId: "1",
+        unitId: salaoAtual(),
       };
 
       await appointmentService.waitlist.add(input);
@@ -2346,6 +2361,7 @@ function AppointmentsPageContent() {
             <div className={`max-h-48 space-y-2 overflow-y-auto rounded-lg border p-3 ${
               formErrors.serviceIds ? "border-red-500" : "border-gray-300 dark:border-gray-600"
             }`}>
+              {!services.some((s) => s.status === "active") && <SemServicosNaUnidade />}
               {services
                 .filter((s) => s.status === "active")
                 .map((service) => (
@@ -2811,6 +2827,7 @@ function AppointmentsPageContent() {
               Serviços Desejados *
             </label>
             <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-gray-300 p-3 dark:border-gray-600">
+              {!services.some((s) => s.status === "active") && <SemServicosNaUnidade />}
               {services
                 .filter((s) => s.status === "active")
                 .map((service) => (

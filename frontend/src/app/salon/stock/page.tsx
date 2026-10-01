@@ -64,6 +64,7 @@ import type {
   UnitOfMeasure,
 } from "@/types/salon";
 import type { Status } from "@/types/salon/common";
+import { salaoAtual } from "@/lib/salao-atual";
 
 // ===== COMPONENTES AUXILIARES =====
 
@@ -772,7 +773,7 @@ export default function StockPage() {
       type: "in",
       reason: "purchase",
       quantity: 1,
-      unitId: "1",
+      unitId: salaoAtual(),
     });
     setMovementModalOpen(true);
   };
@@ -832,7 +833,7 @@ export default function StockPage() {
             currentStock: newStock,
             minimumStock: product.minimumStock,
             createdAt: new Date(),
-            unitId: "1",
+            unitId: salaoAtual(),
           };
           setAlerts([newAlert, ...alerts]);
         }
@@ -848,7 +849,7 @@ export default function StockPage() {
             currentStock: newStock,
             minimumStock: product.minimumStock,
             createdAt: new Date(),
-            unitId: "1",
+            unitId: salaoAtual(),
           };
           setAlerts([newAlert, ...alerts]);
         }
@@ -1255,7 +1256,7 @@ export default function StockPage() {
             type: "in",
             reason: "purchase",
             quantity: alert.minimumStock - alert.currentStock,
-            unitId: "1",
+            unitId: salaoAtual(),
           });
           setMovementModalOpen(true);
         }}
