@@ -5,6 +5,7 @@ import com.belezza.api.dto.user.UserResponse;
 import com.belezza.api.entity.Cliente;
 import com.belezza.api.entity.Plano;
 import com.belezza.api.entity.Role;
+import com.belezza.api.entity.Salon;
 import com.belezza.api.entity.Usuario;
 import com.belezza.api.exception.AuthenticationException;
 import com.belezza.api.exception.BusinessException;
@@ -228,6 +229,36 @@ public class AuthService {
         );
     }
 
+    /**
+     * Troca a unidade em que o ADMIN está trabalhando: grava a escolha (vale para o próximo login
+     * e as renovações) e devolve uma sessão nova com o salão no token. A unidade precisa ser do
+     * próprio admin — a de outro dono responde como inexistente — e estar ativa.
+     */
+    @Transactional
+    public AuthResponse trocarUnidade(String email, Long salonId) {
+        Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(email)
+                .orElseThrow(AuthenticationException::invalidToken);
+        if (usuario.getRole() != Role.ADMIN) {
+            throw new AccessDeniedException("Apenas o administrador pode trocar de unidade");
+        }
+        Salon unidade = salonRepository.findByIdAndAdminId(salonId, usuario.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Unidade", salonId));
+        if (!unidade.isAtivo()) {
+            throw new BusinessException("Esta unidade está desativada. Ative-a antes de entrar nela.");
+        }
+
+        usuario.setUnidadeAtiva(unidade);
+        usuarioRepository.save(usuario);
+        log.info("Admin {} passou a trabalhar na unidade {}", usuario.getId(), unidade.getId());
+
+        return AuthResponse.of(
+                buildUserResponse(usuario),
+                jwtService.generateAccessToken(usuario, unidade.getId()),
+                jwtService.generateRefreshToken(usuario),
+                jwtService.getAccessTokenExpiration()
+        );
+    }
+
     private UserResponse buildUserResponse(Usuario usuario) {
         if (usuario.getRole() == Role.PROFISSIONAL) {
             Long profissionalId = profissionalRepository.findByUsuarioId(usuario.getId())
@@ -377,7 +408,9 @@ public class AuthService {
      */
     private Long resolveSalonId(Usuario usuario) {
         return switch (usuario.getRole()) {
-            case ADMIN -> salonRepository.findByAdminId(usuario.getId())
+            // Unidade escolhida (ou a primeira ativa); sem nenhuma ativa, a mais antiga
+            case ADMIN -> salonService.unidadePreferida(usuario)
+                    .or(() -> salonRepository.findFirstByAdminIdOrderByIdAsc(usuario.getId()))
                     .map(s -> s.getId())
                     .orElse(null);
             case PROFISSIONAL -> profissionalRepository.findByUsuarioId(usuario.getId())

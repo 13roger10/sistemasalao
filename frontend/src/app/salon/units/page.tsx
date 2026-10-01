@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import {
   Building2,
@@ -8,132 +8,33 @@ import {
   Search,
   MapPin,
   Phone,
-  Mail,
   Users,
   DollarSign,
-  Star,
-  Settings,
-  Trash2,
   Edit,
   MoreVertical,
-  Clock,
   CheckCircle,
   XCircle,
   Crown,
-  TrendingUp,
-  TrendingDown,
-  ArrowRightLeft,
+  LogIn,
+  Power,
+  Scissors,
+  AlertCircle,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
+import { useUnit } from "@/contexts/UnitContext";
+import { unitService, type Unidade, type UnidadeInput } from "@/services/salon/unitService";
 
-// ===== Types =====
-interface Unit {
-  id: string;
-  name: string;
-  tradeName?: string;
-  phone: string;
-  email?: string;
-  address: {
-    street: string;
-    number: string;
-    neighborhood: string;
-    city: string;
-    state: string;
-    zipCode: string;
-  };
-  status: "active" | "inactive";
-  isHeadquarters: boolean;
-  managerName?: string;
-  totalProfessionals: number;
-  totalClients: number;
-  monthlyRevenue: number;
-  revenueChange: number;
-  averageRating: number;
-  logo?: string;
-  color?: string;
-}
+// Cada unidade é um salão/barbearia independente: equipe, serviços, clientes, agenda e caixa
+// próprios. O admin entra em uma unidade (seletor do topo ou botão "Entrar") e todas as telas
+// passam a mostrar só os dados dela.
 
-// ===== Mock Data =====
-const MOCK_UNITS: Unit[] = [
-  {
-    id: "1",
-    name: "Belezza Centro",
-    tradeName: "Belezza Hair & Beauty",
-    phone: "(11) 3456-7890",
-    email: "centro@belezza.com",
-    address: {
-      street: "Rua das Flores",
-      number: "123",
-      neighborhood: "Centro",
-      city: "Sao Paulo",
-      state: "SP",
-      zipCode: "01234-567",
-    },
-    status: "active",
-    isHeadquarters: true,
-    managerName: "Maria Silva",
-    totalProfessionals: 8,
-    totalClients: 342,
-    monthlyRevenue: 45800,
-    revenueChange: 12.5,
-    averageRating: 4.8,
-    color: "#8B5CF6",
-  },
-  {
-    id: "2",
-    name: "Belezza Jardins",
-    phone: "(11) 3456-7891",
-    email: "jardins@belezza.com",
-    address: {
-      street: "Av. Brasil",
-      number: "456",
-      neighborhood: "Jardins",
-      city: "Sao Paulo",
-      state: "SP",
-      zipCode: "01456-789",
-    },
-    status: "active",
-    isHeadquarters: false,
-    managerName: "Carlos Santos",
-    totalProfessionals: 6,
-    totalClients: 256,
-    monthlyRevenue: 38200,
-    revenueChange: 8.3,
-    averageRating: 4.6,
-    color: "#10B981",
-  },
-  {
-    id: "3",
-    name: "Belezza Moema",
-    phone: "(11) 3456-7892",
-    address: {
-      street: "Rua Gaivota",
-      number: "789",
-      neighborhood: "Moema",
-      city: "Sao Paulo",
-      state: "SP",
-      zipCode: "04567-890",
-    },
-    status: "inactive",
-    isHeadquarters: false,
-    managerName: "Ana Costa",
-    totalProfessionals: 4,
-    totalClients: 128,
-    monthlyRevenue: 0,
-    revenueChange: 0,
-    averageRating: 4.5,
-    color: "#F59E0B",
-  },
-];
+const moeda = (valor: number) =>
+  valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-const MOCK_STATS = {
-  totalUnits: 3,
-  activeUnits: 2,
-  totalRevenue: 84000,
-  totalClients: 726,
-  totalProfessionals: 18,
-};
+const motivo = (err: unknown, padrao: string) =>
+  err instanceof Error && err.message ? err.message.replace(/^\[HTTP \d+\]\s*/, "") : padrao;
 
 // ===== Components =====
 function StatsCard({
@@ -165,9 +66,7 @@ function StatsCard({
         <div>
           <p className="text-sm text-gray-500 dark:text-gray-400">{label}</p>
           <p className="text-xl font-bold text-gray-900 dark:text-white">{value}</p>
-          {subValue && (
-            <p className="text-xs text-gray-500 dark:text-gray-400">{subValue}</p>
-          )}
+          {subValue && <p className="text-xs text-gray-500 dark:text-gray-400">{subValue}</p>}
         </div>
       </div>
     </div>
@@ -176,141 +75,129 @@ function StatsCard({
 
 function UnitCard({
   unit,
+  onEnter,
   onEdit,
-  onSettings,
-  onDelete,
+  onToggleActive,
 }: {
-  unit: Unit;
+  unit: Unidade;
+  onEnter: () => void;
   onEdit: () => void;
-  onSettings: () => void;
-  onDelete: () => void;
+  onToggleActive: () => void;
 }) {
   const [showMenu, setShowMenu] = useState(false);
+  const cidadeUf = [unit.cidade, unit.estado].filter(Boolean).join("/");
 
   return (
-    <div className="rounded-xl border bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+    <div
+      className={cn(
+        "flex flex-col rounded-xl border bg-white p-5 dark:bg-gray-900",
+        unit.atual ? "border-violet-300 ring-1 ring-violet-200 dark:border-violet-700 dark:ring-violet-900" : "dark:border-gray-800"
+      )}
+    >
       {/* Header */}
       <div className="mb-4 flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div
-            className="flex h-12 w-12 items-center justify-center rounded-xl text-white"
-            style={{ backgroundColor: unit.color || "#8B5CF6" }}
-          >
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-violet-500 text-white">
             <Building2 className="h-6 w-6" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-gray-900 dark:text-white">
-                {unit.name}
-              </h3>
-              {unit.isHeadquarters && (
+          <div className="min-w-0">
+            <h3 className="truncate font-semibold text-gray-900 dark:text-white">{unit.nome}</h3>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {unit.sede && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                   <Crown className="h-3 w-3" />
-                  Matriz
+                  Sede
                 </span>
               )}
+              {unit.atual && (
+                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                  Em uso
+                </span>
+              )}
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+                  unit.ativo
+                    ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                    : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                )}
+              >
+                {unit.ativo ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                {unit.ativo ? "Ativa" : "Desativada"}
+              </span>
             </div>
-            {unit.tradeName && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {unit.tradeName}
-              </p>
-            )}
           </div>
         </div>
         <div className="relative">
           <button
             onClick={() => setShowMenu(!showMenu)}
+            aria-label={`Opções da unidade ${unit.nome}`}
             className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
           >
             <MoreVertical className="h-5 w-5" />
           </button>
           {showMenu && (
             <>
-              <div
-                className="fixed inset-0 z-10"
-                onClick={() => setShowMenu(false)}
-              />
-              <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+              <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
+              <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
                 <button
                   onClick={() => {
-                    onEdit();
                     setShowMenu(false);
+                    onEdit();
                   }}
                   className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
                 >
                   <Edit className="h-4 w-4" />
                   Editar
                 </button>
-                <button
-                  onClick={() => {
-                    onSettings();
-                    setShowMenu(false);
-                  }}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-                >
-                  <Settings className="h-4 w-4" />
-                  Configuracoes
-                </button>
-                <hr className="my-1 dark:border-gray-700" />
-                <button
-                  onClick={() => {
-                    onDelete();
-                    setShowMenu(false);
-                  }}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Excluir
-                </button>
+                {!unit.atual && (
+                  <button
+                    onClick={() => {
+                      setShowMenu(false);
+                      onToggleActive();
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-2 px-4 py-2 text-sm",
+                      unit.ativo
+                        ? "text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                        : "text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20"
+                    )}
+                  >
+                    <Power className="h-4 w-4" />
+                    {unit.ativo ? "Desativar" : "Reativar"}
+                  </button>
+                )}
               </div>
             </>
           )}
         </div>
       </div>
 
-      {/* Status */}
-      <div className="mb-4">
-        <span
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
-            unit.status === "active"
-              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-              : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
-          )}
-        >
-          {unit.status === "active" ? (
-            <CheckCircle className="h-3.5 w-3.5" />
-          ) : (
-            <XCircle className="h-3.5 w-3.5" />
-          )}
-          {unit.status === "active" ? "Ativa" : "Inativa"}
-        </span>
-      </div>
-
       {/* Info */}
-      <div className="mb-4 space-y-2">
-        <div className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400">
+      <div className="mb-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
+        <div className="flex items-start gap-2">
           <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <span>
-            {unit.address.street}, {unit.address.number} - {unit.address.neighborhood}
-            <br />
-            {unit.address.city}/{unit.address.state}
+            {unit.endereco || "Endereço não informado"}
+            {cidadeUf && (
+              <>
+                <br />
+                {cidadeUf}
+                {unit.cep ? ` — CEP ${unit.cep}` : ""}
+              </>
+            )}
           </span>
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-          <Phone className="h-4 w-4" />
-          <span>{unit.phone}</span>
-        </div>
-        {unit.email && (
-          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-            <Mail className="h-4 w-4" />
-            <span>{unit.email}</span>
+        {unit.telefone && (
+          <div className="flex items-center gap-2">
+            <Phone className="h-4 w-4" />
+            <span>{unit.telefone}</span>
           </div>
         )}
-        {unit.managerName && (
-          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-            <Users className="h-4 w-4" />
-            <span>Gerente: {unit.managerName}</span>
+        {unit.cnpj && (
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            <span>CNPJ {unit.cnpj}</span>
           </div>
         )}
       </div>
@@ -319,292 +206,175 @@ function UnitCard({
       <div className="grid grid-cols-2 gap-3 border-t pt-4 dark:border-gray-800">
         <div>
           <p className="text-xs text-gray-500 dark:text-gray-400">Profissionais</p>
-          <p className="font-semibold text-gray-900 dark:text-white">
-            {unit.totalProfessionals}
-          </p>
+          <p className="font-semibold text-gray-900 dark:text-white">{unit.totalProfissionais}</p>
         </div>
         <div>
           <p className="text-xs text-gray-500 dark:text-gray-400">Clientes</p>
-          <p className="font-semibold text-gray-900 dark:text-white">
-            {unit.totalClients}
-          </p>
+          <p className="font-semibold text-gray-900 dark:text-white">{unit.totalClientes}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Faturamento</p>
-          <div className="flex items-center gap-1">
-            <p className="font-semibold text-gray-900 dark:text-white">
-              R$ {unit.monthlyRevenue.toLocaleString("pt-BR")}
-            </p>
-            {unit.revenueChange !== 0 && (
-              <span
-                className={cn(
-                  "flex items-center text-xs font-medium",
-                  unit.revenueChange > 0 ? "text-green-600" : "text-red-600"
-                )}
-              >
-                {unit.revenueChange > 0 ? (
-                  <TrendingUp className="h-3 w-3" />
-                ) : (
-                  <TrendingDown className="h-3 w-3" />
-                )}
-                {Math.abs(unit.revenueChange)}%
-              </span>
-            )}
-          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Serviços</p>
+          <p className="font-semibold text-gray-900 dark:text-white">{unit.totalServicos}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Avaliacao</p>
-          <div className="flex items-center gap-1">
-            <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-            <p className="font-semibold text-gray-900 dark:text-white">
-              {unit.averageRating.toFixed(1)}
-            </p>
-          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Faturamento (30 dias)</p>
+          <p className="font-semibold text-gray-900 dark:text-white">{moeda(Number(unit.faturamentoMes) || 0)}</p>
         </div>
+      </div>
+
+      {/* Entrar */}
+      <div className="mt-4 pt-1">
+        {unit.atual ? (
+          <p className="text-center text-sm text-violet-700 dark:text-violet-300">Você está nesta unidade</p>
+        ) : (
+          <button
+            onClick={onEnter}
+            disabled={!unit.ativo}
+            title={unit.ativo ? undefined : "Reative a unidade para entrar nela"}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-violet-200 px-4 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-900/30"
+          >
+            <LogIn className="h-4 w-4" />
+            Entrar nesta unidade
+          </button>
+        )}
       </div>
     </div>
   );
 }
+
+const CAMPO =
+  "w-full rounded-lg border px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-white";
+const ROTULO = "mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300";
 
 function UnitFormModal({
   unit,
   onClose,
   onSave,
 }: {
-  unit?: Unit | null;
+  unit?: Unidade | null;
   onClose: () => void;
-  onSave: (data: Partial<Unit>) => void;
+  onSave: (data: UnidadeInput) => Promise<void>;
 }) {
   const isEditing = !!unit;
-  const [formData, setFormData] = useState({
-    name: unit?.name || "",
-    tradeName: unit?.tradeName || "",
-    phone: unit?.phone || "",
-    email: unit?.email || "",
-    street: unit?.address.street || "",
-    number: unit?.address.number || "",
-    neighborhood: unit?.address.neighborhood || "",
-    city: unit?.address.city || "",
-    state: unit?.address.state || "",
-    zipCode: unit?.address.zipCode || "",
-    managerName: unit?.managerName || "",
-    color: unit?.color || "#8B5CF6",
-    isHeadquarters: unit?.isHeadquarters || false,
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [form, setForm] = useState<Required<UnidadeInput>>({
+    nome: unit?.nome || "",
+    telefone: unit?.telefone || "",
+    cnpj: unit?.cnpj || "",
+    descricao: unit?.descricao || "",
+    endereco: unit?.endereco || "",
+    cidade: unit?.cidade || "",
+    estado: unit?.estado || "",
+    cep: unit?.cep || "",
+  });
+  const campo = (nome: keyof UnidadeInput) => ({
+    id: `unidade-${nome}`,
+    value: form[nome],
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      setForm({ ...form, [nome]: e.target.value }),
+    className: CAMPO,
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({
-      name: formData.name,
-      tradeName: formData.tradeName || undefined,
-      phone: formData.phone,
-      email: formData.email || undefined,
-      address: {
-        street: formData.street,
-        number: formData.number,
-        neighborhood: formData.neighborhood,
-        city: formData.city,
-        state: formData.state,
-        zipCode: formData.zipCode,
-      },
-      managerName: formData.managerName || undefined,
-      color: formData.color,
-      isHeadquarters: formData.isHeadquarters,
-    });
+    setSalvando(true);
+    setErro(null);
+    try {
+      await onSave({ ...form, nome: form.nome.trim(), estado: form.estado.trim().toUpperCase() });
+    } catch (err) {
+      setErro(motivo(err, "Não foi possível salvar a unidade"));
+      setSalvando(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 dark:bg-gray-900">
-        <h2 className="mb-6 text-xl font-bold text-gray-900 dark:text-white">
-          {isEditing ? "Editar Unidade" : "Nova Unidade"}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="unidade-titulo"
+        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 dark:bg-gray-900"
+      >
+        <h2 id="unidade-titulo" className="mb-2 text-xl font-bold text-gray-900 dark:text-white">
+          {isEditing ? "Editar unidade" : "Nova unidade"}
         </h2>
+        {!isEditing && (
+          <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">
+            A nova unidade começa com as regras de agendamento, a comissão padrão e os horários de
+            funcionamento da unidade atual. Profissionais, serviços e clientes são cadastrados em cada
+            unidade.
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Nome da Unidade *
+            <div className="md:col-span-2">
+              <label htmlFor="unidade-nome" className={ROTULO}>
+                Nome da unidade *
               </label>
-              <input
-                type="text"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-                placeholder="Ex: Belezza Centro"
-              />
+              <input type="text" required maxLength={150} placeholder="Ex.: Barbearia Centro" {...campo("nome")} />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Nome Fantasia
+              <label htmlFor="unidade-telefone" className={ROTULO}>
+                Telefone
               </label>
-              <input
-                type="text"
-                value={formData.tradeName}
-                onChange={(e) => setFormData({ ...formData, tradeName: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Telefone *
-              </label>
-              <input
-                type="tel"
-                required
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-                placeholder="(11) 3456-7890"
-              />
+              <input type="tel" maxLength={20} placeholder="(11) 3456-7890" {...campo("telefone")} />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                E-mail
+              <label htmlFor="unidade-cnpj" className={ROTULO}>
+                CNPJ
               </label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-              />
+              <input type="text" maxLength={20} placeholder="00.000.000/0000-00" {...campo("cnpj")} />
             </div>
           </div>
 
           <hr className="dark:border-gray-700" />
-          <h3 className="font-medium text-gray-900 dark:text-white">Endereco</h3>
+          <h3 className="font-medium text-gray-900 dark:text-white">Endereço</h3>
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Rua *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.street}
-                onChange={(e) => setFormData({ ...formData, street: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Numero *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.number}
-                onChange={(e) => setFormData({ ...formData, number: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-              />
-            </div>
+          <div>
+            <label htmlFor="unidade-endereco" className={ROTULO}>
+              Endereço
+            </label>
+            <input type="text" maxLength={300} placeholder="Rua, número, bairro" {...campo("endereco")} />
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Bairro *
+              <label htmlFor="unidade-cidade" className={ROTULO}>
+                Cidade
               </label>
-              <input
-                type="text"
-                required
-                value={formData.neighborhood}
-                onChange={(e) => setFormData({ ...formData, neighborhood: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-              />
+              <input type="text" maxLength={100} {...campo("cidade")} />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Cidade *
+              <label htmlFor="unidade-estado" className={ROTULO}>
+                Estado (UF)
               </label>
-              <input
-                type="text"
-                required
-                value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-              />
+              <input type="text" maxLength={2} placeholder="SP" pattern="[A-Za-z]{2}" title="Sigla com 2 letras" {...campo("estado")} />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Estado *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.state}
-                onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-                maxLength={2}
-                placeholder="SP"
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label htmlFor="unidade-cep" className={ROTULO}>
                 CEP
               </label>
-              <input
-                type="text"
-                value={formData.zipCode}
-                onChange={(e) => setFormData({ ...formData, zipCode: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-                placeholder="01234-567"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Gerente Responsavel
-              </label>
-              <input
-                type="text"
-                value={formData.managerName}
-                onChange={(e) => setFormData({ ...formData, managerName: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-              />
+              <input type="text" maxLength={10} placeholder="01234-567" {...campo("cep")} />
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Cor da Unidade
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={formData.color}
-                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                  className="h-10 w-20 cursor-pointer rounded-lg border"
-                />
-                <span className="text-sm text-gray-500">{formData.color}</span>
-              </div>
-            </div>
-            <div className="flex items-center">
-              <label className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={formData.isHeadquarters}
-                  onChange={(e) =>
-                    setFormData({ ...formData, isHeadquarters: e.target.checked })
-                  }
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Definir como Matriz
-                </span>
-              </label>
-            </div>
+          <div>
+            <label htmlFor="unidade-descricao" className={ROTULO}>
+              Descrição
+            </label>
+            <textarea rows={3} maxLength={500} {...campo("descricao")} />
           </div>
 
-          <div className="flex justify-end gap-3 pt-4">
+          {erro && (
+            <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              {erro}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}
@@ -614,9 +384,10 @@ function UnitFormModal({
             </button>
             <button
               type="submit"
-              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700"
+              disabled={salvando}
+              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60"
             >
-              {isEditing ? "Salvar Alteracoes" : "Criar Unidade"}
+              {salvando ? "Salvando..." : isEditing ? "Salvar alterações" : "Criar unidade"}
             </button>
           </div>
         </form>
@@ -628,51 +399,105 @@ function UnitFormModal({
 // ===== Main Page =====
 export default function UnitsPage() {
   const { isRole } = useSalonAuth();
+  const { selectUnit, reloadUnits } = useUnit();
+  const isAdmin = isRole("ADMIN");
+  const [units, setUnits] = useState<Unidade[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<{ texto: string; unidade?: Unidade } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [showModal, setShowModal] = useState(false);
-  const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
-  const [units, setUnits] = useState(MOCK_UNITS);
+  const [editingUnit, setEditingUnit] = useState<Unidade | null>(null);
 
-  const filteredUnits = units.filter((unit) => {
+  const carregar = useCallback(async () => {
+    try {
+      setUnits(await unitService.list());
+      setErro(null);
+    } catch (err) {
+      setErro(motivo(err, "Erro ao carregar as unidades"));
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAdmin) carregar();
+    else setIsLoading(false);
+  }, [isAdmin, carregar]);
+
+  const termo = searchTerm.trim().toLowerCase();
+  const filteredUnits = units.filter((u) => {
     const matchesSearch =
-      unit.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      unit.address.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      unit.address.neighborhood.toLowerCase().includes(searchTerm.toLowerCase());
+      !termo || [u.nome, u.cidade, u.endereco].some((v) => v?.toLowerCase().includes(termo));
     const matchesStatus =
-      statusFilter === "all" || unit.status === statusFilter;
+      statusFilter === "all" || (statusFilter === "active" ? u.ativo : !u.ativo);
     return matchesSearch && matchesStatus;
   });
 
-  const handleSave = (data: Partial<Unit>) => {
+  const ativas = units.filter((u) => u.ativo);
+  const totais = ativas.reduce(
+    (t, u) => ({
+      profissionais: t.profissionais + u.totalProfissionais,
+      clientes: t.clientes + u.totalClientes,
+      faturamento: t.faturamento + (Number(u.faturamentoMes) || 0),
+    }),
+    { profissionais: 0, clientes: 0, faturamento: 0 }
+  );
+
+  const handleSave = async (data: UnidadeInput) => {
     if (editingUnit) {
-      setUnits(
-        units.map((u) =>
-          u.id === editingUnit.id ? { ...u, ...data } as Unit : u
-        )
-      );
+      await unitService.update(editingUnit.id, data);
+      setAviso({ texto: `Unidade "${data.nome}" atualizada.` });
     } else {
-      const newUnit: Unit = {
-        id: String(Date.now()),
-        status: "active",
-        totalProfessionals: 0,
-        totalClients: 0,
-        monthlyRevenue: 0,
-        revenueChange: 0,
-        averageRating: 0,
-        ...data,
-      } as Unit;
-      setUnits([...units, newUnit]);
+      const nova = await unitService.create(data);
+      setAviso({ texto: `Unidade "${nova.nome}" criada.`, unidade: nova });
     }
     setShowModal(false);
     setEditingUnit(null);
+    await carregar();
+    reloadUnits();
   };
 
-  const handleDelete = (unitId: string) => {
-    if (confirm("Tem certeza que deseja excluir esta unidade?")) {
-      setUnits(units.filter((u) => u.id !== unitId));
+  const entrar = async (unit: Unidade) => {
+    try {
+      await selectUnit(String(unit.id));
+    } catch (err) {
+      setErro(motivo(err, "Não foi possível entrar na unidade"));
     }
   };
+
+  const alternarAtiva = async (unit: Unidade) => {
+    if (
+      unit.ativo &&
+      !confirm(
+        `Desativar a unidade "${unit.nome}"? Ela sai do agendamento online e ninguém mais entra nela. Os dados ficam guardados e você pode reativá-la depois.`
+      )
+    ) {
+      return;
+    }
+    try {
+      if (unit.ativo) await unitService.deactivate(unit.id);
+      else await unitService.activate(unit.id);
+      setAviso({ texto: `Unidade "${unit.nome}" ${unit.ativo ? "desativada" : "reativada"}.` });
+      setErro(null);
+      await carregar();
+      reloadUnits();
+    } catch (err) {
+      setErro(motivo(err, "Não foi possível alterar a unidade"));
+    }
+  };
+
+  if (!isAdmin) {
+    return (
+      <SalonLayout>
+        <div className="rounded-xl border bg-white p-12 text-center dark:border-gray-800 dark:bg-gray-900">
+          <Building2 className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+          <p className="text-gray-600 dark:text-gray-400">Apenas o administrador gerencia as unidades.</p>
+        </div>
+      </SalonLayout>
+    );
+  }
 
   return (
     <SalonLayout>
@@ -680,61 +505,68 @@ export default function UnitsPage() {
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-              Unidades
-            </h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Unidades</h1>
             <p className="text-gray-500 dark:text-gray-400">
-              Gerencie as unidades do seu negocio
+              Cada unidade tem equipe, serviços, clientes, agenda e caixa próprios
             </p>
           </div>
-          {isRole("ADMIN") && (
-            <button
-              onClick={() => {
-                setEditingUnit(null);
-                setShowModal(true);
-              }}
-              className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700"
-            >
-              <Plus className="h-4 w-4" />
-              Nova Unidade
-            </button>
-          )}
+          <button
+            onClick={() => {
+              setEditingUnit(null);
+              setShowModal(true);
+            }}
+            className="flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700"
+          >
+            <Plus className="h-4 w-4" />
+            Nova unidade
+          </button>
         </div>
 
+        {erro && (
+          <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            {erro}
+          </div>
+        )}
+        {aviso && (
+          <div className="flex flex-col gap-2 rounded-lg bg-green-50 p-3 text-sm text-green-800 sm:flex-row sm:items-center sm:justify-between dark:bg-green-900/20 dark:text-green-300">
+            <span className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4" />
+              {aviso.texto}
+            </span>
+            <div className="flex gap-2">
+              {aviso.unidade && (
+                <button
+                  onClick={() => entrar(aviso.unidade!)}
+                  className="rounded-lg bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800"
+                >
+                  Entrar agora para cadastrar a equipe e os serviços
+                </button>
+              )}
+              <button onClick={() => setAviso(null)} className="px-2 text-xs underline">
+                Fechar
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Stats */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatsCard
             icon={Building2}
-            label="Total Unidades"
-            value={MOCK_STATS.totalUnits}
-            subValue={`${MOCK_STATS.activeUnits} ativas`}
+            label="Unidades"
+            value={units.length}
+            subValue={`${ativas.length} ativa${ativas.length === 1 ? "" : "s"}`}
             color="violet"
           />
-          <StatsCard
-            icon={Users}
-            label="Profissionais"
-            value={MOCK_STATS.totalProfessionals}
-            color="blue"
-          />
-          <StatsCard
-            icon={Users}
-            label="Clientes"
-            value={MOCK_STATS.totalClients}
-            color="green"
-          />
+          <StatsCard icon={Scissors} label="Profissionais" value={totais.profissionais} subValue="Nas unidades ativas" color="blue" />
+          <StatsCard icon={Users} label="Clientes" value={totais.clientes} subValue="Nas unidades ativas" color="green" />
           <StatsCard
             icon={DollarSign}
-            label="Faturamento Total"
-            value={`R$ ${MOCK_STATS.totalRevenue.toLocaleString("pt-BR")}`}
-            subValue="Este mes"
+            label="Faturamento"
+            value={moeda(totais.faturamento)}
+            subValue="Últimos 30 dias"
             color="amber"
-          />
-          <StatsCard
-            icon={ArrowRightLeft}
-            label="Transferencias"
-            value="3"
-            subValue="Pendentes"
-            color="blue"
           />
         </div>
 
@@ -744,7 +576,8 @@ export default function UnitsPage() {
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar unidades..."
+              placeholder="Buscar por nome, cidade ou endereço..."
+              aria-label="Buscar unidades"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full rounded-lg border py-2 pl-10 pr-4 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
@@ -762,23 +595,23 @@ export default function UnitsPage() {
                     : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
                 )}
               >
-                {status === "all" ? "Todas" : status === "active" ? "Ativas" : "Inativas"}
+                {status === "all" ? "Todas" : status === "active" ? "Ativas" : "Desativadas"}
               </button>
             ))}
           </div>
         </div>
 
         {/* Units Grid */}
-        {filteredUnits.length === 0 ? (
+        {isLoading ? (
+          <div className="flex justify-center py-12">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
+          </div>
+        ) : filteredUnits.length === 0 ? (
           <div className="rounded-xl border bg-white p-12 text-center dark:border-gray-800 dark:bg-gray-900">
             <Building2 className="mx-auto mb-4 h-12 w-12 text-gray-400" />
-            <h3 className="mb-2 text-lg font-medium text-gray-900 dark:text-white">
-              Nenhuma unidade encontrada
-            </h3>
+            <h3 className="mb-2 text-lg font-medium text-gray-900 dark:text-white">Nenhuma unidade encontrada</h3>
             <p className="text-gray-500 dark:text-gray-400">
-              {searchTerm
-                ? "Tente buscar com outros termos"
-                : "Crie sua primeira unidade para comecar"}
+              {termo || statusFilter !== "all" ? "Tente outros filtros" : "Crie sua primeira unidade para começar"}
             </p>
           </div>
         ) : (
@@ -787,21 +620,18 @@ export default function UnitsPage() {
               <UnitCard
                 key={unit.id}
                 unit={unit}
+                onEnter={() => entrar(unit)}
                 onEdit={() => {
                   setEditingUnit(unit);
                   setShowModal(true);
                 }}
-                onSettings={() => {
-                  // TODO: Open settings modal
-                }}
-                onDelete={() => handleDelete(unit.id)}
+                onToggleActive={() => alternarAtiva(unit)}
               />
             ))}
           </div>
         )}
       </div>
 
-      {/* Modal */}
       {showModal && (
         <UnitFormModal
           unit={editingUnit}

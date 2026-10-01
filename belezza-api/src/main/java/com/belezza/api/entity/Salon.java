@@ -13,7 +13,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Beauty salon entity. Each ADMIN user owns one salon.
+ * Beauty salon entity. Each salon is one unit (unidade): an ADMIN may own several, each with its
+ * own team, services, clients, schedule and cash register.
  */
 @Entity
 @Table(name = "salons", indexes = {
@@ -113,8 +114,8 @@ public class Salon {
     @Builder.Default
     private BigDecimal valorComissaoPadrao = BigDecimal.valueOf(10.00);
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "admin_id", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "admin_id", nullable = false)
     private Usuario admin;
 
     @OneToMany(mappedBy = "salon", cascade = CascadeType.ALL, orphanRemoval = true)

@@ -5,10 +5,13 @@
 // todo cliente HTTP que recebe 401 chama refreshSalonSession() e repete a requisição uma vez.
 // Chamadas simultâneas compartilham a mesma renovação.
 
+import { env } from "./env";
+
 const TOKEN_KEY = "salon_auth_token";
 const REFRESH_TOKEN_KEY = "salon_refresh_token";
 const USER_KEY = "salon_auth_user";
 const TOKEN_EXPIRY_KEY = "salon_token_expiry";
+const UNIDADE_SELECIONADA_KEY = "salon_selected_unit";
 
 /** Evento disparado no window quando o token é renovado fora do SalonAuthContext. */
 export const SESSAO_RENOVADA_EVENT = "salon-sessao-renovada";
@@ -88,4 +91,34 @@ export function refreshSalonSession(): Promise<string | null> {
       });
   }
   return emAndamento;
+}
+
+/**
+ * Entra em outra unidade do admin: o backend confere que a unidade é dele e está ativa, grava a
+ * escolha e devolve tokens novos com o salão dela (o salão de todas as telas vem do token). Vai
+ * direto no backend, sem o cliente HTTP do salão, que registra as respostas no console — e esta
+ * traz os tokens. Lança erro com a mensagem do backend.
+ */
+export async function entrarNaUnidade(unidadeId: number | string): Promise<void> {
+  const chamar = () =>
+    fetch(`${env.apiUrl}/salon/units/${encodeURIComponent(String(unidadeId))}/entrar`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ""}` },
+    });
+
+  let response = await chamar();
+  if (response.status === 401 && (await refreshSalonSession())) {
+    response = await chamar();
+  }
+  const data: { accessToken?: string; refreshToken?: string; expiresIn?: number; message?: string } =
+    await response.json().catch(() => ({}));
+  if (!response.ok || !data.accessToken) {
+    throw new Error(data.message || "Não foi possível entrar na unidade");
+  }
+
+  localStorage.setItem(TOKEN_KEY, data.accessToken);
+  if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+  if (data.expiresIn) localStorage.setItem(TOKEN_EXPIRY_KEY, String(Date.now() + data.expiresIn));
+  localStorage.setItem(UNIDADE_SELECIONADA_KEY, String(unidadeId));
+  gravarCookieSessao(data.accessToken);
 }

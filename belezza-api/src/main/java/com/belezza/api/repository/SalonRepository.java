@@ -12,11 +12,16 @@ import java.util.Optional;
 @Repository
 public interface SalonRepository extends JpaRepository<Salon, Long> {
 
-    Optional<Salon> findByAdminId(Long adminId);
+    // Um admin pode ter várias unidades (cada uma é um salão): a "primeira" é a mais antiga (sede)
+    List<Salon> findByAdminIdOrderByIdAsc(Long adminId);
+
+    Optional<Salon> findFirstByAdminIdOrderByIdAsc(Long adminId);
+
+    Optional<Salon> findFirstByAdminIdAndAtivoTrueOrderByIdAsc(Long adminId);
+
+    Optional<Salon> findByIdAndAdminId(Long id, Long adminId);
 
     Optional<Salon> findByIdAndAtivoTrue(Long id);
-
-    Optional<Salon> findByAdminIdAndAtivoTrue(Long adminId);
 
     boolean existsByAdminId(Long adminId);
 

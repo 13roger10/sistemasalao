@@ -12,6 +12,7 @@ import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.SalonRepository;
 import com.belezza.api.repository.UsuarioRepository;
 import com.belezza.api.repository.ProfissionalRepository;
+import com.belezza.api.security.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -85,7 +87,7 @@ public class SalonService {
         Usuario admin = usuarioRepository.findByEmailAndAtivoTrue(emailAdmin)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", emailAdmin));
 
-        Salon salon = salonRepository.findByAdminIdAndAtivoTrue(admin.getId())
+        Salon salon = unidadeAtualDoAdmin(admin)
                 .orElseThrow(() -> new ResourceNotFoundException("Salão", "admin", emailAdmin));
 
         return SalonResponse.fromEntity(salon);
@@ -162,8 +164,39 @@ public class SalonService {
         Usuario admin = usuarioRepository.findByEmailAndAtivoTrue(emailAdmin)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", emailAdmin));
 
-        return salonRepository.findByAdminIdAndAtivoTrue(admin.getId())
+        return unidadeAtualDoAdmin(admin)
                 .orElseThrow(() -> new ResourceNotFoundException("Salão", "admin", emailAdmin));
+    }
+
+    /**
+     * Unidade em que o admin está trabalhando (ele pode ter várias): a do token da requisição
+     * (claim salonId), se for dele e estiver ativa; senão a da sessão, de {@link #unidadePreferida}.
+     * Assim todas as telas que buscam "o salão do admin" passam a respeitar a unidade escolhida.
+     */
+    public Optional<Salon> unidadeAtualDoAdmin(Usuario admin) {
+        Long doToken = TenantContext.getCurrentTenant();
+        if (doToken != null) {
+            Optional<Salon> salon = salonRepository.findByIdAndAdminId(doToken, admin.getId()).filter(Salon::isAtivo);
+            if (salon.isPresent()) {
+                return salon;
+            }
+        }
+        return unidadePreferida(admin);
+    }
+
+    /**
+     * Unidade que vai no token do login e da renovação: a última escolhida pelo admin (se ainda
+     * for dele e estiver ativa), senão a primeira ativa (a sede).
+     */
+    public Optional<Salon> unidadePreferida(Usuario admin) {
+        Salon escolhida = admin.getUnidadeAtiva();
+        if (escolhida != null) {
+            Optional<Salon> salon = salonRepository.findByIdAndAdminId(escolhida.getId(), admin.getId()).filter(Salon::isAtivo);
+            if (salon.isPresent()) {
+                return salon;
+            }
+        }
+        return salonRepository.findFirstByAdminIdAndAtivoTrueOrderByIdAsc(admin.getId());
     }
 
     private LocalTime parseTime(String time, String defaultTime) {
@@ -210,7 +243,7 @@ public class SalonService {
 
         // If user is ADMIN, get their salon
         if (usuario.getRole() == Role.ADMIN) {
-            Salon salon = salonRepository.findByAdminIdAndAtivoTrue(usuario.getId())
+            Salon salon = unidadeAtualDoAdmin(usuario)
                     .orElseThrow(() -> new BusinessException("Salão não encontrado para o administrador"));
             return salon.getId();
         }

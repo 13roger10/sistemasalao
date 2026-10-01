@@ -36,6 +36,7 @@ class UsuarioServiceTest {
     @Mock private UsuarioRepository usuarioRepository;
     @Mock private ProfissionalRepository profissionalRepository;
     @Mock private SalonRepository salonRepository;
+    @Mock private SalonService salonService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private AgendamentoRepository agendamentoRepository;
     @Mock private ClienteRepository clienteRepository;
@@ -68,9 +69,7 @@ class UsuarioServiceTest {
         recepB = Usuario.builder().id(41L).nome("Recep B").role(Role.RECEPCIONISTA).salon(salonB).ativo(true).build();
 
         lenient().when(usuarioRepository.findByEmailAndAtivoTrue(EMAIL_ADMIN_A)).thenReturn(Optional.of(adminA));
-        lenient().when(salonRepository.findByAdminId(1L)).thenReturn(Optional.of(salonA));
-        lenient().when(salonRepository.findByAdminId(14L)).thenReturn(Optional.empty());
-        lenient().when(salonRepository.findByAdminId(41L)).thenReturn(Optional.empty());
+        lenient().when(salonService.unidadeAtualDoAdmin(adminA)).thenReturn(Optional.of(salonA));
         lenient().when(usuarioRepository.findById(14L)).thenReturn(Optional.of(recepA));
         lenient().when(usuarioRepository.findById(41L)).thenReturn(Optional.of(recepB));
         lenient().when(clienteRepository.findByUsuarioId(any())).thenReturn(List.of());
@@ -93,7 +92,7 @@ class UsuarioServiceTest {
     @Test
     @DisplayName("Admin sem salão não lista ninguém")
     void listarAdminSemSalao() {
-        when(salonRepository.findByAdminId(1L)).thenReturn(Optional.empty());
+        when(salonService.unidadeAtualDoAdmin(adminA)).thenReturn(Optional.empty());
 
         var response = usuarioService.listar(EMAIL_ADMIN_A, null, "x", 0, 10);
 
@@ -373,7 +372,6 @@ class UsuarioServiceTest {
             prof = Profissional.builder().id(8L).usuario(profUser).salon(salonA).ativo(true).build();
             lenient().when(usuarioRepository.findById(20L)).thenReturn(Optional.of(profUser));
             lenient().when(profissionalRepository.findByUsuarioId(20L)).thenReturn(Optional.of(prof));
-            lenient().when(salonRepository.findByAdminId(20L)).thenReturn(Optional.empty());
             lenient().when(salonRepository.findById(1L)).thenReturn(Optional.of(salonA));
             lenient().when(usuarioRepository.save(any(Usuario.class))).thenAnswer(inv -> inv.getArgument(0));
         }

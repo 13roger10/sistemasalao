@@ -45,6 +45,7 @@ public class UsuarioService {
     private final UsuarioRepository usuarioRepository;
     private final ProfissionalRepository profissionalRepository;
     private final SalonRepository salonRepository;
+    private final SalonService salonService;
     private final PasswordEncoder passwordEncoder;
     private final AgendamentoRepository agendamentoRepository;
     private final ClienteRepository clienteRepository;
@@ -415,7 +416,7 @@ public class UsuarioService {
 
         verificarAcessoUsuario(usuarioLogado, usuario);
 
-        if (salonRepository.findByAdminId(usuario.getId()).isPresent()) {
+        if (salonRepository.existsByAdminId(usuario.getId())) {
             throw new BusinessException("Este usuário é administrador de um salão e não pode ser excluído. Desative-o.");
         }
 
@@ -468,8 +469,8 @@ public class UsuarioService {
 
         java.util.Set<Long> saloesAlvo = new java.util.HashSet<>();
         if (usuarioAlvo.getSalon() != null) saloesAlvo.add(usuarioAlvo.getSalon().getId());
-        salonRepository.findByAdminId(usuarioAlvo.getId())
-                .ifPresent(s -> saloesAlvo.add(s.getId()));
+        salonRepository.findByAdminIdOrderByIdAsc(usuarioAlvo.getId())
+                .forEach(s -> saloesAlvo.add(s.getId()));
         clienteRepository.findByUsuarioId(usuarioAlvo.getId())
                 .forEach(c -> saloesAlvo.add(c.getSalon().getId()));
         profissionalRepository.findByUsuarioId(usuarioAlvo.getId())
@@ -542,9 +543,9 @@ public class UsuarioService {
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", email));
     }
 
-    /** Salão administrado pelo usuário (ou, para a equipe, o salão ao qual está vinculado). */
+    /** Unidade em que o admin está trabalhando (ou, para a equipe, o salão ao qual está vinculado). */
     private Long salaoDoAdmin(Usuario usuario) {
-        return salonRepository.findByAdminId(usuario.getId())
+        return salonService.unidadeAtualDoAdmin(usuario)
                 .map(Salon::getId)
                 .orElse(usuario.getSalon() != null ? usuario.getSalon().getId() : null);
     }

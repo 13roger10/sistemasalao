@@ -85,7 +85,7 @@ export function SalonHeader({ onMenuClick, pageTitle }: SalonHeaderProps) {
             >
               <Building2 className="h-4 w-4" />
               <span className="hidden sm:inline">
-                {selectedUnit ? selectedUnit.name : "Todas Unidades"}
+                {selectedUnit ? selectedUnit.name : "Selecionar unidade"}
               </span>
               <ChevronDown className="h-4 w-4" />
             </button>
@@ -103,36 +103,15 @@ export function SalonHeader({ onMenuClick, pageTitle }: SalonHeaderProps) {
                     </p>
                   </div>
                   <div className="max-h-64 overflow-y-auto p-1">
-                    {/* All units option */}
-                    {canViewAllUnits && (
-                      <button
-                        onClick={() => {
-                          selectUnit(null);
-                          setShowUnitSelector(false);
-                        }}
-                        className={cn(
-                          "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
-                          selectedUnitId === null
-                            ? "bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400"
-                            : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-                        )}
-                      >
-                        <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-gray-200 dark:bg-gray-600">
-                          <Building2 className="h-3.5 w-3.5" />
-                        </div>
-                        <span className="flex-1 text-left">Todas Unidades</span>
-                        {selectedUnitId === null && (
-                          <Check className="h-4 w-4 text-violet-600 dark:text-violet-400" />
-                        )}
-                      </button>
-                    )}
-                    {/* Individual units */}
+                    {/* Cada unidade é um salão independente: entrar em outra troca a sessão */}
                     {availableUnits.map((unit) => (
                       <button
                         key={unit.id}
                         onClick={() => {
-                          selectUnit(unit.id);
                           setShowUnitSelector(false);
+                          selectUnit(unit.id).catch((e) =>
+                            alert(e instanceof Error ? e.message : "Não foi possível entrar na unidade")
+                          );
                         }}
                         className={cn(
                           "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
@@ -153,6 +132,17 @@ export function SalonHeader({ onMenuClick, pageTitle }: SalonHeaderProps) {
                         )}
                       </button>
                     ))}
+                  </div>
+                  <div className="border-t p-1 dark:border-gray-700">
+                    <button
+                      onClick={() => {
+                        setShowUnitSelector(false);
+                        router.push("/salon/units");
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-violet-700 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-900/30"
+                    >
+                      Gerenciar unidades
+                    </button>
                   </div>
                 </div>
               </>

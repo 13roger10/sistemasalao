@@ -204,7 +204,7 @@ class AuthServiceTest {
                     new UsernamePasswordAuthenticationToken(usuario, null)
             );
             when(usuarioRepository.findByEmailAndAtivoTrue(anyString())).thenReturn(Optional.of(usuario));
-            when(salonRepository.findByAdminId(1L)).thenReturn(Optional.of(Salon.builder().id(10L).build()));
+            when(salonService.unidadePreferida(usuario)).thenReturn(Optional.of(Salon.builder().id(10L).build()));
             when(jwtService.generateAccessToken(usuario, 10L)).thenReturn("accessToken");
             when(jwtService.generateRefreshToken(any())).thenReturn("refreshToken");
             when(jwtService.getAccessTokenExpiration()).thenReturn(900000L);
@@ -248,7 +248,7 @@ class AuthServiceTest {
             when(jwtService.isRefreshToken(anyString())).thenReturn(true);
             when(jwtService.extractUsername(anyString())).thenReturn("test@example.com");
             when(usuarioRepository.findByEmailAndAtivoTrue(anyString())).thenReturn(Optional.of(usuario));
-            when(salonRepository.findByAdminId(1L)).thenReturn(Optional.of(Salon.builder().id(10L).build()));
+            when(salonService.unidadePreferida(usuario)).thenReturn(Optional.of(Salon.builder().id(10L).build()));
             when(jwtService.generateAccessToken(usuario, 10L)).thenReturn("newAccessToken");
             when(jwtService.generateRefreshToken(any())).thenReturn("newRefreshToken");
             when(jwtService.getAccessTokenExpiration()).thenReturn(900000L);
@@ -317,6 +317,63 @@ class AuthServiceTest {
 
             assertThat(usuario.getResetPasswordToken()).isEqualTo("token-anterior");
             verifyNoInteractions(emailService);
+        }
+    }
+
+    @Nested
+    @DisplayName("Trocar de unidade")
+    class TrocarUnidadeTests {
+
+        @BeforeEach
+        void admin() {
+            when(usuarioRepository.findByEmailAndAtivoTrue("test@example.com")).thenReturn(Optional.of(usuario));
+        }
+
+        @Test
+        @DisplayName("Entra na própria unidade: grava a escolha e o token traz o salão dela")
+        void entraNaPropriaUnidade() {
+            Salon filial = Salon.builder().id(20L).admin(usuario).ativo(true).build();
+            when(salonRepository.findByIdAndAdminId(20L, 1L)).thenReturn(Optional.of(filial));
+            when(jwtService.generateAccessToken(usuario, 20L)).thenReturn("tokenFilial");
+            when(jwtService.generateRefreshToken(usuario)).thenReturn("refresh");
+
+            AuthResponse resposta = authService.trocarUnidade("test@example.com", 20L);
+
+            assertThat(resposta.getAccessToken()).isEqualTo("tokenFilial");
+            assertThat(usuario.getUnidadeAtiva()).isSameAs(filial);
+            verify(usuarioRepository).save(usuario);
+        }
+
+        @Test
+        @DisplayName("Unidade de outro dono responde como inexistente")
+        void unidadeDeOutroDono() {
+            when(salonRepository.findByIdAndAdminId(99L, 1L)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> authService.trocarUnidade("test@example.com", 99L))
+                    .isInstanceOf(com.belezza.api.exception.ResourceNotFoundException.class);
+            verify(jwtService, never()).generateAccessToken(any(), any());
+            assertThat(usuario.getUnidadeAtiva()).isNull();
+        }
+
+        @Test
+        @DisplayName("Unidade desativada não pode ser usada")
+        void unidadeDesativada() {
+            Salon fechada = Salon.builder().id(21L).admin(usuario).ativo(false).build();
+            when(salonRepository.findByIdAndAdminId(21L, 1L)).thenReturn(Optional.of(fechada));
+
+            assertThatThrownBy(() -> authService.trocarUnidade("test@example.com", 21L))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("desativada");
+        }
+
+        @Test
+        @DisplayName("Quem não é admin não troca de unidade")
+        void naoAdmin() {
+            usuario.setRole(Role.RECEPCIONISTA);
+
+            assertThatThrownBy(() -> authService.trocarUnidade("test@example.com", 20L))
+                    .isInstanceOf(AccessDeniedException.class);
+            verifyNoInteractions(jwtService);
         }
     }
 }

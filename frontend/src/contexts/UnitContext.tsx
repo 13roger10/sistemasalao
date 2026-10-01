@@ -9,7 +9,9 @@ import {
   type ReactNode,
 } from "react";
 import { useSalonAuth } from "./SalonAuthContext";
-import { api } from "@/lib/api";
+import { unitService } from "@/services/salon/unitService";
+import { entrarNaUnidade } from "@/lib/session-refresh";
+import { salaoDoToken } from "@/lib/salao-atual";
 
 // ===== Types =====
 interface UnitOption {
@@ -28,7 +30,9 @@ interface UnitContextType {
   availableUnits: UnitOption[];
 
   // Actions
-  selectUnit: (unitId: string | null) => void;
+  selectUnit: (unitId: string) => Promise<void>;
+  /** Recarrega a lista (depois de criar, renomear, ativar ou desativar uma unidade) */
+  reloadUnits: () => void;
 
   // Permissions
   canViewAllUnits: boolean;
@@ -40,18 +44,6 @@ interface UnitContextType {
 
 // ===== Context =====
 const UnitContext = createContext<UnitContextType | undefined>(undefined);
-
-/** Salão do usuário gravado no token de acesso (claim "salonId"). Só leitura: quem valida é o backend. */
-function salaoDoToken(token: string | null | undefined): string | null {
-  if (!token) return null;
-  try {
-    const payload = token.split(".")[1];
-    const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-    return json.salonId != null ? String(json.salonId) : null;
-  } catch {
-    return null;
-  }
-}
 
 // ===== Storage key =====
 const SELECTED_UNIT_KEY = "salon_selected_unit";
@@ -66,6 +58,8 @@ export function UnitProvider({ children }: UnitProviderProps) {
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [availableUnits, setAvailableUnits] = useState<UnitOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [versao, setVersao] = useState(0);
+  const reloadUnits = useCallback(() => setVersao((v) => v + 1), []);
 
   // Check permissions
   const canViewAllUnits = isRole("ADMIN");
@@ -83,22 +77,23 @@ export function UnitProvider({ children }: UnitProviderProps) {
     setIsLoading(true);
 
     if (canViewAllUnits) {
-      // Admin: only their own salon is accessible (backend enforces tenant isolation),
-      // so the unit list comes from the real salon instead of mock units.
+      // Admin: as unidades dele (cada uma é um salão). A selecionada é a do token — a "atual" que
+      // o backend devolve —, não a salva no navegador: é ela que vale em todas as telas.
       let cancelled = false;
-      api
-        .get<{ id: number; nome: string }>("/salons/meu")
-        .then(({ data }) => {
+      unitService
+        .list()
+        .then((unidades) => {
           if (cancelled) return;
-          const unit: UnitOption = { id: String(data.id), name: data.nome, isHeadquarters: true };
-          setAvailableUnits([unit]);
+          const ativas: UnitOption[] = unidades
+            .filter((u) => u.ativo)
+            .map((u) => ({ id: String(u.id), name: u.nome, isHeadquarters: u.sede }));
+          setAvailableUnits(ativas);
 
-          // Drop a stale saved selection (e.g. a unit that doesn't exist / belongs to another salon)
-          const savedUnitId = localStorage.getItem(SELECTED_UNIT_KEY);
-          if (savedUnitId !== unit.id) {
-            localStorage.setItem(SELECTED_UNIT_KEY, unit.id);
-          }
-          setSelectedUnitId(unit.id);
+          const atual = unidades.find((u) => u.atual);
+          const unitId = atual ? String(atual.id) : null;
+          if (unitId) localStorage.setItem(SELECTED_UNIT_KEY, unitId);
+          else localStorage.removeItem(SELECTED_UNIT_KEY);
+          setSelectedUnitId(unitId);
         })
         .catch(() => {
           if (cancelled) return;
@@ -121,23 +116,16 @@ export function UnitProvider({ children }: UnitProviderProps) {
     setAvailableUnits(unidade ? [{ id: unidade, name: "Meu salão", isHeadquarters: true }] : []);
     setSelectedUnitId(unidade || null);
     setIsLoading(false);
-  }, [isAuthenticated, user, canViewAllUnits, token]);
+  }, [isAuthenticated, user, canViewAllUnits, token, versao]);
 
-  // Select unit
-  const selectUnit = useCallback((unitId: string | null) => {
-    if (!canChangeUnit && unitId !== user?.unitId) {
-      // Non-admin can't change to another unit
-      return;
-    }
-
-    setSelectedUnitId(unitId);
-
-    if (unitId) {
-      localStorage.setItem(SELECTED_UNIT_KEY, unitId);
-    } else {
-      localStorage.removeItem(SELECTED_UNIT_KEY);
-    }
-  }, [canChangeUnit, user?.unitId]);
+  // Trocar de unidade (só o admin): o backend emite uma sessão nova com o salão da unidade e a
+  // página recarrega, para todas as telas, notificações e WebSocket passarem a usar a unidade nova.
+  // Lança erro com a mensagem do backend (ex.: unidade desativada).
+  const selectUnit = useCallback(async (unitId: string) => {
+    if (!canChangeUnit || unitId === selectedUnitId) return;
+    await entrarNaUnidade(unitId);
+    window.location.reload();
+  }, [canChangeUnit, selectedUnitId]);
 
   // Get selected unit object
   const selectedUnit = selectedUnitId
@@ -151,6 +139,7 @@ export function UnitProvider({ children }: UnitProviderProps) {
         selectedUnitId,
         availableUnits,
         selectUnit,
+        reloadUnits,
         canViewAllUnits,
         canChangeUnit,
         isLoading,

@@ -66,6 +66,14 @@ public class Usuario implements UserDetails {
     @JoinColumn(name = "salon_id")
     private Salon salon;
 
+    /**
+     * Unidade em que o ADMIN está trabalhando (ele pode ter várias). Define o salão do token no
+     * login e na renovação da sessão; nula enquanto ele não troca de unidade (vale a primeira).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "unidade_ativa_id")
+    private Salon unidadeAtiva;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default
