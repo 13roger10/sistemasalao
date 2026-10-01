@@ -46,6 +46,11 @@ public interface ClienteRepository extends JpaRepository<Cliente, Long> {
     @Query("SELECT COUNT(c) FROM Cliente c WHERE c.salon.id = :salonId AND c.ativo = true")
     long countActiveBySalonId(@Param("salonId") Long salonId);
 
+    // Aniversariantes do mês (clientes ativos do salão com data de nascimento no mês)
+    @Query("SELECT c FROM Cliente c JOIN FETCH c.usuario WHERE c.salon.id = :salonId AND c.ativo = true " +
+           "AND c.dataNascimento IS NOT NULL AND extract(month from c.dataNascimento) = :mes")
+    List<Cliente> findAniversariantesDoMes(@Param("salonId") Long salonId, @Param("mes") int mes);
+
     // Dashboard: Novos clientes no período
     @Query("SELECT COUNT(c) FROM Cliente c WHERE c.salon.id = :salonId " +
            "AND c.criadoEm BETWEEN :inicio AND :fim")

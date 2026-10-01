@@ -405,4 +405,32 @@ class ClienteServiceTest {
             verify(clienteRepository, never()).save(any());
         }
     }
+
+    @Nested
+    @DisplayName("Aniversariantes")
+    class Aniversariantes {
+
+        @Test
+        @DisplayName("Lista do mês em ordem de dia, com idade, se é hoje e o WhatsApp; sem o e-mail provisório")
+        void listaDoMes() {
+            java.time.LocalDate hoje = com.belezza.api.util.Aniversarios.hoje();
+            Usuario ana = Usuario.builder().id(7L).nome("Ana").email("61999@cliente.belezza.ai").telefone("61 3333-0000").build();
+            Cliente depois = Cliente.builder().id(20L).salon(salon).usuario(usuario).whatsapp("61 99999-1111")
+                    .dataNascimento(hoje.withYear(1990).withDayOfMonth(hoje.lengthOfMonth())).build();
+            Cliente deHoje = Cliente.builder().id(21L).salon(salon).usuario(ana)
+                    .dataNascimento(hoje.minusYears(30)).build();
+            when(clienteRepository.findAniversariantesDoMes(1L, hoje.getMonthValue())).thenReturn(List.of(depois, deHoje));
+
+            var lista = clienteService.aniversariantes(1L);
+
+            assertThat(lista).extracting(m -> m.get("id")).containsExactly(21L, 20L);
+            var ana2 = lista.stream().filter(m -> m.get("id").equals(21L)).findFirst().orElseThrow();
+            assertThat(ana2.get("hoje")).isEqualTo(true);
+            assertThat(ana2.get("idade")).isEqualTo(30);
+            assertThat(ana2.get("email")).isNull();
+            assertThat(ana2.get("whatsapp")).isEqualTo("61 3333-0000");
+            var maria = lista.stream().filter(m -> m.get("id").equals(20L)).findFirst().orElseThrow();
+            assertThat(maria.get("whatsapp")).isEqualTo("61 99999-1111");
+        }
+    }
 }

@@ -15,6 +15,21 @@ import { salaoAtual } from "@/lib/salao-atual";
 
 const BASE_PATH = '/clientes';
 
+/** Cliente que faz aniversário no mês (backend: GET /clientes/aniversariantes). */
+export interface Aniversariante {
+  id: number;
+  nome: string;
+  email?: string | null;
+  telefone?: string | null;
+  whatsapp?: string | null;
+  /** AAAA-MM-DD */
+  dataNascimento: string;
+  dia: number;
+  /** Idade que completa neste aniversário */
+  idade: number;
+  hoje: boolean;
+}
+
 /** Unidade do estabelecimento no modal do cliente: vinculado = é cliente dela; atual = a unidade em uso. */
 export interface UnidadeDoCliente {
   id: number;
@@ -99,6 +114,11 @@ export const clientService = {
   // Get client history (appointments, spending, etc.)
   getHistory: (id: string): Promise<ClientHistory> => {
     return api.get<ClientHistory>(`${BASE_PATH}/${id}/history`);
+  },
+
+  // Aniversariantes do mês na unidade atual (marca os de hoje) — admin e recepção
+  aniversariantes: (): Promise<Aniversariante[]> => {
+    return api.get<Aniversariante[]>(`${BASE_PATH}/aniversariantes`);
   },
 
   // Get birthdays

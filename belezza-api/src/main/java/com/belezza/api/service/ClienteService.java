@@ -35,6 +35,7 @@ import com.belezza.api.util.Textos;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -742,6 +743,35 @@ public class ClienteService {
             vinculos.putIfAbsent(c.getSalon().getId(), c);
         }
         return vinculos;
+    }
+
+    /**
+     * Aniversariantes do mês na unidade, em ordem de dia: dia, idade que completam, se é hoje e o
+     * contato (WhatsApp do cadastro do cliente; sem ele, o do usuário ou o telefone).
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> aniversariantes(Long salonId) {
+        LocalDate hoje = com.belezza.api.util.Aniversarios.hoje();
+        return clienteRepository.findAniversariantesDoMes(salonId, hoje.getMonthValue()).stream()
+                .sorted(Comparator.comparing((Cliente c) -> c.getDataNascimento().getDayOfMonth())
+                        .thenComparing(c -> c.getUsuario().getNome(), String.CASE_INSENSITIVE_ORDER))
+                .map(c -> {
+                    Usuario u = c.getUsuario();
+                    String whatsapp = c.getWhatsapp() != null && !c.getWhatsapp().isBlank() ? c.getWhatsapp()
+                            : u.getWhatsapp() != null && !u.getWhatsapp().isBlank() ? u.getWhatsapp() : u.getTelefone();
+                    Map<String, Object> item = new java.util.LinkedHashMap<>();
+                    item.put("id", c.getId());
+                    item.put("nome", u.getNome());
+                    item.put("email", u.getEmail() != null && !u.getEmail().endsWith("@cliente.belezza.ai") ? u.getEmail() : null);
+                    item.put("telefone", u.getTelefone());
+                    item.put("whatsapp", whatsapp);
+                    item.put("dataNascimento", c.getDataNascimento().toString());
+                    item.put("dia", c.getDataNascimento().getDayOfMonth());
+                    item.put("idade", com.belezza.api.util.Aniversarios.idadeQueCompleta(c.getDataNascimento(), hoje));
+                    item.put("hoje", com.belezza.api.util.Aniversarios.ehHoje(c.getDataNascimento(), hoje));
+                    return item;
+                })
+                .toList();
     }
 
     public Cliente getOrCreateCliente(Long salonId, String emailUsuario) {

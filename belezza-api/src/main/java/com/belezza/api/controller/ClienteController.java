@@ -64,6 +64,15 @@ public class ClienteController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @GetMapping("/aniversariantes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
+    @Operation(summary = "Aniversariantes do mês", description = "Clientes da unidade que fazem aniversário no mês (marca os de hoje)")
+    public ResponseEntity<List<Map<String, Object>>> aniversariantes() {
+        Long salonId = TenantContext.getCurrentTenant();
+        tenantIsolationService.assertStaffTenant(salonId);
+        return ResponseEntity.ok(clienteService.aniversariantes(salonId));
+    }
+
     @GetMapping("/meus-saloes")
     @PreAuthorize("hasRole('CLIENTE')")
     @Operation(summary = "Meus salões", description = "Salões em que o cliente logado está cadastrado (o mais recente primeiro)")

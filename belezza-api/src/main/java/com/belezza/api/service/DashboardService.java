@@ -331,6 +331,14 @@ public class DashboardService {
     /**
      * Calculate client metrics.
      */
+    /** Clientes ativos do salão que fazem aniversário hoje (29/02 conta em 28/02 fora do ano bissexto). */
+    private long aniversariantesHoje(Long salonId) {
+        java.time.LocalDate hoje = com.belezza.api.util.Aniversarios.hoje();
+        return clienteRepository.findAniversariantesDoMes(salonId, hoje.getMonthValue()).stream()
+                .filter(c -> com.belezza.api.util.Aniversarios.ehHoje(c.getDataNascimento(), hoje))
+                .count();
+    }
+
     private ClientesDTO calcularMetricasClientes(Long salonId, LocalDateTime inicio, LocalDateTime fim) {
         long totalCadastrados = clienteRepository.countActiveBySalonId(salonId);
         long novosNoPeriodo = clienteRepository.countNovosBySalonIdAndPeriod(salonId, inicio, fim);
@@ -369,7 +377,7 @@ public class DashboardService {
                 .atendidosNoPeriodo((int) atendidosNoPeriodo)
                 .recorrentes(recorrentes.intValue())
                 .taxaRetorno(taxaRetorno)
-                .aniversariantes(0) // Not implemented yet - requires dataNascimento field
+                .aniversariantes((int) aniversariantesHoje(salonId))
                 .emProgramaFidelidade(0) // Will be implemented in Sprint 8
                 .fidelidadeCompleta(0) // Will be implemented in Sprint 8
                 .build();

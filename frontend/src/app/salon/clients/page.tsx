@@ -39,6 +39,8 @@ import { api, ApiException } from "@/services/salon/api";
 import { userService } from "@/services/user";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import { VinculoUnidadesCliente, type VinculoUnidadesClienteRef } from "@/components/salon/VinculoUnidadesCliente";
+import { AniversariantesModal } from "@/components/salon/AniversariantesModal";
+import type { Aniversariante } from "@/services/salon/clientService";
 import { useUnit } from "@/contexts/UnitContext";
 
 // Tipo para usuário do backend
@@ -136,22 +138,40 @@ const StatsCard = ({
   label,
   value,
   color,
+  subValue,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
   color: string;
-}) => (
-  <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+  subValue?: string;
+  /** Card clicável (ex.: abre os aniversariantes) */
+  onClick?: () => void;
+}) => {
+  const conteudo = (
     <div className="flex items-center gap-3">
       <div className={`rounded-lg p-2 ${color}`}>{icon}</div>
       <div>
         <p className="text-sm text-gray-500 dark:text-gray-400">{label}</p>
         <p className="text-xl font-semibold text-gray-900 dark:text-white">{value}</p>
+        {subValue && <p className="text-xs text-gray-500 dark:text-gray-400">{subValue}</p>}
       </div>
     </div>
-  </div>
-);
+  );
+  const classe = "rounded-lg border border-gray-200 bg-white p-4 text-left dark:border-gray-700 dark:bg-gray-800";
+  return onClick ? (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`${classe} transition-colors hover:border-violet-300 hover:bg-violet-50/40 dark:hover:border-violet-700 dark:hover:bg-violet-900/10`}
+    >
+      {conteudo}
+    </button>
+  ) : (
+    <div className={classe}>{conteudo}</div>
+  );
+};
 
 // Componente de Progresso de Fidelidade (10 cortes = 1 grátis)
 const LoyaltyProgress = ({ current, total = 10 }: { current: number; total?: number }) => {
@@ -214,7 +234,26 @@ export default function ClientsPage() {
   const toast = useToast();
   const mensagemErro = (error: unknown) =>
     error instanceof Error ? error.message.replace(/^\[HTTP \d+\]\s*/, "") : "Tente novamente.";
-  const { selectedUnitId } = useUnit();
+  const { selectedUnitId, salonName } = useUnit();
+
+  // Aniversariantes do dia e do mês (admin e recepção: o modal mostra os contatos)
+  const [aniversariantes, setAniversariantes] = useState<Aniversariante[]>([]);
+  const [carregandoAniversariantes, setCarregandoAniversariantes] = useState(false);
+  const [erroAniversariantes, setErroAniversariantes] = useState<string | null>(null);
+  const [isAniversariantesOpen, setIsAniversariantesOpen] = useState(false);
+  useEffect(() => {
+    if (!podeVincularUnidades) return;
+    let ativo = true;
+    setCarregandoAniversariantes(true);
+    setErroAniversariantes(null);
+    clientService
+      .aniversariantes()
+      .then((lista) => { if (ativo) setAniversariantes(lista); })
+      .catch(() => { if (ativo) setErroAniversariantes("Não foi possível carregar os aniversariantes"); })
+      .finally(() => { if (ativo) setCarregandoAniversariantes(false); });
+    return () => { ativo = false; };
+  }, [podeVincularUnidades, selectedUnitId]);
+  const aniversariantesHoje = aniversariantes.filter((a) => a.hoje).length;
   const isProfessional = user?.role === 'PROFESSIONAL';
 
   // Estados de listagem
@@ -979,7 +1018,9 @@ export default function ClientsPage() {
           <StatsCard
             icon={<Calendar className="h-5 w-5 text-blue-500" />}
             label="Aniversariantes Hoje"
-            value={0}
+            value={podeVincularUnidades ? aniversariantesHoje : "—"}
+            subValue={podeVincularUnidades ? `${aniversariantes.length} no mês · ver lista` : undefined}
+            onClick={podeVincularUnidades ? () => setIsAniversariantesOpen(true) : undefined}
             color="bg-blue-100 dark:bg-blue-900/30"
           />
           <StatsCard
@@ -1636,6 +1677,17 @@ export default function ClientsPage() {
           )}
         </div>
       </Modal>
+
+      {/* Aniversariantes do dia e do mês */}
+      <AniversariantesModal
+        isOpen={isAniversariantesOpen}
+        onClose={() => setIsAniversariantesOpen(false)}
+        aniversariantes={aniversariantes}
+        carregando={carregandoAniversariantes}
+        erro={erroAniversariantes}
+        salonName={salonName}
+        abaInicial={aniversariantesHoje > 0 ? "hoje" : "mes"}
+      />
 
       {/* Modal de Histórico */}
       <Modal
