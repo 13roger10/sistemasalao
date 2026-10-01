@@ -45,7 +45,7 @@ interface ProfissionalBackend {
 function mapProfessional(data: ProfissionalBackend): Professional {
   return {
     id: String(data.id),
-    userId: String(data.usuarioId),
+    userId: data.usuarioId != null ? String(data.usuarioId) : '', // o cliente não recebe o id de usuário do profissional
     name: data.nome || '',
     email: data.email || '',
     phone: data.telefone || '',

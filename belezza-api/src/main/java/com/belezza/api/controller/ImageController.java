@@ -2,8 +2,9 @@ package com.belezza.api.controller;
 
 import com.belezza.api.dto.imagem.*;
 import com.belezza.api.entity.StyleType;
-import com.belezza.api.security.annotation.Authenticated;
+import com.belezza.api.security.annotation.EquipeOnly;
 import com.belezza.api.service.ImageService;
+import com.belezza.api.service.TenantIsolationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -35,9 +36,10 @@ import java.util.List;
 public class ImageController {
 
     private final ImageService imageService;
+    private final TenantIsolationService tenantIsolationService;
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Authenticated
+    @EquipeOnly
     @Operation(summary = "Upload a new image", description = "Upload an image file to the system. Max size: 10MB. Formats: JPEG, PNG, WebP.")
     public ResponseEntity<ImagemUploadResponse> upload(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
@@ -45,6 +47,8 @@ public class ImageController {
         @Parameter(description = "Optional description") @RequestParam(required = false) String descricao,
         @AuthenticationPrincipal UserDetails userDetails
     ) {
+        // Imagens são do salão: só a equipe dele (antes qualquer usuário trocava o salonId)
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Upload request for salon: {}", salonId);
 
         Long usuarioId = extractUsuarioId(userDetails);
@@ -54,12 +58,14 @@ public class ImageController {
     }
 
     @GetMapping("/{id}")
-    @Authenticated
+    @EquipeOnly
     @Operation(summary = "Get image by ID", description = "Retrieve image details including all versions")
     public ResponseEntity<ImagemResponse> getById(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Image ID") @PathVariable Long id
     ) {
+        // Imagens são do salão: só a equipe dele (antes qualquer usuário trocava o salonId)
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Get image: {} for salon: {}", id, salonId);
 
         ImagemResponse response = imageService.getById(salonId, id);
@@ -67,12 +73,14 @@ public class ImageController {
     }
 
     @GetMapping
-    @Authenticated
+    @EquipeOnly
     @Operation(summary = "List images", description = "List all images for a salon with pagination")
     public ResponseEntity<Page<ImagemResponse>> list(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @PageableDefault(size = 20, sort = "criadoEm") Pageable pageable
     ) {
+        // Imagens são do salão: só a equipe dele (antes qualquer usuário trocava o salonId)
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("List images for salon: {}", salonId);
 
         Page<ImagemResponse> response = imageService.listBySalon(salonId, pageable);
@@ -80,12 +88,14 @@ public class ImageController {
     }
 
     @PostMapping("/{id}/enhance")
-    @Authenticated
+    @EquipeOnly
     @Operation(summary = "Enhance image", description = "Enhance image quality using AI (face restoration, denoising, etc.)")
     public ResponseEntity<ImagemResponse> enhance(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Image ID") @PathVariable Long id
     ) {
+        // Imagens são do salão: só a equipe dele (antes qualquer usuário trocava o salonId)
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Enhance image: {} for salon: {}", id, salonId);
 
         ImagemResponse response = imageService.enhance(salonId, id);
@@ -93,12 +103,14 @@ public class ImageController {
     }
 
     @PostMapping("/{id}/remove-background")
-    @Authenticated
+    @EquipeOnly
     @Operation(summary = "Remove background", description = "Remove background from image using AI")
     public ResponseEntity<ImagemResponse> removeBackground(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Image ID") @PathVariable Long id
     ) {
+        // Imagens são do salão: só a equipe dele (antes qualquer usuário trocava o salonId)
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Remove background for image: {} in salon: {}", id, salonId);
 
         ImagemResponse response = imageService.removeBackground(salonId, id);
@@ -106,13 +118,15 @@ public class ImageController {
     }
 
     @PostMapping("/{id}/blur-background")
-    @Authenticated
+    @EquipeOnly
     @Operation(summary = "Blur background", description = "Blur image background while keeping subject sharp")
     public ResponseEntity<ImagemResponse> blurBackground(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Image ID") @PathVariable Long id,
         @Valid @RequestBody ImageProcessRequest request
     ) {
+        // Imagens são do salão: só a equipe dele (antes qualquer usuário trocava o salonId)
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Blur background for image: {} in salon: {} with intensity: {}",
             id, salonId, request.getBlurIntensity());
 
@@ -122,13 +136,15 @@ public class ImageController {
     }
 
     @PostMapping("/{id}/apply-style")
-    @Authenticated
+    @EquipeOnly
     @Operation(summary = "Apply style", description = "Apply an artistic style to the image")
     public ResponseEntity<ImagemResponse> applyStyle(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Image ID") @PathVariable Long id,
         @Valid @RequestBody ImageProcessRequest request
     ) {
+        // Imagens são do salão: só a equipe dele (antes qualquer usuário trocava o salonId)
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Apply style: {} to image: {} in salon: {}",
             request.getStyle(), id, salonId);
 
@@ -138,13 +154,15 @@ public class ImageController {
     }
 
     @PostMapping("/{id}/upscale")
-    @Authenticated
+    @EquipeOnly
     @Operation(summary = "Upscale image", description = "Increase image resolution using AI (2x or 4x)")
     public ResponseEntity<ImagemResponse> upscale(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Image ID") @PathVariable Long id,
         @Valid @RequestBody ImageProcessRequest request
     ) {
+        // Imagens são do salão: só a equipe dele (antes qualquer usuário trocava o salonId)
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Upscale image: {} in salon: {} by factor: {}",
             id, salonId, request.getUpscaleFactor());
 
@@ -154,12 +172,14 @@ public class ImageController {
     }
 
     @GetMapping("/{id}/versions")
-    @Authenticated
+    @EquipeOnly
     @Operation(summary = "Get image versions", description = "Retrieve all edit versions of an image")
     public ResponseEntity<List<ImagemVersaoResponse>> getVersions(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Image ID") @PathVariable Long id
     ) {
+        // Imagens são do salão: só a equipe dele (antes qualquer usuário trocava o salonId)
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Get versions for image: {} in salon: {}", id, salonId);
 
         List<ImagemVersaoResponse> versions = imageService.getVersions(salonId, id);
@@ -167,13 +187,15 @@ public class ImageController {
     }
 
     @PostMapping("/{id}/restore/{versionId}")
-    @Authenticated
+    @EquipeOnly
     @Operation(summary = "Restore version", description = "Restore image to a specific version")
     public ResponseEntity<ImagemResponse> restoreVersion(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Image ID") @PathVariable Long id,
         @Parameter(description = "Version ID") @PathVariable Long versionId
     ) {
+        // Imagens são do salão: só a equipe dele (antes qualquer usuário trocava o salonId)
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Restore image: {} to version: {} in salon: {}", id, versionId, salonId);
 
         ImagemResponse response = imageService.restoreVersion(salonId, id, versionId);
@@ -181,12 +203,14 @@ public class ImageController {
     }
 
     @DeleteMapping("/{id}")
-    @Authenticated
+    @EquipeOnly
     @Operation(summary = "Delete image", description = "Soft delete an image")
     public ResponseEntity<Void> delete(
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Image ID") @PathVariable Long id
     ) {
+        // Imagens são do salão: só a equipe dele (antes qualquer usuário trocava o salonId)
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Delete image: {} in salon: {}", id, salonId);
 
         imageService.delete(salonId, id);
@@ -194,7 +218,7 @@ public class ImageController {
     }
 
     @PostMapping("/{id}/generate-versions")
-    @Authenticated
+    @EquipeOnly
     @Operation(summary = "Generate image versions",
                description = "Generate cropped versions for different social media platforms: " +
                            "1:1 (Instagram Feed), 4:5 (Instagram Portrait), 9:16 (Stories/Reels), 16:9 (Facebook Cover)")
@@ -202,6 +226,8 @@ public class ImageController {
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Image ID") @PathVariable Long id
     ) {
+        // Imagens são do salão: só a equipe dele (antes qualquer usuário trocava o salonId)
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Generate versions for image: {} in salon: {}", id, salonId);
 
         ImageVersionsResponse response = imageService.generateVersions(salonId, id);

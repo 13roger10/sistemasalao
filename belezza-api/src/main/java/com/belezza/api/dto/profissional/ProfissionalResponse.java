@@ -86,4 +86,15 @@ public class ProfissionalResponse {
 
         return builder.build();
     }
+
+    /**
+     * Para clientes: sem e-mail, telefone e id de usuário do profissional — dados pessoais da
+     * equipe que o cliente não precisa para agendar.
+     */
+    public ProfissionalResponse semDadosDeContato() {
+        this.email = null;
+        this.telefone = null;
+        this.usuarioId = null;
+        return this;
+    }
 }

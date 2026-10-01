@@ -4,7 +4,7 @@ import com.belezza.api.dto.imagem.CaptionGenerateRequest;
 import com.belezza.api.dto.imagem.CaptionResponse;
 import com.belezza.api.dto.imagem.CaptionVariationsResponse;
 import com.belezza.api.integration.CaptionAIService;
-import com.belezza.api.security.annotation.Authenticated;
+import com.belezza.api.security.annotation.EquipeOnly;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -33,7 +33,7 @@ public class CaptionController {
     private final CaptionAIService captionAIService;
 
     @PostMapping("/generate")
-    @Authenticated
+    @EquipeOnly // IA paga pelo salão: só a equipe (antes qualquer cliente logado podia gastar os créditos)
     @Operation(
         summary = "Generate caption",
         description = "Generate an AI-powered caption for a social media post. " +
@@ -67,7 +67,7 @@ public class CaptionController {
     }
 
     @PostMapping("/generate-variations")
-    @Authenticated
+    @EquipeOnly // IA paga pelo salão: só a equipe (antes qualquer cliente logado podia gastar os créditos)
     @Operation(
         summary = "Generate caption variations",
         description = "Generate multiple caption variations for A/B testing. " +

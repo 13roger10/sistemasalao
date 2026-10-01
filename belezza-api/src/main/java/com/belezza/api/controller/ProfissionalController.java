@@ -7,6 +7,7 @@ import com.belezza.api.dto.profissional.ProfissionalRequest;
 import com.belezza.api.dto.profissional.ProfissionalResponse;
 import com.belezza.api.entity.CategoriaProfissional;
 import com.belezza.api.entity.NivelProfissional;
+import com.belezza.api.entity.Role;
 import com.belezza.api.entity.Usuario;
 import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.service.IndisponibilidadeService;
@@ -75,10 +76,11 @@ public class ProfissionalController {
     public ResponseEntity<List<ProfissionalResponse>> listarPorCategoria(
             @PathVariable Long salonId,
             @PathVariable CategoriaProfissional categoria,
-            @RequestParam(required = false, defaultValue = "true") Boolean ativo) {
+            @RequestParam(required = false, defaultValue = "true") Boolean ativo,
+            @AuthenticationPrincipal Usuario quem) {
         tenantIsolationService.assertRequestedSalon(salonId);
         List<ProfissionalResponse> response = profissionalService.listarPorCategoria(salonId, categoria, ativo);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(paraQuemPede(response, quem));
     }
 
     @PostMapping
@@ -93,34 +95,46 @@ public class ProfissionalController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Buscar profissional", description = "Busca um profissional por ID")
-    public ResponseEntity<ProfissionalResponse> buscarPorId(@PathVariable Long id) {
+    public ResponseEntity<ProfissionalResponse> buscarPorId(@PathVariable Long id, @AuthenticationPrincipal Usuario quem) {
         ProfissionalResponse response = profissionalService.buscarPorId(id);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(podeVerContato(quem) ? response : response.semDadosDeContato());
     }
 
     @GetMapping("/salon/{salonId}")
     @Operation(summary = "Listar por salão", description = "Lista profissionais de um salão. Use ativo=true/false para filtrar, ou omita para listar todos.")
     public ResponseEntity<List<ProfissionalResponse>> listarPorSalon(
             @PathVariable Long salonId,
-            @RequestParam(required = false) Boolean ativo) {
+            @RequestParam(required = false) Boolean ativo,
+            @AuthenticationPrincipal Usuario quem) {
         tenantIsolationService.assertRequestedSalon(salonId);
         List<ProfissionalResponse> response = profissionalService.listarPorSalon(salonId, ativo);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(paraQuemPede(response, quem));
     }
 
     @GetMapping("/servico/{servicoId}")
     @Operation(summary = "Listar por serviço", description = "Lista profissionais que realizam um serviço")
-    public ResponseEntity<List<ProfissionalResponse>> listarPorServico(@PathVariable Long servicoId) {
+    public ResponseEntity<List<ProfissionalResponse>> listarPorServico(@PathVariable Long servicoId,
+                                                                       @AuthenticationPrincipal Usuario quem) {
         List<ProfissionalResponse> response = profissionalService.listarPorServico(servicoId);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(paraQuemPede(response, quem));
     }
 
     @GetMapping("/salon/{salonId}/disponiveis")
     @Operation(summary = "Listar disponíveis online", description = "Lista profissionais que aceitam agendamento online")
-    public ResponseEntity<List<ProfissionalResponse>> listarDisponiveisOnline(@PathVariable Long salonId) {
+    public ResponseEntity<List<ProfissionalResponse>> listarDisponiveisOnline(@PathVariable Long salonId,
+                                                                              @AuthenticationPrincipal Usuario quem) {
         tenantIsolationService.assertRequestedSalon(salonId);
         List<ProfissionalResponse> response = profissionalService.listarDisponiveisOnline(salonId);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(paraQuemPede(response, quem));
+    }
+
+    /** E-mail e telefone pessoais da equipe só para a equipe; o cliente vê nome, foto, serviços e bio. */
+    private static boolean podeVerContato(Usuario quem) {
+        return quem != null && quem.getRole() != Role.CLIENTE;
+    }
+
+    private static List<ProfissionalResponse> paraQuemPede(List<ProfissionalResponse> lista, Usuario quem) {
+        return podeVerContato(quem) ? lista : lista.stream().map(ProfissionalResponse::semDadosDeContato).toList();
     }
 
     @PutMapping("/me")
