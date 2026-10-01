@@ -40,6 +40,7 @@ import { userService } from "@/services/user";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import { VinculoUnidadesCliente, type VinculoUnidadesClienteRef } from "@/components/salon/VinculoUnidadesCliente";
 import { AniversariantesModal } from "@/components/salon/AniversariantesModal";
+import { FichaUsuarioModal } from "@/components/salon/FichaUsuarioModal";
 import type { Aniversariante } from "@/services/salon/clientService";
 import { useUnit } from "@/contexts/UnitContext";
 
@@ -254,6 +255,8 @@ export default function ClientsPage() {
     return () => { ativo = false; };
   }, [podeVincularUnidades, selectedUnitId]);
   const aniversariantesHoje = aniversariantes.filter((a) => a.hoje).length;
+  // Ficha do cliente (clique na linha): admin, recepção e profissional — este sem contatos
+  const [fichaCliente, setFichaCliente] = useState<Client | null>(null);
   const isProfessional = user?.role === 'PROFESSIONAL';
 
   // Estados de listagem
@@ -1086,6 +1089,7 @@ export default function ClientsPage() {
             data={clients}
             columns={columns}
             keyExtractor={(item) => item.id}
+            onRowClick={(item) => item.usuarioId && setFichaCliente(item)}
             isLoading={isLoading}
             emptyMessage="Nenhum cliente encontrado"
             emptyAction={{
@@ -1677,6 +1681,18 @@ export default function ClientsPage() {
           )}
         </div>
       </Modal>
+
+      {/* Ficha do cliente: dados e agenda */}
+      <FichaUsuarioModal
+        usuarioId={fichaCliente?.usuarioId ?? null}
+        onClose={() => setFichaCliente(null)}
+        onEditar={podeVincularUnidades ? () => {
+          const cliente = fichaCliente;
+          setFichaCliente(null);
+          if (cliente) openEditModal(cliente);
+        } : undefined}
+        rotuloEditar="Editar cliente"
+      />
 
       {/* Aniversariantes do dia e do mês */}
       <AniversariantesModal

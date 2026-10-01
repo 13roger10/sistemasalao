@@ -9,6 +9,8 @@ export type ClientStatus = Status | 'blocked';
 
 export interface Client extends Timestamps, SoftDelete {
   id: ID;
+  /** Id do usuário (conta) do cliente — abre a ficha */
+  usuarioId?: number;
   name: string;
   email?: string;
   phone: string;

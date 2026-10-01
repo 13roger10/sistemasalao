@@ -34,6 +34,7 @@ import { useToast } from "@/components/ui/Toast";
 import { contemTexto } from "@/utils/texto";
 import type { Professional, ProfessionalCreateInput, ProfessionalUpdateInput, Service } from "@/types/salon";
 import { salaoAtual } from "@/lib/salao-atual";
+import { FichaUsuarioModal } from "@/components/salon/FichaUsuarioModal";
 
 // Tipo para usuário do backend
 interface User {
@@ -101,6 +102,8 @@ const StatsCard = ({
 export default function ProfessionalsPage() {
   const { user } = useSalonAuth();
   const isAdmin = user?.role === "ADMIN";
+  // Ficha do profissional (clique na linha): dados e agenda
+  const [fichaProfissionalUsuarioId, setFichaProfissionalUsuarioId] = useState<number | null>(null);
   const { selectedUnitId } = useUnit();
 
   // Estados de listagem
@@ -526,17 +529,22 @@ export default function ProfessionalsPage() {
   ];
 
   return (
-    <SalonLayout requiredRole={["ADMIN"]} pageTitle="Profissionais">
+    // Recepção consulta (abre a ficha); criar, editar e desativar é do admin (o backend também restringe)
+    <SalonLayout requiredRole={["ADMIN", "RECEPCIONIST"]} pageTitle="Profissionais">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Profissionais</h1>
-            <p className="text-gray-500 dark:text-gray-400">Gerencie os profissionais do salão</p>
+            <p className="text-gray-500 dark:text-gray-400">
+              {isAdmin ? "Gerencie os profissionais do salão" : "Consulte os profissionais do salão — clique para ver a ficha"}
+            </p>
           </div>
-          <Button onClick={() => setIsCreateModalOpen(true)} leftIcon={<Search className="h-4 w-4" />}>
-            Buscar Profissional
-          </Button>
+          {isAdmin && (
+            <Button onClick={() => setIsCreateModalOpen(true)} leftIcon={<Search className="h-4 w-4" />}>
+              Buscar Profissional
+            </Button>
+          )}
         </div>
 
         {/* Cards de Estatísticas */}
@@ -603,12 +611,13 @@ export default function ProfessionalsPage() {
             data={professionals}
             columns={columns}
             keyExtractor={(item) => item.id}
+            onRowClick={(item) => { if (item.userId) setFichaProfissionalUsuarioId(Number(item.userId)); }}
             isLoading={isLoading}
             emptyMessage="Nenhum profissional encontrado"
-            emptyAction={{
+            emptyAction={isAdmin ? {
               label: "Buscar profissional",
               onClick: () => setIsCreateModalOpen(true),
-            }}
+            } : undefined}
             pagination={{
               currentPage: page,
               totalPages,
@@ -616,7 +625,7 @@ export default function ProfessionalsPage() {
               itemsPerPage: 10,
               onPageChange: setPage,
             }}
-            rowActions={(item) => (
+            rowActions={!isAdmin ? undefined : (item) => (
               <>
                 <ActionMenuItem
                   onClick={() => openEditModal(item)}
@@ -1186,6 +1195,12 @@ export default function ProfessionalsPage() {
           setAfetados(null);
           setSelectedProfessional(null);
         }}
+      />
+
+      {/* Ficha do profissional: dados e agenda */}
+      <FichaUsuarioModal
+        usuarioId={fichaProfissionalUsuarioId}
+        onClose={() => setFichaProfissionalUsuarioId(null)}
       />
     </SalonLayout>
   );
