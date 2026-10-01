@@ -22,6 +22,10 @@ cp .env.example .env
 # Edit .env with your configurations
 ```
 
+> `DB_PASSWORD` e `REDIS_PASSWORD` são **obrigatórias**: o docker-compose não sobe sem elas (não há
+> mais senha padrão). As portas do banco, do Redis e da API ficam só em `127.0.0.1`, sem aparecer na
+> rede. Rodando a API fora do Docker com o perfil `dev`, exporte `REDIS_PASSWORD` com o mesmo valor.
+
 ### 2. Start Infrastructure
 
 ```bash

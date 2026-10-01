@@ -5,6 +5,11 @@
 # - Managed PostgreSQL (AWS RDS, DigitalOcean Managed Database)
 # - Managed Redis (AWS ElastiCache, Redis Cloud)
 # - Container orchestration (Kubernetes, ECS, etc.)
+#
+# Segurança: só o nginx publica portas (80/443). A API fica na rede interna (antes a 8080 ficava
+# aberta, fora do nginx, e aceitava X-Forwarded-For forjado — o que contornava o limite de login
+# por IP). Prometheus, Alertmanager e Grafana só no 127.0.0.1 do servidor (acesse por túnel
+# SSH, ex.: ssh -L 3001:127.0.0.1:3001 servidor). Segredos obrigatórios no .env.
 
 version: '3.8'
 
@@ -19,13 +24,15 @@ services:
       # Database (use managed service in production)
       DATABASE_URL: ${DATABASE_URL}
       DATABASE_USERNAME: ${DATABASE_USERNAME}
-      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Defina DATABASE_PASSWORD no .env do servidor}
       # Redis (use managed service in production)
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Defina REDIS_PASSWORD no .env do servidor}
       # Security
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET no .env do servidor}
+      # Obrigatório em produção (criptografia dos tokens OAuth); antes não era repassado e a API não subia
+      AES_SECRET_KEY: ${AES_SECRET_KEY:?Defina AES_SECRET_KEY no .env do servidor}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://belezza.ai,https://www.belezza.ai}
       # WhatsApp API
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
@@ -52,8 +59,7 @@ services:
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       # Frontend
       FRONTEND_URL: ${FRONTEND_URL:-https://belezza.ai}
-    ports:
-      - "8080:8080"
+    # Sem "ports": o nginx alcança a API em api:8080 pela rede interna
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health/liveness"]
       interval: 30s
@@ -119,7 +125,7 @@ services:
     container_name: belezza-prometheus-prod
     restart: always
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./docker/prometheus/prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
       - ./docker/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
@@ -129,7 +135,7 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=30d'
       - '--web.enable-lifecycle'
-      - '--web.enable-admin-api'
+      # sem --web.enable-admin-api: a API de administração permite apagar as séries gravadas
     networks:
       - belezza-prod-network
 
@@ -139,7 +145,7 @@ services:
     container_name: belezza-alertmanager-prod
     restart: always
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
     volumes:
       - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager
@@ -155,10 +161,10 @@ services:
     container_name: belezza-grafana-prod
     restart: always
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?Defina GRAFANA_PASSWORD no .env do servidor}
       GF_INSTALL_PLUGINS: grafana-piechart-panel
       GF_SERVER_ROOT_URL: https://monitoring.belezza.ai
       GF_SECURITY_DISABLE_GRAVATAR: "true"
