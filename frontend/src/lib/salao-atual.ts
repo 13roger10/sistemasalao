@@ -20,15 +20,19 @@ export function salaoDoToken(token: string | null | undefined): string | null {
 }
 
 /**
- * Salão da sessão: o do token (equipe); sem ele — cliente, que não tem salão fixo, ou tela
- * pública —, o salão 1, como antes das unidades. Não usa a unidade guardada no navegador: ela é
- * da equipe e sobrava de um login anterior (o cliente que entrava depois do admin, no mesmo
- * navegador, via o agendamento de uma unidade vazia ou desativada, sem nenhum serviço).
+ * Salão da sessão: o do token (equipe). Sem ele — o cliente, que pode ser de várias unidades —,
+ * a unidade escolhida nesta sessão, que o UnitContext preenche com um salão em que o cliente
+ * está cadastrado (vindo do backend) e que é apagada a cada login e logout (antes ela sobrava do
+ * login anterior do admin). Só em último caso, o salão 1 (telas públicas).
  */
 export function salaoAtual(): string {
   if (typeof window === "undefined") return "1";
   try {
-    return salaoDoToken(localStorage.getItem(TOKEN_KEY)) || "1";
+    return (
+      salaoDoToken(localStorage.getItem(TOKEN_KEY)) ||
+      localStorage.getItem(UNIDADE_SELECIONADA_KEY) ||
+      "1"
+    );
   } catch {
     return "1";
   }

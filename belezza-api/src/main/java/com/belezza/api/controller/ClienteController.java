@@ -64,6 +64,13 @@ public class ClienteController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @GetMapping("/meus-saloes")
+    @PreAuthorize("hasRole('CLIENTE')")
+    @Operation(summary = "Meus salões", description = "Salões em que o cliente logado está cadastrado (o mais recente primeiro)")
+    public ResponseEntity<List<Map<String, Object>>> meusSaloes(@AuthenticationPrincipal Usuario usuario) {
+        return ResponseEntity.ok(clienteService.saloesDoCliente(usuario.getId()));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA', 'PROFISSIONAL')")
     @Operation(summary = "Buscar cliente", description = "Busca um cliente por ID. Restrito à equipe do salão.")

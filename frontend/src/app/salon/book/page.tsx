@@ -132,7 +132,9 @@ function BookingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useSalonAuth();
-  const { selectedUnitId } = useUnit();
+  const { selectedUnitId, isLoading: carregandoUnidade } = useUnit();
+  // Cliente agenda no salão em que é cadastrado (UnitContext); espera ele carregar para não
+  // buscar antes os serviços do salão padrão
   const unitId = searchParams.get("unit") || selectedUnitId || salaoAtual();
 
   // States
@@ -187,6 +189,7 @@ function BookingPageContent() {
 
   // Load salon open days from admin config
   useEffect(() => {
+    if (carregandoUnidade) return;
     const loadOpenDays = async () => {
       try {
         const salonId = unitId === 'default' ? salaoAtual() : unitId;
@@ -202,7 +205,7 @@ function BookingPageContent() {
       }
     };
     loadOpenDays();
-  }, [unitId]);
+  }, [unitId, carregandoUnidade]);
 
   // Set logged user as client
   useEffect(() => {
@@ -216,6 +219,7 @@ function BookingPageContent() {
 
   // Load services
   useEffect(() => {
+    if (carregandoUnidade) return;
     const loadServices = async () => {
       setIsLoading(true);
       try {
@@ -229,7 +233,7 @@ function BookingPageContent() {
       }
     };
     loadServices();
-  }, [unitId]);
+  }, [unitId, carregandoUnidade]);
 
   // Load professionals when services are selected
   useEffect(() => {

@@ -264,4 +264,41 @@ class ClienteServiceTest {
             assertThat(clienteService.listarPorSalon(1L, "maria", null, null, true)).hasSize(1);
         }
     }
+
+    @Nested
+    @DisplayName("Várias unidades")
+    class Unidades {
+
+        @Test
+        @DisplayName("Admin não cadastra cliente em outra unidade (nem no salão de outro dono)")
+        void adminNaoCadastraEmOutraUnidade() {
+            when(salonService.getSalonByAdminEmail("dono@teste.com")).thenReturn(Salon.builder().id(3L).build());
+            ClienteRequest r = pedido("Paulo", "61 99432-9899", null);
+            r.setSalonId(1L);
+
+            assertThatThrownBy(() -> clienteService.criar(r, "dono@teste.com"))
+                    .isInstanceOf(AccessDeniedException.class)
+                    .hasMessageContaining("unidade em que você está trabalhando");
+            verify(clienteRepository, never()).save(any());
+            verify(usuarioRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Salões do cliente: só cadastros e salões ativos, o mais recente primeiro")
+        void saloesDoCliente() {
+            Salon sede = Salon.builder().id(1L).nome("Sede").ativo(true).build();
+            Salon filial = Salon.builder().id(3L).nome("Filial").ativo(true).build();
+            Salon fechada = Salon.builder().id(4L).nome("Fechada").ativo(false).build();
+            java.time.LocalDateTime agora = java.time.LocalDateTime.now();
+            Cliente naSede = Cliente.builder().id(1L).salon(sede).usuario(usuario).ativo(true).criadoEm(agora.minusDays(2)).build();
+            Cliente naFilial = Cliente.builder().id(2L).salon(filial).usuario(usuario).ativo(true).criadoEm(agora.minusDays(1)).build();
+            Cliente excluido = Cliente.builder().id(3L).salon(sede).usuario(usuario).ativo(false).criadoEm(agora).build();
+            Cliente naFechada = Cliente.builder().id(4L).salon(fechada).usuario(usuario).ativo(true).criadoEm(agora).build();
+            when(clienteRepository.findByUsuarioId(5L)).thenReturn(List.of(naSede, excluido, naFechada, naFilial));
+
+            assertThat(clienteService.saloesDoCliente(5L))
+                    .extracting(m -> m.get("id"))
+                    .containsExactly(3L, 1L);
+        }
+    }
 }

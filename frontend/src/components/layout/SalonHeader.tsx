@@ -19,7 +19,7 @@ interface SalonHeaderProps {
 export function SalonHeader({ onMenuClick, pageTitle }: SalonHeaderProps) {
   const { user } = useSalonAuth();
   const { theme, setTheme } = useTheme();
-  const { selectedUnit, selectedUnitId, availableUnits, selectUnit, canViewAllUnits } = useUnit();
+  const { selectedUnit, selectedUnitId, availableUnits, selectUnit, canViewAllUnits, canChangeUnit, salonName } = useUnit();
   const { naoLidas, recentes, marcarLida, marcarTodasLidas } = useSalonNotificacoes();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showAllNotifications, setShowAllNotifications] = useState(false);
@@ -53,8 +53,8 @@ export function SalonHeader({ onMenuClick, pageTitle }: SalonHeaderProps) {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-white px-4 dark:border-gray-800 dark:bg-gray-900 lg:px-6">
-      {/* Left side */}
-      <div className="flex items-center gap-4">
+      {/* Left side — esquerda e direita dividem o espaço por igual, para o nome ficar no centro */}
+      <div className="flex min-w-0 flex-1 basis-0 items-center gap-4">
         <button
           onClick={onMenuClick}
           className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300 lg:hidden"
@@ -63,30 +63,44 @@ export function SalonHeader({ onMenuClick, pageTitle }: SalonHeaderProps) {
         </button>
 
         {pageTitle && (
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
+          <h1 className="hidden text-lg font-semibold text-gray-900 md:block dark:text-white">
             {pageTitle}
           </h1>
         )}
       </div>
 
+      {/* Nome do salão/barbearia em que o usuário está, centralizado no topo */}
+      {salonName && (
+        <div className="flex min-w-0 items-center justify-center gap-2 px-2">
+          <Building2 className="hidden h-5 w-5 flex-shrink-0 text-violet-600 sm:block dark:text-violet-400" />
+          <span
+            title={salonName}
+            className="truncate text-sm font-semibold text-gray-900 sm:text-lg dark:text-white"
+          >
+            {salonName}
+          </span>
+        </div>
+      )}
+
       {/* Right side */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-1 basis-0 items-center justify-end gap-2">
         {/* Unit Selector - only show if user has multiple units or is admin */}
-        {canViewAllUnits && availableUnits.length > 0 && (
+        {/* Admin troca de unidade; o cliente, só se for cliente de mais de uma */}
+        {(canViewAllUnits ? availableUnits.length > 0 : canChangeUnit) && (
           <div className="relative">
             <button
               onClick={() => setShowUnitSelector(!showUnitSelector)}
+              title="Trocar de unidade"
+              aria-label="Trocar de unidade"
               className={cn(
-                "flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+                "flex items-center gap-1 rounded-lg border px-2 py-1.5 text-sm font-medium transition-colors",
                 selectedUnit
                   ? "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-900/30 dark:text-violet-400"
                   : "border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
               )}
             >
+              {/* O nome da unidade já aparece no centro do topo */}
               <Building2 className="h-4 w-4" />
-              <span className="hidden sm:inline">
-                {selectedUnit ? selectedUnit.name : "Selecionar unidade"}
-              </span>
               <ChevronDown className="h-4 w-4" />
             </button>
 
@@ -133,31 +147,22 @@ export function SalonHeader({ onMenuClick, pageTitle }: SalonHeaderProps) {
                       </button>
                     ))}
                   </div>
-                  <div className="border-t p-1 dark:border-gray-700">
-                    <button
-                      onClick={() => {
-                        setShowUnitSelector(false);
-                        router.push("/salon/units");
-                      }}
-                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-violet-700 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-900/30"
-                    >
-                      Gerenciar unidades
-                    </button>
-                  </div>
+                  {canViewAllUnits && (
+                    <div className="border-t p-1 dark:border-gray-700">
+                      <button
+                        onClick={() => {
+                          setShowUnitSelector(false);
+                          router.push("/salon/units");
+                        }}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-violet-700 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-900/30"
+                      >
+                        Gerenciar unidades
+                      </button>
+                    </div>
+                  )}
                 </div>
               </>
             )}
-          </div>
-        )}
-
-        {/* Show current unit badge for non-admin users */}
-        {!canViewAllUnits && selectedUnit && (
-          <div
-            className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-white"
-            style={{ backgroundColor: selectedUnit.color || "#8B5CF6" }}
-          >
-            <Building2 className="h-4 w-4" />
-            <span className="hidden sm:inline">{selectedUnit.name}</span>
           </div>
         )}
 

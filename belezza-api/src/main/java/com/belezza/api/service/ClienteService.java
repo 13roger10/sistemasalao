@@ -60,7 +60,12 @@ public class ClienteService {
     @SuppressWarnings("null")
     public ClienteResponse criar(ClienteRequest request, String emailAdmin) {
         Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
-        Long salonId = request.getSalonId() != null ? request.getSalonId() : salon.getId();
+        // O admin cadastra na unidade em que está trabalhando. Antes o salonId do corpo era aceito
+        // sem conferência: a tela podia gravar o cliente em outra unidade — ou no salão de outro dono.
+        if (request.getSalonId() != null && !request.getSalonId().equals(salon.getId())) {
+            throw new AccessDeniedException("O cliente só pode ser cadastrado na unidade em que você está trabalhando");
+        }
+        Long salonId = salon.getId();
 
         // Verificar se já existe um usuário com este email/telefone
         Usuario usuario = contaExistente(request);
@@ -610,6 +615,20 @@ public class ClienteService {
     }
 
     @SuppressWarnings("null")
+    /**
+     * Salões (unidades) em que o usuário é cliente — cadastro ativo em salão ativo —, do vínculo
+     * mais recente para o mais antigo. O token do cliente não traz salão (ele pode ser de vários);
+     * a tela de agendamento usa esta lista em vez de cair no salão 1.
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> saloesDoCliente(Long usuarioId) {
+        return clienteRepository.findByUsuarioId(usuarioId).stream()
+                .filter(c -> c.isAtivo() && c.getSalon() != null && c.getSalon().isAtivo())
+                .sorted(Comparator.comparing(Cliente::getCriadoEm, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
+                .map(c -> Map.<String, Object>of("id", c.getSalon().getId(), "nome", c.getSalon().getNome()))
+                .toList();
+    }
+
     public Cliente getOrCreateCliente(Long salonId, String emailUsuario) {
         Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(emailUsuario)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", emailUsuario));
