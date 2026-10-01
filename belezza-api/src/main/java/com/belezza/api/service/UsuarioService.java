@@ -6,6 +6,10 @@ import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.DuplicateResourceException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.AgendamentoRepository;
+import com.belezza.api.entity.Cliente;
+import com.belezza.api.entity.Servico;
+import com.belezza.api.entity.Agendamento;
+import java.util.Map;
 import com.belezza.api.repository.BackupCodeRepository;
 import com.belezza.api.repository.CaixaRepository;
 import com.belezza.api.repository.ClienteRepository;
@@ -123,6 +127,147 @@ public class UsuarioService {
 
         Optional<Profissional> profissional = profissionalRepository.findByUsuarioId(usuario.getId());
         return UsuarioListResponse.fromEntityWithProfissional(usuario, profissional.orElse(null));
+    }
+
+    /**
+     * Ficha do usuário na unidade em uso: dados (aniversário, telefone, WhatsApp...) e, para cliente
+     * e profissional, a agenda — próximos e anteriores (a recepcionista não tem agenda). Só pessoas
+     * vinculadas à unidade de quem pede. O que cada um vê:
+     *  - ADMIN: tudo;
+     *  - RECEPCIONISTA: tudo, menos a comissão dos profissionais (dado financeiro);
+     *  - PROFISSIONAL: a própria ficha inteira; a de um cliente sem contatos, observações e valores,
+     *    com só a agenda do cliente com ele; a de colegas só com nome, perfil e aniversário.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> ficha(Long id, String emailOperador) {
+        Usuario operador = getUsuarioByEmail(emailOperador);
+        Usuario usuario = usuarioRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário", id));
+        Long salonId;
+        if (operador.getRole() == Role.ADMIN) {
+            verificarAcessoUsuario(operador, usuario);
+            salonId = salaoDoAdmin(operador);
+        } else {
+            salonId = com.belezza.api.security.TenantContext.getCurrentTenant();
+            if (salonId == null || !vinculadoAUnidade(usuario, salonId)) {
+                throw new AccessDeniedException("Acesso negado: usuário pertence a outro estabelecimento");
+            }
+        }
+        boolean propria = operador.getId().equals(usuario.getId());
+        boolean visaoProfissional = operador.getRole() == Role.PROFISSIONAL && !propria;
+        boolean verComissao = operador.getRole() == Role.ADMIN || propria;
+        // O profissional vê a ficha de um colega só com nome, perfil e aniversário
+        boolean resumida = visaoProfissional && usuario.getRole() != Role.CLIENTE;
+
+        Map<String, Object> ficha = new java.util.LinkedHashMap<>();
+        ficha.put("id", usuario.getId());
+        ficha.put("nome", usuario.getNome());
+        ficha.put("role", usuario.getRole().name());
+        ficha.put("ativo", usuario.isAtivo());
+        if (!visaoProfissional) {
+            ficha.put("email", usuario.getEmail() != null && !usuario.getEmail().endsWith("@cliente.belezza.ai") ? usuario.getEmail() : null);
+            ficha.put("telefone", usuario.getTelefone());
+            ficha.put("criadoEm", usuario.getCriadoEm());
+            ficha.put("ultimoLogin", usuario.getUltimoLogin());
+        }
+        String whatsapp = usuario.getWhatsapp();
+        java.time.LocalDate nascimento = usuario.getDataNascimento();
+
+        LocalDateTime agora = LocalDateTime.now(com.belezza.api.util.Aniversarios.FUSO_DO_SALAO);
+        PageRequest proximos = PageRequest.of(0, 20);
+        PageRequest anteriores = PageRequest.of(0, 20);
+        Map<String, Object> agenda = null;
+
+        if (usuario.getRole() == Role.CLIENTE) {
+            Cliente cliente = clienteRepository.findByUsuarioIdAndSalonId(usuario.getId(), salonId).orElse(null);
+            if (cliente != null) {
+                // O cadastro de cliente da unidade tem os dados de contato mais completos
+                if (cliente.getWhatsapp() != null && !cliente.getWhatsapp().isBlank()) whatsapp = cliente.getWhatsapp();
+                if (cliente.getDataNascimento() != null) nascimento = cliente.getDataNascimento();
+                if (visaoProfissional) {
+                    // Só os atendimentos do cliente com este profissional
+                    Profissional eu = profissionalRepository.findByUsuarioIdAndSalonId(operador.getId(), salonId).orElse(null);
+                    agenda = eu == null ? Map.of("proximos", List.of(), "anteriores", List.of()) : Map.of(
+                            "proximos", agendamentoRepository.findProximosDoClienteComProfissional(cliente.getId(), eu.getId(), agora, proximos)
+                                    .stream().map(a -> itemDaAgenda(a, true)).toList(),
+                            "anteriores", agendamentoRepository.findAnterioresDoClienteComProfissional(cliente.getId(), eu.getId(), agora, anteriores)
+                                    .stream().map(a -> itemDaAgenda(a, true)).toList());
+                } else {
+                    Map<String, Object> dados = new java.util.LinkedHashMap<>();
+                    dados.put("totalAgendamentos", cliente.getTotalAgendamentos());
+                    dados.put("totalGasto", cliente.getTotalGasto());
+                    dados.put("noShows", cliente.getNoShows());
+                    dados.put("ultimaVisita", cliente.getUltimaVisita());
+                    dados.put("observacoes", cliente.getObservacoes());
+                    ficha.put("cliente", dados);
+                    agenda = Map.of(
+                            "proximos", agendamentoRepository.findProximosDoCliente(cliente.getId(), agora, proximos).stream()
+                                    .map(a -> itemDaAgenda(a, true)).toList(),
+                            "anteriores", agendamentoRepository.findAnterioresDoCliente(cliente.getId(), agora, anteriores).stream()
+                                    .map(a -> itemDaAgenda(a, true)).toList());
+                }
+            } else {
+                agenda = Map.of("proximos", List.of(), "anteriores", List.of());
+            }
+        } else if (usuario.getRole() == Role.PROFISSIONAL && !resumida) {
+            Profissional profissional = profissionalRepository.findByUsuarioIdAndSalonId(usuario.getId(), salonId).orElse(null);
+            if (profissional != null) {
+                Map<String, Object> dados = new java.util.LinkedHashMap<>();
+                dados.put("especialidade", profissional.getEspecialidade());
+                dados.put("servicos", profissional.getServicos().stream().map(Servico::getNome).sorted().toList());
+                if (verComissao) {
+                    dados.put("tipoComissao", profissional.getTipoComissao() != null ? profissional.getTipoComissao().name() : null);
+                    dados.put("valorComissao", profissional.getValorComissao());
+                }
+                ficha.put("profissional", dados);
+                agenda = Map.of(
+                        "proximos", agendamentoRepository.findProximosDoProfissional(profissional.getId(), agora, proximos).stream()
+                                .map(a -> itemDaAgenda(a, false)).toList(),
+                        "anteriores", agendamentoRepository.findAnterioresDoProfissional(profissional.getId(), agora, anteriores).stream()
+                                .map(a -> itemDaAgenda(a, false)).toList());
+            } else {
+                agenda = Map.of("proximos", List.of(), "anteriores", List.of());
+            }
+        }
+
+        if (!visaoProfissional) {
+            ficha.put("whatsapp", whatsapp);
+        }
+        ficha.put("dataNascimento", nascimento);
+        ficha.put("idade", nascimento != null ? java.time.Period.between(nascimento, agora.toLocalDate()).getYears() : null);
+        ficha.put("agenda", agenda); // null = sem aba de agenda (recepcionista, admin, colega)
+        return ficha;
+    }
+
+    /** A pessoa é da unidade? (cliente, profissional, recepcionista vinculada ou dono) */
+    private boolean vinculadoAUnidade(Usuario usuario, Long salonId) {
+        return clienteRepository.findByUsuarioIdAndSalonId(usuario.getId(), salonId).isPresent()
+                || profissionalRepository.findByUsuarioIdAndSalonId(usuario.getId(), salonId).isPresent()
+                || (usuario.getSalon() != null && usuario.getSalon().getId().equals(salonId))
+                || recepcionistaUnidadeRepository.existsByUsuarioIdAndSalonId(usuario.getId(), salonId)
+                || salonRepository.findByIdAndAdminId(salonId, usuario.getId()).isPresent();
+    }
+
+    /** Agendamento na ficha: com quem (o profissional, na ficha do cliente; o cliente, na do profissional). */
+    private Map<String, Object> itemDaAgenda(Agendamento a, boolean fichaDoCliente) {
+        List<String> servicos = !a.getServicos().isEmpty()
+                ? a.getServicos().stream().map(s -> s.getServico().getNome()).toList()
+                : a.getServico() != null ? List.of(a.getServico().getNome()) : List.of();
+        java.math.BigDecimal valor = a.getValorCobrado() != null ? a.getValorCobrado()
+                : !a.getServicos().isEmpty()
+                        ? a.getServicos().stream().map(s -> s.getServico().getPreco()).reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add)
+                        : a.getServico() != null ? a.getServico().getPreco() : null;
+        Map<String, Object> item = new java.util.LinkedHashMap<>();
+        item.put("id", a.getId());
+        item.put("dataHora", a.getDataHora());
+        item.put("fimPrevisto", a.getFimPrevisto());
+        item.put("status", a.getStatus().name());
+        item.put("servicos", servicos);
+        item.put("com", fichaDoCliente
+                ? (a.getProfissional() != null ? a.getProfissional().getUsuario().getNome() : null)
+                : (a.getCliente() != null ? a.getCliente().getUsuario().getNome() : null));
+        item.put("valor", valor);
+        return item;
     }
 
     /**

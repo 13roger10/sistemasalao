@@ -52,6 +52,15 @@ public class UsuarioController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/{id}/ficha")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA', 'PROFISSIONAL')")
+    @Operation(summary = "Ficha do usuário", description = "Dados (aniversário, telefone, WhatsApp) e agenda do cliente/profissional na unidade; o profissional vê uma versão sem contatos de terceiros")
+    public ResponseEntity<java.util.Map<String, Object>> ficha(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(usuarioService.ficha(id, userDetails.getUsername()));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA', 'PROFISSIONAL')")
     @Operation(summary = "Buscar usuário por ID", description = "Retorna detalhes de um usuário específico")

@@ -24,6 +24,28 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long> 
 
     Page<Agendamento> findByProfissionalId(Long profissionalId, Pageable pageable);
 
+    // Agenda na ficha do usuário: próximos (em ordem) e anteriores (do mais recente)
+    @Query("SELECT a FROM Agendamento a WHERE a.cliente.id = :clienteId AND a.dataHora >= :agora ORDER BY a.dataHora ASC")
+    List<Agendamento> findProximosDoCliente(@Param("clienteId") Long clienteId, @Param("agora") LocalDateTime agora, Pageable pageable);
+
+    @Query("SELECT a FROM Agendamento a WHERE a.cliente.id = :clienteId AND a.dataHora < :agora ORDER BY a.dataHora DESC")
+    List<Agendamento> findAnterioresDoCliente(@Param("clienteId") Long clienteId, @Param("agora") LocalDateTime agora, Pageable pageable);
+
+    // Ficha do cliente vista pelo profissional: só os atendimentos do cliente com ele
+    @Query("SELECT a FROM Agendamento a WHERE a.cliente.id = :clienteId AND a.profissional.id = :profissionalId AND a.dataHora >= :agora ORDER BY a.dataHora ASC")
+    List<Agendamento> findProximosDoClienteComProfissional(@Param("clienteId") Long clienteId, @Param("profissionalId") Long profissionalId,
+                                                           @Param("agora") LocalDateTime agora, Pageable pageable);
+
+    @Query("SELECT a FROM Agendamento a WHERE a.cliente.id = :clienteId AND a.profissional.id = :profissionalId AND a.dataHora < :agora ORDER BY a.dataHora DESC")
+    List<Agendamento> findAnterioresDoClienteComProfissional(@Param("clienteId") Long clienteId, @Param("profissionalId") Long profissionalId,
+                                                             @Param("agora") LocalDateTime agora, Pageable pageable);
+
+    @Query("SELECT a FROM Agendamento a WHERE a.profissional.id = :profissionalId AND a.dataHora >= :agora ORDER BY a.dataHora ASC")
+    List<Agendamento> findProximosDoProfissional(@Param("profissionalId") Long profissionalId, @Param("agora") LocalDateTime agora, Pageable pageable);
+
+    @Query("SELECT a FROM Agendamento a WHERE a.profissional.id = :profissionalId AND a.dataHora < :agora ORDER BY a.dataHora DESC")
+    List<Agendamento> findAnterioresDoProfissional(@Param("profissionalId") Long profissionalId, @Param("agora") LocalDateTime agora, Pageable pageable);
+
     Page<Agendamento> findBySalonIdAndProfissionalUsuarioId(Long salonId, Long usuarioId, Pageable pageable);
 
     /** Agendamentos do salão num intervalo de datas (BUG-036: as telas pediam os N primeiros e filtravam o dia). */

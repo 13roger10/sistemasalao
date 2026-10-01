@@ -455,4 +455,111 @@ class UsuarioServiceTest {
             verify(usuarioRepository, never()).telefoneEmUso(any(), any());
         }
     }
+
+    @org.junit.jupiter.api.Nested
+    @DisplayName("Ficha do usuário")
+    class Ficha {
+
+        @Test
+        @DisplayName("Cliente: dados do cadastro da unidade (WhatsApp, aniversário) e agenda")
+        void cliente() {
+            Usuario paulo = Usuario.builder().id(60L).nome("Paulo").email("6199@cliente.belezza.ai").telefone("61 99432-9899")
+                    .role(Role.CLIENTE).ativo(true).build();
+            Cliente cadastro = Cliente.builder().id(57L).usuario(paulo).salon(salonA).whatsapp("61 99432-9899")
+                    .dataNascimento(java.time.LocalDate.of(1990, 5, 10)).build();
+            when(usuarioRepository.findById(60L)).thenReturn(Optional.of(paulo));
+            when(clienteRepository.findByUsuarioId(60L)).thenReturn(List.of(cadastro));
+            when(clienteRepository.findByUsuarioIdAndSalonId(60L, 1L)).thenReturn(Optional.of(cadastro));
+
+            var ficha = usuarioService.ficha(60L, EMAIL_ADMIN_A);
+
+            assertThat(ficha.get("whatsapp")).isEqualTo("61 99432-9899");
+            assertThat(ficha.get("dataNascimento")).isEqualTo(java.time.LocalDate.of(1990, 5, 10));
+            assertThat(ficha.get("email")).isNull();
+            assertThat(ficha.get("agenda")).isNotNull();
+            verify(agendamentoRepository).findProximosDoCliente(eq(57L), any(), any());
+        }
+
+        @Test
+        @DisplayName("Recepcionista não tem agenda")
+        void recepcionista() {
+            var ficha = usuarioService.ficha(14L, EMAIL_ADMIN_A);
+
+            assertThat(ficha.get("nome")).isEqualTo("Recep A");
+            assertThat(ficha.get("agenda")).isNull();
+        }
+
+        @Test
+        @DisplayName("Usuário de outro salão é negado")
+        void outroSalao() {
+            assertThatThrownBy(() -> usuarioService.ficha(41L, EMAIL_ADMIN_A))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        }
+
+        @org.junit.jupiter.api.AfterEach
+        void limparTenant() {
+            com.belezza.api.security.TenantContext.clear();
+        }
+
+        private Usuario profissionalLogado() {
+            Usuario eu = Usuario.builder().id(20L).nome("Prof A").email("prof@a.com").role(Role.PROFISSIONAL).ativo(true).build();
+            when(usuarioRepository.findByEmailAndAtivoTrue("prof@a.com")).thenReturn(Optional.of(eu));
+            return eu;
+        }
+
+        @Test
+        @DisplayName("Profissional vê o cliente sem contatos, com só a agenda do cliente com ele")
+        void profissionalVeCliente() {
+            com.belezza.api.security.TenantContext.setCurrentTenant(1L);
+            Usuario eu = profissionalLogado();
+            Profissional meuCadastro = Profissional.builder().id(8L).usuario(eu).salon(salonA).ativo(true).build();
+            Usuario paulo = Usuario.builder().id(60L).nome("Paulo").email("paulo@x.com").telefone("61 9999-0000").role(Role.CLIENTE).ativo(true).build();
+            Cliente cadastro = Cliente.builder().id(57L).usuario(paulo).salon(salonA).whatsapp("61 99432-9899")
+                    .dataNascimento(java.time.LocalDate.of(1990, 5, 10)).observacoes("alergia").build();
+            when(usuarioRepository.findById(60L)).thenReturn(Optional.of(paulo));
+            when(clienteRepository.findByUsuarioIdAndSalonId(60L, 1L)).thenReturn(Optional.of(cadastro));
+            when(profissionalRepository.findByUsuarioIdAndSalonId(20L, 1L)).thenReturn(Optional.of(meuCadastro));
+
+            var ficha = usuarioService.ficha(60L, "prof@a.com");
+
+            assertThat(ficha).doesNotContainKeys("email", "telefone", "whatsapp", "cliente");
+            assertThat(ficha.get("dataNascimento")).isEqualTo(java.time.LocalDate.of(1990, 5, 10));
+            verify(agendamentoRepository).findProximosDoClienteComProfissional(eq(57L), eq(8L), any(), any());
+            verify(agendamentoRepository, never()).findProximosDoCliente(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("Profissional vê colega só com nome, perfil e aniversário; recepção não vê comissão")
+        void colegaERecepcao() {
+            com.belezza.api.security.TenantContext.setCurrentTenant(1L);
+            profissionalLogado();
+            Usuario colega = Usuario.builder().id(21L).nome("Colega").email("colega@a.com").role(Role.PROFISSIONAL).ativo(true).build();
+            Profissional cadastroColega = Profissional.builder().id(9L).usuario(colega).salon(salonA).ativo(true)
+                    .valorComissao(java.math.BigDecimal.TEN).build();
+            when(usuarioRepository.findById(21L)).thenReturn(Optional.of(colega));
+            when(profissionalRepository.findByUsuarioIdAndSalonId(21L, 1L)).thenReturn(Optional.of(cadastroColega));
+
+            var visaoDoColega = usuarioService.ficha(21L, "prof@a.com");
+            assertThat(visaoDoColega).doesNotContainKeys("email", "telefone", "profissional");
+            assertThat(visaoDoColega.get("agenda")).isNull();
+
+            Usuario recep = Usuario.builder().id(14L).email("recep@a.com").role(Role.RECEPCIONISTA).salon(salonA).ativo(true).build();
+            when(usuarioRepository.findByEmailAndAtivoTrue("recep@a.com")).thenReturn(Optional.of(recep));
+            var visaoDaRecepcao = usuarioService.ficha(21L, "recep@a.com");
+            @SuppressWarnings("unchecked")
+            var dados = (java.util.Map<String, Object>) visaoDaRecepcao.get("profissional");
+            assertThat(dados).doesNotContainKey("valorComissao");
+            assertThat(visaoDaRecepcao.get("agenda")).isNotNull();
+        }
+
+        @Test
+        @DisplayName("Profissional não abre a ficha de quem é de outra unidade")
+        void profissionalOutraUnidade() {
+            com.belezza.api.security.TenantContext.setCurrentTenant(1L);
+            profissionalLogado();
+
+            assertThatThrownBy(() -> usuarioService.ficha(41L, "prof@a.com"))
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        }
+    }
 }

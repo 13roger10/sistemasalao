@@ -44,6 +44,7 @@ import type { Service } from "@/types/salon";
 import { Clock } from "lucide-react";
 import { salaoAtual } from "@/lib/salao-atual";
 import { VinculoUnidadesEquipe, type VinculoUnidadesRef } from "@/components/salon/VinculoUnidadesCliente";
+import { FichaUsuarioModal } from "@/components/salon/FichaUsuarioModal";
 
 // Componente de Badge para Role
 const RoleBadge = ({ role }: { role: UserRole }) => {
@@ -129,6 +130,8 @@ export default function SalonUsersPage() {
   const editandoAPropriaConta = !!selectedUser && !!user && String(selectedUser.id) === String(user.id);
   // Vincular profissional/recepcionista a outras unidades (a tela é só do admin)
   const vinculoUnidadesRef = useRef<VinculoUnidadesRef>(null);
+  // Ficha (clique na linha): dados e, para cliente/profissional, a agenda
+  const [fichaUsuario, setFichaUsuario] = useState<UsuarioListItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Estado para modal de erro de configuração do profissional
@@ -736,6 +739,7 @@ export default function SalonUsersPage() {
             data={usuarios}
             columns={columns}
             keyExtractor={(item) => item.id.toString()}
+            onRowClick={(item) => setFichaUsuario(item)}
             isLoading={isLoading}
             emptyMessage="Nenhum usuário encontrado"
             emptyAction={{
@@ -1541,6 +1545,17 @@ export default function SalonUsersPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Ficha do usuário: dados e agenda (cliente/profissional) */}
+      <FichaUsuarioModal
+        usuarioId={fichaUsuario?.id ?? null}
+        onClose={() => setFichaUsuario(null)}
+        onEditar={() => {
+          const usuario = fichaUsuario;
+          setFichaUsuario(null);
+          if (usuario) openEditModal(usuario);
+        }}
+      />
     </SalonLayout>
   );
 }

@@ -8,6 +8,47 @@ import {
   RoleOption,
 } from "@/types";
 
+/** Agendamento na ficha: "com" é o profissional (ficha do cliente) ou o cliente (ficha do profissional). */
+export interface ItemAgendaFicha {
+  id: number;
+  dataHora: string;
+  fimPrevisto?: string | null;
+  status: string;
+  servicos: string[];
+  com?: string | null;
+  valor?: number | null;
+}
+
+/** Ficha do usuário (GET /usuarios/{id}/ficha). agenda = null: sem aba de agenda (recepcionista, admin). */
+export interface FichaUsuario {
+  id: number;
+  nome: string;
+  email?: string | null;
+  telefone?: string | null;
+  whatsapp?: string | null;
+  /** AAAA-MM-DD */
+  dataNascimento?: string | null;
+  idade?: number | null;
+  role: UserRole;
+  ativo: boolean;
+  criadoEm?: string;
+  ultimoLogin?: string | null;
+  cliente?: {
+    totalAgendamentos: number;
+    totalGasto: number;
+    noShows: number;
+    ultimaVisita?: string | null;
+    observacoes?: string | null;
+  };
+  profissional?: {
+    especialidade?: string | null;
+    servicos: string[];
+    tipoComissao?: string | null;
+    valorComissao?: number | null;
+  };
+  agenda: { proximos: ItemAgendaFicha[]; anteriores: ItemAgendaFicha[] } | null;
+}
+
 export interface ListUsuariosParams {
   role?: UserRole;
   search?: string;
@@ -39,6 +80,14 @@ export const userService = {
    */
   async getById(id: number): Promise<UsuarioListItem> {
     const response = await api.get<UsuarioListItem>(`/usuarios/${id}`);
+    return response.data;
+  },
+
+  /**
+   * Ficha do usuário (admin): dados e, para cliente/profissional, a agenda na unidade atual
+   */
+  async ficha(id: number): Promise<FichaUsuario> {
+    const response = await api.get<FichaUsuario>(`/usuarios/${id}/ficha`);
     return response.data;
   },
 
