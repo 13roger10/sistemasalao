@@ -49,6 +49,12 @@ public class Usuario implements UserDetails {
     @Column(length = 20)
     private String telefone;
 
+    // WhatsApp e aniversário: obrigatórios no cadastro de novos usuários (todos os perfis)
+    @Column(length = 20)
+    private String whatsapp;
+
+    private java.time.LocalDate dataNascimento;
+
     @Column(length = 500)
     private String avatarUrl;
 

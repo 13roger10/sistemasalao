@@ -384,6 +384,9 @@ export interface UsuarioListItem {
   email: string;
   nome: string;
   telefone?: string;
+  whatsapp?: string;
+  /** AAAA-MM-DD */
+  dataNascimento?: string;
   avatarUrl?: string;
   role: UserRole;
   roleDescription: string;
@@ -414,6 +417,10 @@ export interface CreateUsuarioRequest {
   email: string;
   password: string;
   telefone?: string;
+  /** Obrigatório no cadastro (o formulário confere; o backend também) */
+  whatsapp?: string;
+  /** AAAA-MM-DD, obrigatória no cadastro */
+  dataNascimento?: string;
   avatarUrl?: string;
   role: UserRole;
   plano?: UserPlano;
@@ -427,6 +434,8 @@ export interface UpdateUsuarioRequest {
   /** Senha atual — obrigatória quando o usuário troca a própria senha */
   senhaAtual?: string;
   telefone?: string;
+  whatsapp?: string;
+  dataNascimento?: string;
   avatarUrl?: string;
   role?: UserRole;
   plano?: UserPlano;

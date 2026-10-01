@@ -62,7 +62,10 @@ class ClienteServiceTest {
         ClienteRequest r = new ClienteRequest();
         r.setName(nome);
         r.setPhone(telefone);
-        r.setEmail(email);
+        // E-mail, WhatsApp e aniversário são obrigatórios (sem e-mail informado, o que ela já tem)
+        r.setEmail(email != null ? email : "maria@teste.com");
+        r.setWhatsapp("61 99999-1111");
+        r.setBirthDate(java.time.LocalDate.of(1990, 5, 10));
         return r;
     }
 
@@ -369,6 +372,37 @@ class ClienteServiceTest {
                     .isInstanceOf(AccessDeniedException.class);
             assertThatThrownBy(() -> clienteService.atualizarUnidades(10L, List.of(1L), 3L))
                     .isInstanceOf(AccessDeniedException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("Campos obrigatórios")
+    class CamposObrigatorios {
+
+        @Test
+        @DisplayName("Cadastro sem WhatsApp e sem aniversário é recusado, sem gravar nada")
+        void cadastroSemWhatsAppEAniversario() {
+            ClienteRequest r = pedido("Paulo", "61 99432-9899", null);
+            r.setWhatsapp(" ");
+            r.setBirthDate(null);
+
+            assertThatThrownBy(() -> clienteService.criarComSalonId(r, 1L))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("WhatsApp")
+                    .hasMessageContaining("data de aniversário");
+            verify(usuarioRepository, never()).save(any());
+            verify(clienteRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Edição exige e-mail de verdade (não o provisório), WhatsApp e aniversário")
+        void edicaoExigeEmail() {
+            ClienteRequest r = pedido("Maria", "11 91234-5678", "11987654321@cliente.belezza.ai");
+
+            assertThatThrownBy(() -> clienteService.atualizar(10L, r, 1L))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("e-mail");
+            verify(clienteRepository, never()).save(any());
         }
     }
 }

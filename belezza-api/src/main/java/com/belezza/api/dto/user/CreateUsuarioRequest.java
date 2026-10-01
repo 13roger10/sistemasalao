@@ -39,6 +39,15 @@ public class CreateUsuarioRequest {
     @Telefone
     private String telefone;
 
+    @NotBlank(message = "WhatsApp é obrigatório")
+    @Size(max = 20, message = "WhatsApp deve ter no máximo 20 caracteres")
+    @Telefone
+    private String whatsapp;
+
+    @NotNull(message = "Data de aniversário é obrigatória")
+    @jakarta.validation.constraints.Past(message = "Data de aniversário deve estar no passado")
+    private java.time.LocalDate dataNascimento;
+
     @Size(max = 500, message = "URL do avatar deve ter no máximo 500 caracteres")
     private String avatarUrl;
 

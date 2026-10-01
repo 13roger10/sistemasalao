@@ -145,6 +145,8 @@ export default function SalonUsersPage() {
     email: "",
     password: "",
     telefone: "",
+    whatsapp: "",
+    dataNascimento: "",
     role: "PROFISSIONAL",
     plano: "FREE",
     salonId: Number(salaoAtual()), // unidade da sessão
@@ -333,6 +335,8 @@ export default function SalonUsersPage() {
         nome: formData.nome,
         email: formData.email,
         telefone: formData.telefone,
+        whatsapp: formData.whatsapp || undefined,
+        dataNascimento: formData.dataNascimento || undefined,
         role: formData.role,
         plano: formData.plano,
       };
@@ -509,6 +513,16 @@ export default function SalonUsersPage() {
       errors.senhaAtual = "Informe a sua senha atual para trocar a senha";
     }
 
+    // WhatsApp e aniversário: obrigatórios no cadastro de novos usuários (todos os perfis)
+    if (!isEdit && !formData.whatsapp?.replace(/\D/g, "")) {
+      errors.whatsapp = "WhatsApp é obrigatório";
+    }
+    if (!isEdit && !formData.dataNascimento) {
+      errors.dataNascimento = "Data de aniversário é obrigatória";
+    } else if (formData.dataNascimento && formData.dataNascimento >= new Date().toISOString().split("T")[0]) {
+      errors.dataNascimento = "Data de aniversário deve estar no passado";
+    }
+
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -520,6 +534,8 @@ export default function SalonUsersPage() {
       email: "",
       password: "",
       telefone: "",
+      whatsapp: "",
+      dataNascimento: "",
       role: "PROFISSIONAL",
       plano: "FREE",
       salonId: Number(salaoAtual()), // unidade da sessão
@@ -540,6 +556,8 @@ export default function SalonUsersPage() {
       email: usuario.email,
       password: "",
       telefone: usuario.telefone || "",
+      whatsapp: usuario.whatsapp || "",
+      dataNascimento: usuario.dataNascimento || "",
       role: usuario.role,
       plano: usuario.plano,
     });
@@ -853,6 +871,25 @@ export default function SalonUsersPage() {
             />
           </div>
 
+          {/* WhatsApp e aniversário: obrigatórios no cadastro de novos usuários (todos os perfis) */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input
+              label="WhatsApp *"
+              value={formData.whatsapp || ""}
+              onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
+              error={formErrors.whatsapp}
+              placeholder="(00) 00000-0000"
+            />
+            <Input
+              label="Data de aniversário *"
+              type="date"
+              max={new Date().toISOString().split("T")[0]}
+              value={formData.dataNascimento || ""}
+              onChange={(e) => setFormData({ ...formData, dataNascimento: e.target.value })}
+              error={formErrors.dataNascimento}
+            />
+          </div>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -1139,6 +1176,25 @@ export default function SalonUsersPage() {
               value={formData.telefone}
               onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
               placeholder="(00) 00000-0000"
+            />
+          </div>
+
+          {/* WhatsApp e aniversário: obrigatórios no cadastro de novos usuários (todos os perfis) */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input
+              label="WhatsApp"
+              value={formData.whatsapp || ""}
+              onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
+              error={formErrors.whatsapp}
+              placeholder="(00) 00000-0000"
+            />
+            <Input
+              label="Data de aniversário"
+              type="date"
+              max={new Date().toISOString().split("T")[0]}
+              value={formData.dataNascimento || ""}
+              onChange={(e) => setFormData({ ...formData, dataNascimento: e.target.value })}
+              error={formErrors.dataNascimento}
             />
           </div>
 

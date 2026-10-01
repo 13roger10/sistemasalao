@@ -468,7 +468,7 @@ export default function ClientsPage() {
   };
 
   const handleUpdate = async () => {
-    if (!selectedClient || !validateForm(false)) return;
+    if (!selectedClient || !validateForm(true)) return;
 
     setIsSubmitting(true);
     try {
@@ -618,7 +618,8 @@ export default function ClientsPage() {
   // Validação do formulário
   // Na edição a data de nascimento é opcional: clientes antigos não têm e ficavam impossíveis de
   // editar; o backend só grava a data quando vem preenchida, então deixar em branco não apaga nada.
-  const validateForm = (exigirNascimento = true) => {
+  // Cadastro: WhatsApp e aniversário obrigatórios; edição: também o e-mail
+  const validateForm = (edicao = false) => {
     const errors: Record<string, string> = {};
 
     if (!formData.name.trim()) {
@@ -629,11 +630,18 @@ export default function ClientsPage() {
       errors.phone = "Telefone é obrigatório";
     }
 
-    if (exigirNascimento && !formData.birthDate) {
-      errors.birthDate = "Data de nascimento é obrigatória";
+    if (!formData.whatsapp?.replace(/\D/g, "")) {
+      errors.whatsapp = "WhatsApp é obrigatório";
     }
 
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    if (!formData.birthDate) {
+      errors.birthDate = "Data de aniversário é obrigatória";
+    }
+
+    // Na edição o e-mail é obrigatório — e de verdade, não o provisório que o sistema gera
+    if (edicao && (!formData.email?.trim() || formData.email.trim().endsWith("@cliente.belezza.ai"))) {
+      errors.email = "Email é obrigatório";
+    } else if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       errors.email = "Email inválido";
     }
 
@@ -680,6 +688,7 @@ export default function ClientsPage() {
     }
     if (!newClientFormData.telefone.trim()) errors.telefone = "Telefone é obrigatório";
     if (!newClientFormData.birthDate) errors.birthDate = "Data de nascimento é obrigatória";
+    if (!newClientFormData.whatsapp?.replace(/\D/g, "")) errors.whatsapp = "WhatsApp é obrigatório";
     setNewClientFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -697,6 +706,8 @@ export default function ClientsPage() {
         email: newClientFormData.email,
         password: newClientFormData.password,
         telefone: newClientFormData.telefone || undefined,
+        whatsapp: newClientFormData.whatsapp,
+        dataNascimento: newClientFormData.birthDate,
         role: "CLIENTE",
         plano: "FREE",
         salonId,
@@ -707,7 +718,7 @@ export default function ClientsPage() {
         name: newClientFormData.nome,
         phone: newClientFormData.telefone,
         email: newClientFormData.email,
-        whatsapp: newClientFormData.whatsapp || newClientFormData.telefone,
+        whatsapp: newClientFormData.whatsapp,
         birthDate: newClientFormData.birthDate ? new Date(newClientFormData.birthDate) : undefined,
         notes: newClientFormData.notes,
         acceptsMarketing: newClientFormData.acceptsMarketing,
@@ -1370,7 +1381,7 @@ export default function ClientsPage() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Input
-                label="WhatsApp"
+                label="WhatsApp *"
                 value={formData.whatsapp}
                 onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
                 error={formErrors.whatsapp}
@@ -1517,14 +1528,14 @@ export default function ClientsPage() {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input
-              label="WhatsApp"
+              label="WhatsApp *"
               value={formData.whatsapp}
               onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
               error={formErrors.whatsapp}
               placeholder="(00) 00000-0000"
             />
             <Input
-              label="Email"
+              label="Email *"
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -1536,7 +1547,7 @@ export default function ClientsPage() {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input
-              label="Data de Nascimento"
+              label="Data de Nascimento *"
               type="date"
               value={formData.birthDate ? new Date(formData.birthDate).toISOString().split("T")[0] : ""}
               onChange={(e) =>
@@ -1848,9 +1859,10 @@ export default function ClientsPage() {
               autoComplete="off"
             />
             <Input
-              label="WhatsApp"
+              label="WhatsApp *"
               value={newClientFormData.whatsapp}
               onChange={(e) => setNewClientFormData({ ...newClientFormData, whatsapp: e.target.value })}
+              error={newClientFormErrors.whatsapp}
               placeholder="(00) 00000-0000"
               leftIcon={<MessageCircle className="h-4 w-4" />}
             />

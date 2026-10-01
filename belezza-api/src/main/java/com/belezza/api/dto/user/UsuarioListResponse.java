@@ -24,6 +24,8 @@ public class UsuarioListResponse {
     private String email;
     private String nome;
     private String telefone;
+    private String whatsapp;
+    private java.time.LocalDate dataNascimento;
     private String avatarUrl;
     private Role role;
     private String roleDescription;
@@ -48,6 +50,8 @@ public class UsuarioListResponse {
                 .email(usuario.getEmail())
                 .nome(usuario.getNome())
                 .telefone(usuario.getTelefone())
+                .whatsapp(usuario.getWhatsapp())
+                .dataNascimento(usuario.getDataNascimento())
                 .avatarUrl(usuario.getAvatarUrl())
                 .role(usuario.getRole())
                 .roleDescription(usuario.getRole().getDescription())

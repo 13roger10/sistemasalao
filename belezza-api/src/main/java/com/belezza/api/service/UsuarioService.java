@@ -157,6 +157,8 @@ public class UsuarioService {
                 .email(request.getEmail().toLowerCase().trim())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .telefone(request.getTelefone())
+                .whatsapp(request.getWhatsapp() != null ? request.getWhatsapp().trim() : null)
+                .dataNascimento(request.getDataNascimento())
                 .avatarUrl(request.getAvatarUrl())
                 .role(request.getRole())
                 .plano(request.getPlano() != null ? request.getPlano() : Plano.FREE)
@@ -191,6 +193,8 @@ public class UsuarioService {
             clienteRepository.save(Cliente.builder()
                     .usuario(usuario)
                     .salon(salon)
+                    .whatsapp(usuario.getWhatsapp())
+                    .dataNascimento(usuario.getDataNascimento())
                     .aceitaMarketing(true)
                     .aceitaWhatsApp(true)
                     .aceitaEmail(true)
@@ -272,6 +276,8 @@ public class UsuarioService {
         // Atualizar campos seguros (auto-serviço e admin)
         if (request.getNome() != null) usuario.setNome(request.getNome().trim());
         if (request.getTelefone() != null) usuario.setTelefone(telefoneLivre(request.getTelefone(), usuario));
+        if (request.getWhatsapp() != null) usuario.setWhatsapp(request.getWhatsapp().trim());
+        if (request.getDataNascimento() != null) usuario.setDataNascimento(request.getDataNascimento());
         if (request.getAvatarUrl() != null) usuario.setAvatarUrl(request.getAvatarUrl());
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
             // A própria senha só muda com a senha atual; o admin redefinindo a de um funcionário não precisa dela

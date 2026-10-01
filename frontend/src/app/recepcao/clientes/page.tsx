@@ -216,12 +216,21 @@ interface ClientFormData {
   phone: string;
   whatsapp: string;
   email: string;
+  /** AAAA-MM-DD */
+  birthDate: string;
   notes: string;
 }
 
 const EMPTY_FORM: ClientFormData = {
-  name: "", phone: "", whatsapp: "", email: "", notes: "",
+  name: "", phone: "", whatsapp: "", email: "", birthDate: "", notes: "",
 };
+
+/** Data do cliente (Date ou texto) no formato do campo de data */
+function paraCampoData(valor: Date | string | undefined): string {
+  if (!valor) return "";
+  const d = typeof valor === "string" ? new Date(valor) : valor;
+  return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
+}
 
 function ClientModal({
   client,
@@ -239,6 +248,7 @@ function ClientModal({
           phone: client.phone ?? "",
           whatsapp: client.whatsapp ?? "",
           email: client.email ?? "",
+          birthDate: paraCampoData(client.birthDate),
           notes: client.notes ?? "",
         }
       : EMPTY_FORM
@@ -258,7 +268,15 @@ function ClientModal({
     const e: Partial<ClientFormData> = {};
     if (!form.name.trim()) e.name = "Nome é obrigatório";
     if (!form.phone.replace(/\D/g, "")) e.phone = "Telefone é obrigatório";
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
+    // Cadastro: WhatsApp e aniversário obrigatórios; edição: também o e-mail (de verdade, não o
+    // provisório que o sistema gera quando o cliente não informa)
+    if (!form.whatsapp.replace(/\D/g, "")) e.whatsapp = "WhatsApp é obrigatório";
+    if (!form.birthDate) e.birthDate = "Data de aniversário é obrigatória";
+    else if (form.birthDate >= new Date().toISOString().split("T")[0])
+      e.birthDate = "Data de aniversário deve estar no passado";
+    if (client && (!form.email.trim() || form.email.trim().endsWith("@cliente.belezza.ai")))
+      e.email = "E-mail é obrigatório";
+    else if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
       e.email = "E-mail inválido";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -273,7 +291,7 @@ function ClientModal({
       try {
         await vinculoUnidadesRef.current?.salvar();
       } catch (e) {
-        setErroVinculo(e instanceof Error ? e.message.replace(/^[HTTP d+]s*/, "") : "Não foi possível salvar as unidades");
+        setErroVinculo(e instanceof Error ? e.message.replace(/^\[HTTP \d+\]\s*/, "") : "Não foi possível salvar as unidades");
         return;
       }
       await onSave({
@@ -350,7 +368,9 @@ function ClientModal({
 
           {/* WhatsApp */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">WhatsApp</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              WhatsApp <span className="text-red-500">*</span>
+            </label>
             <div className="relative">
               <MessageSquare className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
               <input
@@ -358,14 +378,41 @@ function ClientModal({
                 placeholder="(00) 00000-0000"
                 value={form.whatsapp}
                 onChange={(e) => set("whatsapp", formatPhone(e.target.value))}
-                className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-violet-500"
+                className={`w-full rounded-lg border py-2 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-violet-500 ${
+                  errors.whatsapp ? "border-red-400" : "border-gray-200"
+                }`}
               />
             </div>
+            {errors.whatsapp && (
+              <p className="mt-1 text-xs text-red-500">{errors.whatsapp}</p>
+            )}
+          </div>
+
+          {/* Data de aniversário */}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Data de aniversário <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="date"
+              aria-label="Data de aniversário"
+              max={new Date().toISOString().split("T")[0]}
+              value={form.birthDate}
+              onChange={(e) => set("birthDate", e.target.value)}
+              className={`w-full rounded-lg border px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 ${
+                errors.birthDate ? "border-red-400" : "border-gray-200"
+              }`}
+            />
+            {errors.birthDate && (
+              <p className="mt-1 text-xs text-red-500">{errors.birthDate}</p>
+            )}
           </div>
 
           {/* Email */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">E-mail</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              E-mail {client && <span className="text-red-500">*</span>}
+            </label>
             <div className="relative">
               <Mail className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
               <input
@@ -548,6 +595,7 @@ export default function RecepcaoClientesPage() {
           phone: data.phone,
           email: data.email || undefined,
           whatsapp: data.whatsapp || undefined,
+          birthDate: data.birthDate ? new Date(data.birthDate) : undefined,
           notes: data.notes || undefined,
         });
         showToast("Cliente atualizado com sucesso");
@@ -557,6 +605,7 @@ export default function RecepcaoClientesPage() {
           phone: data.phone,
           email: data.email || undefined,
           whatsapp: data.whatsapp || undefined,
+          birthDate: data.birthDate ? new Date(data.birthDate) : undefined,
           notes: data.notes || undefined,
           salonId: SALON_ID,
         });

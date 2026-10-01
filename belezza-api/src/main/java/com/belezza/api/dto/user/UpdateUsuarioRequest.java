@@ -38,6 +38,13 @@ public class UpdateUsuarioRequest {
     @Telefone
     private String telefone;
 
+    @Size(max = 20, message = "WhatsApp deve ter no máximo 20 caracteres")
+    @Telefone
+    private String whatsapp;
+
+    @jakarta.validation.constraints.Past(message = "Data de aniversário deve estar no passado")
+    private java.time.LocalDate dataNascimento;
+
     @Size(max = 500, message = "URL do avatar deve ter no máximo 500 caracteres")
     private String avatarUrl;
 

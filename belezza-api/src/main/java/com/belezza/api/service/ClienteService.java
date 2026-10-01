@@ -59,6 +59,7 @@ public class ClienteService {
     @Transactional
     @SuppressWarnings("null")
     public ClienteResponse criar(ClienteRequest request, String emailAdmin) {
+        exigirDadosObrigatorios(request, false);
         Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
         // O admin cadastra na unidade em que está trabalhando. Antes o salonId do corpo era aceito
         // sem conferência: a tela podia gravar o cliente em outra unidade — ou no salão de outro dono.
@@ -76,6 +77,8 @@ public class ClienteService {
                     .nome(request.getName())
                     .email(request.getEmail() != null ? request.getEmail() : emailProvisorio(request.getPhone()))
                     .telefone(request.getPhone().trim())
+                    .whatsapp(request.getWhatsapp() != null ? request.getWhatsapp().trim() : null)
+                    .dataNascimento(request.getBirthDate())
                     .password(passwordEncoder.encode(UUID.randomUUID().toString()))
                     .role(Role.CLIENTE)
                     .ativo(true)
@@ -112,6 +115,7 @@ public class ClienteService {
     @Transactional
     @SuppressWarnings("null")
     public ClienteResponse criarComSalonId(ClienteRequest request, Long salonId) {
+        exigirDadosObrigatorios(request, false);
         Usuario usuario = contaExistente(request);
 
         if (usuario == null) {
@@ -119,6 +123,8 @@ public class ClienteService {
                     .nome(request.getName())
                     .email(request.getEmail() != null ? request.getEmail() : emailProvisorio(request.getPhone()))
                     .telefone(request.getPhone().trim())
+                    .whatsapp(request.getWhatsapp() != null ? request.getWhatsapp().trim() : null)
+                    .dataNascimento(request.getBirthDate())
                     .password(passwordEncoder.encode(UUID.randomUUID().toString()))
                     .role(Role.CLIENTE)
                     .ativo(true)
@@ -161,6 +167,27 @@ public class ClienteService {
      * Cliente já cadastrado no salão: 409 dizendo o campo que bateu (BUG-039 — antes era 400
      * genérico, e a tela não tinha como marcar o telefone ou o email como duplicado).
      */
+    /**
+     * Cadastro do cliente: WhatsApp e data de aniversário obrigatórios. Edição: também o e-mail —
+     * um e-mail de verdade, não o provisório que o sistema gera quando o cliente não informa.
+     */
+    private static void exigirDadosObrigatorios(ClienteRequest request, boolean edicao) {
+        List<String> faltando = new ArrayList<>();
+        String email = request.getEmail() != null ? request.getEmail().trim() : "";
+        if (edicao && (email.isEmpty() || email.endsWith("@cliente.belezza.ai"))) {
+            faltando.add("e-mail");
+        }
+        if (request.getWhatsapp() == null || request.getWhatsapp().isBlank()) {
+            faltando.add("WhatsApp");
+        }
+        if (request.getBirthDate() == null) {
+            faltando.add("data de aniversário");
+        }
+        if (!faltando.isEmpty()) {
+            throw new BusinessException("Preencha os campos obrigatórios: " + String.join(", ", faltando));
+        }
+    }
+
     private static DuplicateResourceException clienteDuplicado(Usuario existente, ClienteRequest request) {
         boolean peloEmail = request.getEmail() != null && request.getEmail().equalsIgnoreCase(existente.getEmail());
         return new DuplicateResourceException("Cliente já cadastrado neste salão com este " + (peloEmail ? "email" : "telefone"));
@@ -449,6 +476,7 @@ public class ClienteService {
      * pelo e-mail do admin, e a recepcionista recebia erro ao salvar qualquer cliente.
      */
     public ClienteResponse atualizar(Long id, ClienteRequest request, Long salonIdOperador) {
+        exigirDadosObrigatorios(request, true);
         Cliente cliente = clienteRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", id));
 
