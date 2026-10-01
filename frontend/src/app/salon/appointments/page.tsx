@@ -1483,7 +1483,9 @@ function AppointmentsPageContent() {
   // Recebido no dia (BUG-034): a mesma fonte do caixa — pagamentos aprovados do dia, pelo relatório
   // diário do backend. Antes a agenda somava o preço dos concluídos e divergia do caixa
   // (ex.: R$ 720 na agenda × R$ 1.020 no caixa).
-  const podeVerFinanceiro = user?.role !== "PROFESSIONAL";
+  // Só com o usuário carregado: antes, no primeiro render (user nulo), o pedido saía para o
+  // profissional e voltava 403
+  const podeVerFinanceiro = !!user && user.role !== "PROFESSIONAL";
   const diaVisto = viewedDate.toDateString();
   const [recebidoNoDia, setRecebidoNoDia] = useState<number | null>(null);
   useEffect(() => {

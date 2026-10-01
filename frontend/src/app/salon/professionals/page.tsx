@@ -100,6 +100,7 @@ const StatsCard = ({
 
 export default function ProfessionalsPage() {
   const { user } = useSalonAuth();
+  const isAdmin = user?.role === "ADMIN";
   const { selectedUnitId } = useUnit();
 
   // Estados de listagem
@@ -217,8 +218,9 @@ export default function ProfessionalsPage() {
       setTotalPages(response.meta.totalPages);
       setTotalItems(response.meta.total);
 
-      // Enriquece com faturamento/avaliação reais (vindos de Pagamento/Avaliacao) do mês atual
-      try {
+      // Enriquece com faturamento/avaliação reais (vindos de Pagamento/Avaliacao) do mês atual.
+      // Dado financeiro: só o admin (o backend recusa a recepção com 403).
+      if (isAdmin) try {
         const ranking = await dashboardService.getRankingProfissionais("MENSAL");
         const rankingPorId = new Map(ranking.map((r) => [String(r.profissionalId), r]));
         setProfessionals((current) =>
@@ -243,7 +245,7 @@ export default function ProfessionalsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, searchTerm, statusFilter, selectedUnitId]);
+  }, [page, searchTerm, statusFilter, selectedUnitId, isAdmin]);
 
   useEffect(() => {
     loadProfessionals();
