@@ -21,6 +21,7 @@ import { professionalService } from '@/services/salon/professionalService';
 import { notificationService } from '@/services/salon/notificationService';
 import { formatCurrency } from '@/utils/formatters';
 import type { Service, Professional, TimeSlot } from '@/types/salon';
+import { salaoAtual } from "@/lib/salao-atual";
 
 interface MobileBookingProps {
   unitId: string;
@@ -100,7 +101,7 @@ export function MobileBooking({
   useEffect(() => {
     const loadOpenDays = async () => {
       try {
-        const salonId = unitId === 'default' ? '1' : unitId;
+        const salonId = unitId === 'default' ? salaoAtual() : unitId;
         const response = await fetch(`/api/salon/schedule/dias-abertos?salonId=${salonId}`);
         if (response.ok) {
           const data = await response.json() as { diasAbertos: number[] };

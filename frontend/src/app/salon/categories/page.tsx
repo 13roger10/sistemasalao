@@ -29,6 +29,7 @@ import type {
   CategoryInfo,
   LevelInfo,
 } from "@/types/salon";
+import { salaoAtual } from "@/lib/salao-atual";
 
 // Card de estatísticas
 const StatsCard = ({
@@ -120,7 +121,7 @@ export default function CategoriesPage() {
         [
           professionalService.getCategories(),
           professionalService.getLevels(),
-          professionalService.getAll({ salonId: 1 }),
+          professionalService.getAll({ salonId: salaoAtual() }),
         ]
       );
       setCategories(categoriesData);

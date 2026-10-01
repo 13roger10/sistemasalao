@@ -23,9 +23,9 @@ import {
   FUNCAO_COLORS,
   FUNCOES_ASSIGNING,
 } from "@/services/equipeStudio";
+import { salaoAtual } from "@/lib/salao-atual";
 
 // ─── Salon ID resolution (same default as the rest of the admin area) ─────────
-const DEFAULT_SALON_ID = 1;
 
 // ─── Role icon ────────────────────────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ export default function TeamPage() {
   const [removeTarget, setRemoveTarget] = useState<MembroStudio | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
 
-  const salonId = DEFAULT_SALON_ID;
+  const salonId = Number(salaoAtual());
 
   const load = useCallback(async () => {
     setIsLoading(true);

@@ -44,10 +44,10 @@ import {
   type MetricasSocial,
   PERIODO_LABELS,
 } from "@/services/analytics";
+import { salaoAtual } from "@/lib/salao-atual";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const DEFAULT_SALON_ID = 1;
 
 const PIE_COLORS = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#6366f1"];
 
@@ -599,7 +599,7 @@ export default function AnalyticsPage() {
   const [financeiro, setFinanceiro] = useState<MetricasFinanceiras | null>(null);
   const [social, setSocial] = useState<MetricasSocial | null>(null);
 
-  const salonId = DEFAULT_SALON_ID;
+  const salonId = Number(salaoAtual());
 
   const load = useCallback(async () => {
     setIsLoading(true);

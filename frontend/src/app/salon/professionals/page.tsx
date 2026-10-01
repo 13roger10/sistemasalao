@@ -33,6 +33,7 @@ import { AgendamentosAfetadosModal, agendamentosAfetadosDoErro } from "@/compone
 import { useToast } from "@/components/ui/Toast";
 import { contemTexto } from "@/utils/texto";
 import type { Professional, ProfessionalCreateInput, ProfessionalUpdateInput, Service } from "@/types/salon";
+import { salaoAtual } from "@/lib/salao-atual";
 
 // Tipo para usuário do backend
 interface User {
@@ -188,7 +189,7 @@ export default function ProfessionalsPage() {
   const loadAvailableServices = useCallback(async () => {
     setIsLoadingServices(true);
     try {
-      const services = await serviceService.getAll({ salonId: selectedUnitId || "1" });
+      const services = await serviceService.getAll({ salonId: selectedUnitId || salaoAtual() });
       // Filtrar apenas serviços ativos
       const activeServices = services.filter(s => s.status === "active");
       setAvailableServices(activeServices);
@@ -207,7 +208,7 @@ export default function ProfessionalsPage() {
       const response = await professionalService.list({
         page,
         limit: 10,
-        salonId: selectedUnitId || "1",
+        salonId: selectedUnitId || salaoAtual(),
         search: searchTerm || undefined,
         status: statusFilter || undefined,
       });

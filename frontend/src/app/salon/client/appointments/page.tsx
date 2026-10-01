@@ -27,6 +27,7 @@ import { serviceService } from "@/services/salon/serviceService";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import { cn } from "@/lib/utils";
 import type { Appointment, AppointmentStatus, Professional, Service, TimeSlot } from "@/types/salon";
+import { salaoAtual } from "@/lib/salao-atual";
 
 // Status configuration
 const STATUS_CONFIG: Record<AppointmentStatus, { label: string; color: string; icon: ReactNode }> = {
@@ -132,7 +133,7 @@ export default function ClientAppointmentsPage() {
         professionalId: rescheduleForm.professionalId,
         serviceIds: rescheduleForm.serviceIds,
         date: new Date(year, month - 1, day),
-        unitId: salaoDoReagendamento || "1",
+        unitId: salaoDoReagendamento || salaoAtual(),
         // o horário atual deste agendamento fica livre para ele mesmo (BUG-021)
         ignoreAppointmentId: appointmentToReschedule?.id,
       })

@@ -66,6 +66,7 @@ import type {
 } from "@/types/salon";
 import type { PaginatedResponse } from "@/types/salon/common";
 import { contemTexto } from "@/utils/texto";
+import { salaoAtual } from "@/lib/salao-atual";
 
 // Badge de Nível de Fidelidade
 const LoyaltyBadge = ({ level }: { level: LoyaltyLevel }) => {
@@ -291,7 +292,7 @@ export default function ClientsPage() {
       const response = await clientService.list({
         page,
         limit: 10,
-        salonId: selectedUnitId || "1", // Default to salon 1 if no unit selected
+        salonId: selectedUnitId || salaoAtual(), // Default to salon 1 if no unit selected
         ...filters,
       });
 
@@ -420,7 +421,7 @@ export default function ClientsPage() {
 
     setIsSubmitting(true);
     try {
-      const salonId = selectedUnitId || "1";
+      const salonId = selectedUnitId || salaoAtual();
       const errors: Record<string, string> = {};
 
       // Verificar duplicados em paralelo
@@ -467,7 +468,7 @@ export default function ClientsPage() {
 
     setIsSubmitting(true);
     try {
-      const salonId = selectedUnitId || "1";
+      const salonId = selectedUnitId || salaoAtual();
       const errors: Record<string, string> = {};
 
       // Verificar duplicados em paralelo (excluindo o cliente atual)

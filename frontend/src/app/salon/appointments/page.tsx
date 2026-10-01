@@ -56,6 +56,7 @@ import type { Professional } from "@/types/salon/professional";
 import type { Client } from "@/types/salon/client";
 import { contemTexto } from "@/utils/texto";
 import type { Service } from "@/types/salon/service";
+import { salaoAtual } from "@/lib/salao-atual";
 
 // ===== TIPOS =====
 type CalendarView = "day" | "week" | "month";
@@ -1012,7 +1013,7 @@ function AppointmentsPageContent() {
         // agendamentos do salão — os mais antigos — e a semana/mês atual aparecia vazia num salão
         // com histórico. O backend já restringe o PROFISSIONAL à própria agenda.
         const response = await appointmentService.list({
-          salonId: selectedUnitId || '1',
+          salonId: selectedUnitId || salaoAtual(),
           dateFrom: startDate,
           dateTo: endDate,
           page: 1,
@@ -1042,7 +1043,7 @@ function AppointmentsPageContent() {
 
   const loadProfessionals = useCallback(async () => {
     try {
-      const data = await professionalService.getAll({ salonId: selectedUnitId || '1' });
+      const data = await professionalService.getAll({ salonId: selectedUnitId || salaoAtual() });
       setProfessionals(data);
     } catch (error) {
       console.error("Erro ao carregar profissionais:", error);
@@ -1057,7 +1058,7 @@ function AppointmentsPageContent() {
 
   const loadClients = useCallback(async () => {
     try {
-      const response = await clientService.list({ salonId: selectedUnitId || '1' });
+      const response = await clientService.list({ salonId: selectedUnitId || salaoAtual() });
       setClients(response.data || response.items || []);
     } catch (error) {
       console.error("Erro ao carregar clientes:", error);
@@ -1067,7 +1068,7 @@ function AppointmentsPageContent() {
 
   const loadServices = useCallback(async () => {
     try {
-      const data = await serviceService.getAll({ salonId: selectedUnitId || '1' });
+      const data = await serviceService.getAll({ salonId: selectedUnitId || salaoAtual() });
       setServices(data);
     } catch (error) {
       console.error("Erro ao carregar serviços:", error);
@@ -1112,7 +1113,7 @@ function AppointmentsPageContent() {
         professionalId: formData.professionalId,
         serviceIds: formData.serviceIds,
         date: new Date(year, month - 1, day),
-        unitId: selectedUnitId || "1",
+        unitId: selectedUnitId || salaoAtual(),
       });
 
       if (response.professionals && response.professionals.length > 0) {

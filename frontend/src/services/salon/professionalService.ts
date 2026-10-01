@@ -15,6 +15,7 @@ import type {
   LevelInfo,
 } from '@/types/salon';
 import type { PaginatedResponse, PaginationParams, DateRange } from '@/types/salon/common';
+import { salaoAtual } from "@/lib/salao-atual";
 
 // IMPORTANTE: O backend usa /profissionais (português), não /professionals
 const BASE_PATH = '/profissionais';
@@ -84,7 +85,7 @@ export const professionalService = {
     params: PaginationParams & ProfessionalFilters & { salonId?: string | number }
   ): Promise<PaginatedResponse<Professional>> => {
     // Sempre usa o endpoint /profissionais/salon/{salonId}
-    const salonId = params.salonId || '1';
+    const salonId = params.salonId || salaoAtual();
 
     // Converte status do frontend para ativo do backend
     const backendParams: Record<string, unknown> = {};
@@ -119,7 +120,7 @@ export const professionalService = {
   // Get all professionals (no pagination, for selects)
   // Usa /profissionais/salon/{salonId} pois não existe /profissionais/all no backend
   getAll: (params?: ProfessionalFilters & { salonId?: string | number }): Promise<Professional[]> => {
-    const salonId = params?.salonId || '1';
+    const salonId = params?.salonId || salaoAtual();
     // Seleção de profissional: só os ativos, salvo filtro explícito — quem deixou de ser
     // profissional (ex.: virou recepcionista, BUG-028) não aparece mais para agendar
     return api.get<ProfissionalBackend[]>(`${BASE_PATH}/salon/${salonId}`, { ativo: params?.status !== 'inactive' })

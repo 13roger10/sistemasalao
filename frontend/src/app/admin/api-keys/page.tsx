@@ -21,8 +21,8 @@ import {
   type ApiKeyCreatedResponse,
   type Escopo,
 } from "@/services/apiKeys";
+import { salaoAtual } from "@/lib/salao-atual";
 
-const DEFAULT_SALON_ID = 1;
 
 function formatDate(iso: string | null) {
   if (!iso) return "—";
@@ -105,7 +105,7 @@ function CreatedKeyBanner({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ApiKeysPage() {
-  const salonId = DEFAULT_SALON_ID;
+  const salonId = Number(salaoAtual());
 
   const [keys, setKeys] = useState<ApiKeyResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);

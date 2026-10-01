@@ -42,6 +42,7 @@ import {
 } from "@/types";
 import type { Service } from "@/types/salon";
 import { Clock } from "lucide-react";
+import { salaoAtual } from "@/lib/salao-atual";
 
 // Componente de Badge para Role
 const RoleBadge = ({ role }: { role: UserRole }) => {
@@ -143,7 +144,7 @@ export default function SalonUsersPage() {
     telefone: "",
     role: "PROFISSIONAL",
     plano: "FREE",
-    salonId: 1, // ID do salão padrão
+    salonId: Number(salaoAtual()), // unidade da sessão
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -497,7 +498,7 @@ export default function SalonUsersPage() {
       telefone: "",
       role: "PROFISSIONAL",
       plano: "FREE",
-      salonId: 1, // ID do salão padrão
+      salonId: Number(salaoAtual()), // unidade da sessão
     });
     setFormErrors({});
     setSelectedUser(null);

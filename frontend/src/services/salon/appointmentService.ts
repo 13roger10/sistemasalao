@@ -18,6 +18,7 @@ import type {
   TimeSlot,
 } from '@/types/salon';
 import type { PaginatedResponse, PaginationParams, DateRange } from '@/types/salon/common';
+import { salaoAtual } from "@/lib/salao-atual";
 
 // IMPORTANTE: O backend usa /agendamentos (português), não /appointments
 const BASE_PATH = '/agendamentos';
@@ -304,7 +305,7 @@ const mapMeuAgendamentoToFrontend = (item: MeuAgendamentoBackendItem): Appointme
     commissionTotal: 0,
     commissionPaid: false,
     // Propositalmente sem clientNotes/internalNotes: a rota /my nunca as envia.
-    unitId: item.unitId || '1',
+    unitId: item.unitId || salaoAtual(),
     createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
     updatedAt: item.updatedAt ? new Date(item.updatedAt) : new Date(),
   };
@@ -316,7 +317,7 @@ export const appointmentService = {
   list: async (
     params: PaginationParams & AppointmentFilters & { salonId?: string | number }
   ): Promise<PaginatedResponse<Appointment>> => {
-    const salonId = params.salonId || '1';
+    const salonId = params.salonId || salaoAtual();
     try {
       // Convert frontend pagination params to Spring Boot format
       const backendParams: Record<string, string | number> = {
@@ -598,7 +599,7 @@ export const appointmentService = {
       salonId?: string;
     }
   ): Promise<CalendarEvent[]> => {
-    const salonId = params.salonId || '1';
+    const salonId = params.salonId || salaoAtual();
 
     // Se tem profissionalId, usa agenda-diaria
     if (params.professionalId) {
@@ -661,7 +662,7 @@ export const appointmentService = {
 
     // Build query params
     const params = new URLSearchParams();
-    params.append('salonId', String(data.unitId || '1'));
+    params.append('salonId', String(data.unitId || salaoAtual()));
     params.append('data', dateStr);
     data.serviceIds.forEach(id => params.append('servicoIds', String(id)));
     if (data.professionalId) {

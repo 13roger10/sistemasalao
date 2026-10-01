@@ -13,6 +13,7 @@ import type {
   ServiceStats,
 } from '@/types/salon';
 import type { PaginatedResponse, PaginationParams } from '@/types/salon/common';
+import { salaoAtual } from "@/lib/salao-atual";
 
 // IMPORTANTE: O backend usa /servicos (português), não /services
 const BASE_PATH = '/servicos';
@@ -102,7 +103,7 @@ export const serviceService = {
   // audit) — the real, working endpoint for listing a salon's active services, with or
   // without auth, is GET /servicos/salon/{salonId}, same as getAll() below.
   listPublic: (unitId?: string): Promise<Service[]> => {
-    const salonId = !unitId || unitId === 'default' ? '1' : unitId;
+    const salonId = !unitId || unitId === 'default' ? salaoAtual() : unitId;
     return api.get<ServicoBackendResponse[]>(`${BASE_PATH}/salon/${salonId}`)
       .then((backendServices) => backendServices.map(mapBackendToFrontend));
   },
@@ -119,7 +120,7 @@ export const serviceService = {
   list: (
     params: PaginationParams & ServiceFilters & { salonId?: string | number }
   ): Promise<PaginatedResponse<Service>> => {
-    const salonId = params.salonId || '1';
+    const salonId = params.salonId || salaoAtual();
     return api.get<ServicoBackendResponse[]>(`${BASE_PATH}/salon/${salonId}`, params)
       .then((backendServices) => {
         const services = backendServices.map(mapBackendToFrontend);
@@ -143,7 +144,7 @@ export const serviceService = {
 
   // Get all services (no pagination, for selects)
   getAll: (params?: ServiceFilters & { salonId?: string | number }): Promise<Service[]> => {
-    const salonId = params?.salonId || '1';
+    const salonId = params?.salonId || salaoAtual();
     return api.get<ServicoBackendResponse[]>(`${BASE_PATH}/salon/${salonId}`, params)
       .then((backendServices) => backendServices.map(mapBackendToFrontend));
   },

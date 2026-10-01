@@ -11,6 +11,7 @@ import type {
   ClientBirthday,
 } from '@/types/salon';
 import type { PaginatedResponse, PaginationParams } from '@/types/salon/common';
+import { salaoAtual } from "@/lib/salao-atual";
 
 const BASE_PATH = '/clientes';
 
@@ -21,7 +22,7 @@ export const clientService = {
     params: PaginationParams & ClientFilters & { salonId?: string | number }
   ): Promise<PaginatedResponse<Client>> => {
     // Sempre usa o endpoint /clientes/salon/{salonId} - o backend não tem GET /clientes
-    const salonId = params.salonId || '1'; // Default para salão 1 se não especificado
+    const salonId = params.salonId || salaoAtual(); // Default para salão 1 se não especificado
     return api.get<Client[]>(`${BASE_PATH}/salon/${salonId}`, params)
       .then((clients) => {
         const page = params.page || 1;

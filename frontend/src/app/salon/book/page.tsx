@@ -29,6 +29,7 @@ import { useUnit } from "@/contexts/UnitContext";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from '@/utils/formatters';
 import type { Service, Professional, TimeSlot, Client } from "@/types/salon";
+import { salaoAtual } from "@/lib/salao-atual";
 
 // ===== TIPOS =====
 type BookingStep = "service" | "professional" | "datetime" | "confirm";
@@ -132,7 +133,7 @@ function BookingPageContent() {
   const searchParams = useSearchParams();
   const { user } = useSalonAuth();
   const { selectedUnitId } = useUnit();
-  const unitId = searchParams.get("unit") || selectedUnitId || "1";
+  const unitId = searchParams.get("unit") || selectedUnitId || salaoAtual();
 
   // States
   const [step, setStep] = useState<BookingStep>("service");
@@ -188,7 +189,7 @@ function BookingPageContent() {
   useEffect(() => {
     const loadOpenDays = async () => {
       try {
-        const salonId = unitId === 'default' ? '1' : unitId;
+        const salonId = unitId === 'default' ? salaoAtual() : unitId;
         const response = await fetch(`/api/salon/schedule/dias-abertos?salonId=${salonId}`);
         if (response.ok) {
           const data = await response.json() as { diasAbertos: number[] };
