@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils';
 import { SalonLayout } from '@/components/layout/SalonLayout';
 import { useSalonAuth } from '@/contexts/SalonAuthContext';
 import { businessService } from '@/services/salon/businessService';
+import { scheduleService } from '@/services/salon/scheduleService';
 import type { BusinessProfile, BusinessStats } from '@/types/salon/business';
 import type { DaySchedule } from '@/types/salon/common';
 
@@ -171,6 +172,7 @@ export default function BusinessProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [scheduleChanged, setScheduleChanged] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'info' | 'address' | 'schedule' | 'social'>('info');
@@ -184,11 +186,14 @@ export default function BusinessProfilePage() {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const [profileData, statsData] = await Promise.all([
+        // Os horarios vem de /salon/schedule (o perfil do negocio devolve schedule: null) —
+        // sem isso a aba "Horarios" quebrava ao ler schedule.days
+        const [profileData, statsData, scheduleData] = await Promise.all([
           businessService.get(),
           businessService.getStats(),
+          scheduleService.get(),
         ]);
-        setProfile(profileData);
+        setProfile({ ...profileData, schedule: scheduleData?.schedule ?? { days: [] } });
         setStats(statsData);
       } catch (err) {
         console.error('Error loading profile:', err);
@@ -246,6 +251,7 @@ export default function BusinessProfilePage() {
     days[dayIndex] = day;
     setProfile({ ...profile, schedule: { days } });
     setHasChanges(true);
+    setScheduleChanged(true);
     setSaveSuccess(false);
   };
 
@@ -265,18 +271,25 @@ export default function BusinessProfilePage() {
         email: profile.email,
         website: profile.website,
         address: profile.address,
-        schedule: profile.schedule,
         description: profile.description,
         socialMedia: profile.socialMedia,
         primaryColor: profile.primaryColor,
       });
-      setProfile(updated);
+      // Horarios sao gravados em /salon/schedule (o mesmo da tela de Horarios)
+      let schedule = profile.schedule;
+      if (scheduleChanged) {
+        schedule = (await scheduleService.update({ schedule: profile.schedule })).schedule;
+        setScheduleChanged(false);
+      }
+      setProfile({ ...updated, schedule });
       setHasChanges(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       console.error('Error saving profile:', err);
-      setError('Erro ao salvar alteracoes');
+      // Mostra o motivo do backend (ex.: abertura depois do fechamento — BUG-032)
+      const motivo = err instanceof Error ? err.message.replace(/^\[HTTP \d+\]\s*/, '') : '';
+      setError(motivo ? `Erro ao salvar alteracoes: ${motivo}` : 'Erro ao salvar alteracoes');
     } finally {
       setIsSaving(false);
     }
