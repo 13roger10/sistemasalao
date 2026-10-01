@@ -15,6 +15,14 @@ import { salaoAtual } from "@/lib/salao-atual";
 
 const BASE_PATH = '/clientes';
 
+/** Unidade do estabelecimento no modal do cliente: vinculado = é cliente dela; atual = a unidade em uso. */
+export interface UnidadeDoCliente {
+  id: number;
+  nome: string;
+  vinculado: boolean;
+  atual: boolean;
+}
+
 export const clientService = {
   // List clients with pagination and filters
   // IMPORTANTE: Sempre requer salonId - a rota GET /clientes não existe no backend
@@ -56,6 +64,16 @@ export const clientService = {
   // Update existing client
   update: (id: string, data: ClientUpdateInput): Promise<Client> => {
     return api.patch<Client>(`${BASE_PATH}/${id}`, data);
+  },
+
+  // Unidades do estabelecimento e se o cliente está vinculado a cada uma (admin e recepção)
+  units: (id: string): Promise<UnidadeDoCliente[]> => {
+    return api.get<UnidadeDoCliente[]>(`${BASE_PATH}/${id}/unidades`);
+  },
+
+  // Define a quais unidades o cliente fica vinculado (a atual continua sempre)
+  setUnits: (id: string, salonIds: number[]): Promise<UnidadeDoCliente[]> => {
+    return api.put<UnidadeDoCliente[]>(`${BASE_PATH}/${id}/unidades`, { salonIds });
   },
 
   // Reactivate a deleted (inactive) client — admin only

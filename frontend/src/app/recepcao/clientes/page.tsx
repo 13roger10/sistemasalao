@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { clientService } from "@/services/salon/clientService";
 import { api } from "@/services/salon/api";
@@ -13,6 +13,7 @@ import {
   History, Clock, Scissors, ChevronRight,
 } from "lucide-react";
 import { useSalaoAtual } from "@/hooks/useSalaoAtual";
+import { VinculoUnidadesCliente, type VinculoUnidadesClienteRef } from "@/components/salon/VinculoUnidadesCliente";
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -244,6 +245,9 @@ function ClientModal({
   );
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Partial<ClientFormData>>({});
+  // Vínculo com outras unidades do estabelecimento (a área de recepção é de recepção e admin)
+  const vinculoUnidadesRef = useRef<VinculoUnidadesClienteRef>(null);
+  const [erroVinculo, setErroVinculo] = useState<string | null>(null);
 
   const set = (k: keyof ClientFormData, v: string) => {
     setForm((f) => ({ ...f, [k]: v }));
@@ -264,6 +268,14 @@ function ClientModal({
     if (!validate()) return;
     setSubmitting(true);
     try {
+      // Antes do onSave, que fecha o modal
+      setErroVinculo(null);
+      try {
+        await vinculoUnidadesRef.current?.salvar();
+      } catch (e) {
+        setErroVinculo(e instanceof Error ? e.message.replace(/^[HTTP d+]s*/, "") : "Não foi possível salvar as unidades");
+        return;
+      }
       await onSave({
         ...form,
         phone: form.phone.replace(/\D/g, ""),
@@ -385,6 +397,9 @@ function ClientModal({
               />
             </div>
           </div>
+
+          {client && <VinculoUnidadesCliente ref={vinculoUnidadesRef} clientId={String(client.id)} />}
+          {erroVinculo && <p className="text-sm text-red-600">{erroVinculo}</p>}
         </div>
 
         {/* Footer */}
@@ -472,6 +487,8 @@ function ClientCard({
       {/* Edit */}
       <button
         onClick={() => onEdit(client)}
+        aria-label={`Editar cliente ${client.name}`}
+        title="Editar cliente"
         className="flex-shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
       >
         <Edit2 className="h-4 w-4" />

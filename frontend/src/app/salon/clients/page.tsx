@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Search,
   Edit2,
@@ -38,6 +38,7 @@ import { clientService } from "@/services/salon/clientService";
 import { api, ApiException } from "@/services/salon/api";
 import { userService } from "@/services/user";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
+import { VinculoUnidadesCliente, type VinculoUnidadesClienteRef } from "@/components/salon/VinculoUnidadesCliente";
 import { useUnit } from "@/contexts/UnitContext";
 
 // Tipo para usuário do backend
@@ -207,6 +208,9 @@ function errosDoBackend(error: unknown, padrao: string, campos: Record<string, s
 
 export default function ClientsPage() {
   const { user } = useSalonAuth();
+  // Vincular o cliente a outras unidades: só administrador e recepção
+  const podeVincularUnidades = user?.role === "ADMIN" || user?.role === "RECEPCIONIST";
+  const vinculoUnidadesRef = useRef<VinculoUnidadesClienteRef>(null);
   const toast = useToast();
   const mensagemErro = (error: unknown) =>
     error instanceof Error ? error.message.replace(/^\[HTTP \d+\]\s*/, "") : "Tente novamente.";
@@ -507,6 +511,7 @@ export default function ClientsPage() {
       };
 
       await clientService.update(selectedClient.id, updateData);
+      await vinculoUnidadesRef.current?.salvar();
       setIsEditModalOpen(false);
       resetForm();
       loadClients();
@@ -1604,6 +1609,10 @@ export default function ClientsPage() {
               </label>
             </div>
           </div>
+
+          {selectedClient && podeVincularUnidades && (
+            <VinculoUnidadesCliente ref={vinculoUnidadesRef} clientId={selectedClient.id} />
+          )}
 
           {selectedClient && (
             <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50">

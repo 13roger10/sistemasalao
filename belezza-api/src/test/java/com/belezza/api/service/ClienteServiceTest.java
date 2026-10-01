@@ -301,4 +301,74 @@ class ClienteServiceTest {
                     .containsExactly(3L, 1L);
         }
     }
+
+    @Nested
+    @DisplayName("Vincular cliente às unidades")
+    class VincularUnidades {
+
+        private Salon sede;
+        private Salon filial;
+        private Salon outra;
+        private Cliente naSede;
+
+        @org.junit.jupiter.api.BeforeEach
+        void unidades() {
+            sede = Salon.builder().id(1L).nome("Sede").ativo(true).build();
+            filial = Salon.builder().id(3L).nome("Filial").ativo(true).build();
+            outra = Salon.builder().id(4L).nome("Outra").ativo(true).build();
+            naSede = Cliente.builder().id(10L).salon(sede).usuario(usuario).whatsapp("61 99999-0000")
+                    .aceitaMarketing(false).ativo(true).observacoes("só da sede").build();
+            when(clienteRepository.findById(10L)).thenReturn(Optional.of(naSede));
+            org.mockito.Mockito.lenient().when(salonService.unidadesDoMesmoDono(1L)).thenReturn(List.of(sede, filial, outra));
+        }
+
+        @Test
+        @DisplayName("Lista as unidades do estabelecimento marcando as vinculadas e a atual")
+        void lista() {
+            Cliente inativoNaOutra = Cliente.builder().id(11L).salon(outra).usuario(usuario).ativo(false).build();
+            when(clienteRepository.findByUsuarioId(5L)).thenReturn(List.of(naSede, inativoNaOutra));
+
+            var lista = clienteService.unidadesDoCliente(10L, 1L);
+
+            assertThat(lista).extracting(m -> m.get("id")).containsExactly(1L, 3L, 4L);
+            assertThat(lista).extracting(m -> m.get("vinculado")).containsExactly(true, false, false);
+            assertThat(lista).extracting(m -> m.get("atual")).containsExactly(true, false, false);
+        }
+
+        @Test
+        @DisplayName("Vincula criando o cadastro (contato e preferências, sem observações) e desvincula desativando")
+        void vinculaEDesvincula() {
+            Cliente ativoNaOutra = Cliente.builder().id(12L).salon(outra).usuario(usuario).ativo(true).build();
+            when(clienteRepository.findByUsuarioId(5L)).thenReturn(List.of(naSede, ativoNaOutra));
+
+            clienteService.atualizarUnidades(10L, List.of(3L), 1L);
+
+            org.mockito.ArgumentCaptor<Cliente> salvos = org.mockito.ArgumentCaptor.forClass(Cliente.class);
+            verify(clienteRepository, org.mockito.Mockito.times(2)).save(salvos.capture());
+            Cliente novo = salvos.getAllValues().stream().filter(c -> c.getSalon() == filial).findFirst().orElseThrow();
+            assertThat(novo.getUsuario()).isSameAs(usuario);
+            assertThat(novo.getWhatsapp()).isEqualTo("61 99999-0000");
+            assertThat(novo.isAceitaMarketing()).isFalse();
+            assertThat(novo.getObservacoes()).isNull();
+            assertThat(ativoNaOutra.isAtivo()).isFalse();
+            assertThat(naSede.isAtivo()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Não vincula a unidade de outro dono")
+        void unidadeDeOutroDono() {
+            assertThatThrownBy(() -> clienteService.atualizarUnidades(10L, List.of(99L), 1L))
+                    .isInstanceOf(AccessDeniedException.class);
+            verify(clienteRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Equipe de outra unidade não mexe no cliente")
+        void equipeDeOutraUnidade() {
+            assertThatThrownBy(() -> clienteService.unidadesDoCliente(10L, 3L))
+                    .isInstanceOf(AccessDeniedException.class);
+            assertThatThrownBy(() -> clienteService.atualizarUnidades(10L, List.of(1L), 3L))
+                    .isInstanceOf(AccessDeniedException.class);
+        }
+    }
 }

@@ -629,6 +629,93 @@ public class ClienteService {
                 .toList();
     }
 
+    /**
+     * Unidades do estabelecimento (mesmo dono da unidade atual) e se o cliente está vinculado a cada
+     * uma. Só a equipe da unidade em que o cliente está cadastrado consulta.
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> unidadesDoCliente(Long clienteId, Long salonAtualId) {
+        Cliente cliente = clienteDaUnidade(clienteId, salonAtualId);
+        Map<Long, Cliente> vinculos = vinculosDoUsuario(cliente.getUsuario().getId());
+        return salonService.unidadesDoMesmoDono(salonAtualId).stream()
+                .map(s -> {
+                    Cliente v = vinculos.get(s.getId());
+                    return Map.<String, Object>of(
+                            "id", s.getId(),
+                            "nome", s.getNome(),
+                            "vinculado", v != null && v.isAtivo(),
+                            "atual", s.getId().equals(salonAtualId));
+                })
+                .toList();
+    }
+
+    /**
+     * Define a quais unidades do estabelecimento o cliente fica vinculado. Vincular cria o cadastro
+     * na unidade (com os dados de contato e as preferências; histórico, pontos e observações são de
+     * cada unidade) ou reativa um cadastro antigo; desvincular desativa o cadastro dela, que fica
+     * guardado. A unidade atual continua sempre vinculada (para tirá-lo dela, use Excluir).
+     */
+    @Transactional
+    @Auditable(action = "UPDATE", entityType = "Cliente", details = "vínculo com unidades")
+    public List<Map<String, Object>> atualizarUnidades(Long clienteId, java.util.Collection<Long> salonIds, Long salonAtualId) {
+        Cliente base = clienteDaUnidade(clienteId, salonAtualId);
+        Map<Long, Salon> permitidas = new java.util.LinkedHashMap<>();
+        salonService.unidadesDoMesmoDono(salonAtualId).forEach(s -> permitidas.put(s.getId(), s));
+
+        java.util.Set<Long> desejadas = new java.util.HashSet<>(salonIds != null ? salonIds : List.of());
+        if (!permitidas.keySet().containsAll(desejadas)) {
+            throw new AccessDeniedException("Só é possível vincular o cliente às unidades deste estabelecimento");
+        }
+
+        Map<Long, Cliente> vinculos = vinculosDoUsuario(base.getUsuario().getId());
+        for (Salon unidade : permitidas.values()) {
+            if (unidade.getId().equals(salonAtualId)) {
+                continue;
+            }
+            Cliente existente = vinculos.get(unidade.getId());
+            if (desejadas.contains(unidade.getId())) {
+                if (existente == null) {
+                    clienteRepository.save(Cliente.builder()
+                            .usuario(base.getUsuario())
+                            .salon(unidade)
+                            .whatsapp(base.getWhatsapp())
+                            .dataNascimento(base.getDataNascimento())
+                            .aceitaMarketing(base.isAceitaMarketing())
+                            .aceitaWhatsApp(base.isAceitaWhatsApp())
+                            .aceitaEmail(base.isAceitaEmail())
+                            .build());
+                    log.info("Cliente {} vinculado à unidade {}", clienteId, unidade.getId());
+                } else if (!existente.isAtivo()) {
+                    existente.setAtivo(true);
+                    clienteRepository.save(existente);
+                    log.info("Cliente {}: vínculo com a unidade {} reativado", clienteId, unidade.getId());
+                }
+            } else if (existente != null && existente.isAtivo()) {
+                existente.setAtivo(false);
+                clienteRepository.save(existente);
+                log.info("Cliente {} desvinculado da unidade {}", clienteId, unidade.getId());
+            }
+        }
+        return unidadesDoCliente(clienteId, salonAtualId);
+    }
+
+    private Cliente clienteDaUnidade(Long clienteId, Long salonAtualId) {
+        Cliente cliente = clienteRepository.findById(clienteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cliente", clienteId));
+        if (salonAtualId == null || !cliente.getSalon().getId().equals(salonAtualId)) {
+            throw new AccessDeniedException("Acesso negado: cliente pertence a outro estabelecimento");
+        }
+        return cliente;
+    }
+
+    private Map<Long, Cliente> vinculosDoUsuario(Long usuarioId) {
+        Map<Long, Cliente> vinculos = new java.util.HashMap<>();
+        for (Cliente c : clienteRepository.findByUsuarioId(usuarioId)) {
+            vinculos.putIfAbsent(c.getSalon().getId(), c);
+        }
+        return vinculos;
+    }
+
     public Cliente getOrCreateCliente(Long salonId, String emailUsuario) {
         Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(emailUsuario)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", emailUsuario));

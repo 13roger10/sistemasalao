@@ -199,6 +199,19 @@ public class SalonService {
         return salonRepository.findFirstByAdminIdAndAtivoTrueOrderByIdAsc(admin.getId());
     }
 
+    /**
+     * Unidades ativas do mesmo dono do salão informado (inclusive ele), da mais antiga para a mais
+     * nova: o "estabelecimento" ao qual a equipe desse salão pode vincular um cliente.
+     */
+    @Transactional(readOnly = true)
+    public List<Salon> unidadesDoMesmoDono(Long salonId) {
+        Salon salon = salonRepository.findById(salonId)
+                .orElseThrow(() -> new ResourceNotFoundException("Salão", salonId));
+        return salonRepository.findByAdminIdOrderByIdAsc(salon.getAdmin().getId()).stream()
+                .filter(Salon::isAtivo)
+                .toList();
+    }
+
     private LocalTime parseTime(String time, String defaultTime) {
         if (time == null || time.isBlank()) {
             return LocalTime.parse(defaultTime);

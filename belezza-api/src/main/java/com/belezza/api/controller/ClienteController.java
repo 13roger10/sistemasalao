@@ -139,6 +139,26 @@ public class ClienteController {
         return ResponseEntity.ok(Map.of("message", "Cliente excluído com sucesso"));
     }
 
+    @GetMapping("/{id}/unidades")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
+    @Operation(summary = "Unidades do cliente", description = "Unidades do estabelecimento e se o cliente está vinculado a cada uma")
+    public ResponseEntity<List<Map<String, Object>>> unidades(@PathVariable Long id) {
+        Long salonId = TenantContext.getCurrentTenant();
+        tenantIsolationService.assertStaffTenant(salonId);
+        return ResponseEntity.ok(clienteService.unidadesDoCliente(id, salonId));
+    }
+
+    @PutMapping("/{id}/unidades")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
+    @Operation(summary = "Vincular cliente às unidades", description = "Define a quais unidades do estabelecimento o cliente fica vinculado (a atual continua sempre)")
+    public ResponseEntity<List<Map<String, Object>>> atualizarUnidades(
+            @PathVariable Long id,
+            @RequestBody Map<String, List<Long>> body) {
+        Long salonId = TenantContext.getCurrentTenant();
+        tenantIsolationService.assertStaffTenant(salonId);
+        return ResponseEntity.ok(clienteService.atualizarUnidades(id, body.get("salonIds"), salonId));
+    }
+
     @PostMapping("/{id}/reativar")
     @AdminOnly
     @Operation(summary = "Reativar cliente", description = "Desfaz a exclusão: o cadastro no salão e o login voltam a valer")
