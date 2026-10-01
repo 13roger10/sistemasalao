@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import {
   Building2,
   Save,
@@ -402,6 +403,13 @@ export default function BusinessProfilePage() {
                 {isSaving ? 'Salvando...' : 'Salvar'}
               </button>
             )}
+            <Link
+              href="/salon/units"
+              className="flex flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50 sm:px-4 sm:text-base dark:border-violet-800 dark:bg-gray-900 dark:text-violet-300 dark:hover:bg-violet-900/30"
+            >
+              <Building2 className="h-4 w-4 flex-shrink-0" />
+              Gerenciar unidades
+            </Link>
           </div>
         </div>
 
