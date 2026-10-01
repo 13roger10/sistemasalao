@@ -2,7 +2,7 @@
 
 Backend API for **Belezza.ai** - Social Studio for Beauty Salons.
 
-Built with **Java 21** and **Spring Boot 3.2**.
+Built with **Java 21** and **Spring Boot 3.5**.
 
 ## Requirements
 
@@ -148,7 +148,7 @@ After starting the application, access:
 
 ## Tech Stack
 
-- **Framework**: Spring Boot 3.2
+- **Framework**: Spring Boot 3.5
 - **Language**: Java 21
 - **Database**: PostgreSQL 16
 - **Cache**: Redis 7
