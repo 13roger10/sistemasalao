@@ -49,6 +49,7 @@ export function encerrarSessaoSalon(): void {
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(TOKEN_EXPIRY_KEY);
+  localStorage.removeItem(UNIDADE_SELECIONADA_KEY);
   if (!window.location.pathname.includes("/login")) {
     window.location.href = "/salon/login";
   }

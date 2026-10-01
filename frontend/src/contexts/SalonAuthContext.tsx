@@ -12,6 +12,7 @@ import {
 import { useRouter } from "next/navigation";
 import { env } from "@/lib/env";
 import { gravarCookieSessao, SESSAO_RENOVADA_EVENT } from "@/lib/session-refresh";
+import { esquecerUnidadeSelecionada } from "@/lib/salao-atual";
 import {
   SalonAuthUser,
   SalonAuthState,
@@ -79,6 +80,7 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
       localStorage.removeItem(REFRESH_TOKEN_KEY);
       localStorage.removeItem(USER_KEY);
       localStorage.removeItem(TOKEN_EXPIRY_KEY);
+      esquecerUnidadeSelecionada();
       // Limpa cookie
       document.cookie = "salon_auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     }
@@ -190,6 +192,8 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
       }
 
       const backendData = await response.json();
+      // Conta nova: a unidade guardada por outro login não vale para ela
+      esquecerUnidadeSelecionada();
 
       // Mapeia a resposta do backend para o formato do frontend
       const roleMap: Record<string, AuthUserRole> = {

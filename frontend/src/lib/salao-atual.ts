@@ -20,18 +20,25 @@ export function salaoDoToken(token: string | null | undefined): string | null {
 }
 
 /**
- * Salão da sessão: o do token; sem ele (cliente sem salão fixo), a unidade escolhida no
- * navegador; e, só em último caso, o salão 1 (o comportamento de antes, para telas públicas).
+ * Salão da sessão: o do token (equipe); sem ele — cliente, que não tem salão fixo, ou tela
+ * pública —, o salão 1, como antes das unidades. Não usa a unidade guardada no navegador: ela é
+ * da equipe e sobrava de um login anterior (o cliente que entrava depois do admin, no mesmo
+ * navegador, via o agendamento de uma unidade vazia ou desativada, sem nenhum serviço).
  */
 export function salaoAtual(): string {
   if (typeof window === "undefined") return "1";
   try {
-    return (
-      salaoDoToken(localStorage.getItem(TOKEN_KEY)) ||
-      localStorage.getItem(UNIDADE_SELECIONADA_KEY) ||
-      "1"
-    );
+    return salaoDoToken(localStorage.getItem(TOKEN_KEY)) || "1";
   } catch {
     return "1";
+  }
+}
+
+/** Apaga a unidade guardada no navegador (ao sair ou trocar de conta). */
+export function esquecerUnidadeSelecionada(): void {
+  try {
+    localStorage.removeItem(UNIDADE_SELECIONADA_KEY);
+  } catch {
+    /* sem acesso ao armazenamento: nada a apagar */
   }
 }
