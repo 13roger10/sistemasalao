@@ -37,6 +37,7 @@ import { Modal, ConfirmModal } from "@/components/ui/Modal";
 import { DataTable, Column, ActionMenuItem } from "@/components/ui/DataTable";
 import { useToast } from "@/components/ui/Toast";
 import { escaparHtml } from "@/utils/html";
+import { baixarCsv } from "@/utils/csv";
 import { commissionService } from "@/services/salon";
 import { dataLocal } from "@/services/salon/financeService";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
@@ -698,27 +699,12 @@ export default function CommissionPage() {
         : "-",
     }));
 
-    // Converter para CSV
+    // Nomes de cliente/servi\u00e7o v\u00eam de cadastro: baixarCsv neutraliza f\u00f3rmulas (CSV injection)
     const headers = Object.keys(exportData[0] || {});
-    const csv = [
-      headers.join(";"),
-      ...exportData.map((row) =>
-        headers.map((h) => row[h as keyof typeof row]).join(";")
-      ),
-    ].join("\n");
-
-    // Download
-    const blob = new Blob(["\ufeff" + csv], {
-      type: "text/csv;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `comissoes_${new Date().toISOString().split("T")[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    baixarCsv(`comissoes_${new Date().toISOString().split("T")[0]}.csv`, [
+      headers,
+      ...exportData.map((row) => headers.map((h) => row[h as keyof typeof row])),
+    ]);
   };
 
   // ===== COLUNAS DA TABELA =====

@@ -33,6 +33,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import type { Commission } from "@/types/salon";
+import { baixarCsv } from "@/utils/csv";
 
 // ===== TIPOS =====
 type PaymentStatus = "PENDENTE" | "PROCESSANDO" | "PAGO" | "CANCELADO";
@@ -361,20 +362,8 @@ export default function StatementPage() {
       e.kind === "saida" ? (e.formaPagamentoDescricao ?? e.formaPagamento ?? "") : "",
     ]);
 
-    const csv = [
-      headers.join(";"),
-      ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(";")),
-    ].join("\n");
-
-    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `extrato_${new Date().toISOString().split("T")[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // Nomes de cliente/servi\u00e7o v\u00eam de cadastro: baixarCsv neutraliza f\u00f3rmulas (CSV injection)
+    baixarCsv(`extrato_${new Date().toISOString().split("T")[0]}.csv`, [headers, ...rows]);
   };
 
   if (authLoading || user?.role !== "PROFESSIONAL") return null;

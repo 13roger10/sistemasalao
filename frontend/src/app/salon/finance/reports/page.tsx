@@ -30,6 +30,7 @@ import { Modal } from "@/components/ui/Modal";
 import { financeService } from "@/services/salon/financeService";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
 import type { MonthlyReport, FinanceStats } from "@/types/salon";
+import { baixarCsv } from "@/utils/csv";
 
 // ===== COMPONENTES AUXILIARES =====
 
@@ -248,27 +249,19 @@ export default function FinanceReportsPage() {
           data.atendimentos,
         ];
 
-        let csv = headers.join(",") + "\n" + values.join(",") + "\n\n";
-
-        csv += "Top Serviços\n";
-        csv += "Serviço,Faturamento,Quantidade\n";
-        data.topServicos.forEach((s) => {
-          csv += `${s.serviceName},${s.revenue},${s.count}\n`;
-        });
-
-        csv += "\nTop Profissionais\n";
-        csv += "Profissional,Faturamento,Atendimentos\n";
-        data.topProfissionais.forEach((p) => {
-          csv += `${p.professionalName},${p.revenue},${p.appointments}\n`;
-        });
-
-        const blob = new Blob([csv], { type: "text/csv" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `relatorio_${selectedYear}_${selectedMonth + 1}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
+        // Nomes de serviço/profissional vêm de cadastro: baixarCsv neutraliza fórmulas (CSV injection)
+        baixarCsv(`relatorio_${selectedYear}_${selectedMonth + 1}.csv`, [
+          headers,
+          values,
+          [],
+          ["Top Serviços"],
+          ["Serviço", "Faturamento", "Quantidade"],
+          ...data.topServicos.map((s) => [s.serviceName, s.revenue, s.count]),
+          [],
+          ["Top Profissionais"],
+          ["Profissional", "Faturamento", "Atendimentos"],
+          ...data.topProfissionais.map((p) => [p.professionalName, p.revenue, p.appointments]),
+        ]);
       }
     } catch (error) {
       console.error("Erro ao exportar:", error);

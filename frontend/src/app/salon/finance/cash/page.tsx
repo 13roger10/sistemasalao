@@ -51,6 +51,7 @@ import type {
   DailyReport,
 } from "@/types/salon";
 import type { PaymentMethod } from "@/types/salon/common";
+import { baixarCsv } from "@/utils/csv";
 
 // ===== TIPOS =====
 
@@ -520,19 +521,12 @@ export default function FinanceCashPage() {
         Responsável: t.createdByName,
       }));
 
-      // Simular download (em produção usaria uma biblioteca como xlsx)
-      const csv = [
-        Object.keys(data[0]).join(","),
-        ...data.map((row) => Object.values(row).join(",")),
-      ].join("\n");
-
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `caixa_${dataLocal(selectedDate)}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      // Descrição e cliente são texto livre: baixarCsv neutraliza fórmulas (CSV injection)
+      // Cabeçalho fixo: antes vinha de data[0] e, num dia sem movimentações, a exportação falhava calada
+      baixarCsv(`caixa_${dataLocal(selectedDate)}.csv`, [
+        ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Forma de Pagamento", "Cliente", "Responsável"],
+        ...data.map((row) => Object.values(row)),
+      ]);
     } catch (error) {
       console.error("Erro ao exportar:", error);
     }
