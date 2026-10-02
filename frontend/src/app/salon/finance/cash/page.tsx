@@ -717,55 +717,53 @@ export default function FinanceCashPage() {
             </div>
 
             <div className="flex gap-2">
-              {isRecepcionist ? (
+              {/* Sem caixa aberto não há pagamento: a recepção também abre o caixa do dia, para não
+                  depender do admin (o backend já aceitava a recepcionista) */}
+              {!currentCashRegister || currentCashRegister.status === "closed" ? (
+                <Button
+                  onClick={() => setIsOpenCashModalOpen(true)}
+                  leftIcon={<Unlock className="h-4 w-4" />}
+                >
+                  Abrir Caixa
+                </Button>
+              ) : isRecepcionist ? (
                 // Recepcionista: registra o pagamento de um agendamento concluído/em andamento
-                currentCashRegister?.status === "open" && (
+                <Button
+                  onClick={handleOpenRegisterPayment}
+                  leftIcon={<Plus className="h-4 w-4" />}
+                >
+                  Registrar Pagamento
+                </Button>
+              ) : (
+                <>
                   <Button
-                    onClick={handleOpenRegisterPayment}
+                    variant="secondary"
+                    onClick={() => setIsWithdrawalModalOpen(true)}
+                    leftIcon={<Minus className="h-4 w-4" />}
+                  >
+                    Sangria
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setIsAddTransactionModalOpen(true)}
                     leftIcon={<Plus className="h-4 w-4" />}
+                  >
+                    Lançamento
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={handleOpenRegisterPayment}
+                    leftIcon={<Receipt className="h-4 w-4" />}
                   >
                     Registrar Pagamento
                   </Button>
-                )
-              ) : (
-                !currentCashRegister || currentCashRegister.status === "closed" ? (
                   <Button
-                    onClick={() => setIsOpenCashModalOpen(true)}
-                    leftIcon={<Unlock className="h-4 w-4" />}
+                    onClick={() => setIsCloseCashModalOpen(true)}
+                    leftIcon={<Lock className="h-4 w-4" />}
                   >
-                    Abrir Caixa
+                    Fechar Caixa
                   </Button>
-                ) : (
-                  <>
-                    <Button
-                      variant="secondary"
-                      onClick={() => setIsWithdrawalModalOpen(true)}
-                      leftIcon={<Minus className="h-4 w-4" />}
-                    >
-                      Sangria
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => setIsAddTransactionModalOpen(true)}
-                      leftIcon={<Plus className="h-4 w-4" />}
-                    >
-                      Lançamento
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={handleOpenRegisterPayment}
-                      leftIcon={<Receipt className="h-4 w-4" />}
-                    >
-                      Registrar Pagamento
-                    </Button>
-                    <Button
-                      onClick={() => setIsCloseCashModalOpen(true)}
-                      leftIcon={<Lock className="h-4 w-4" />}
-                    >
-                      Fechar Caixa
-                    </Button>
-                  </>
-                )
+                </>
               )}
             </div>
           </div>
