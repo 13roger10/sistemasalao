@@ -78,6 +78,9 @@ class AuthServiceTest {
     @Mock
     private com.belezza.api.repository.RecepcionistaUnidadeRepository recepcionistaUnidadeRepository;
 
+    @Mock
+    private TokenBlacklistService tokenBlacklistService;
+
     @InjectMocks
     private AuthService authService;
 
@@ -263,6 +266,49 @@ class AuthServiceTest {
             assertThat(response).isNotNull();
             assertThat(response.getAccessToken()).isEqualTo("newAccessToken");
             assertThat(response.getRefreshToken()).isEqualTo("newRefreshToken");
+        }
+
+        @Test
+        @DisplayName("BUG-007: o refresh token usado vai para a blacklist (rotação)")
+        void refreshRevogaOTokenUsado() {
+            RefreshTokenRequest request = new RefreshTokenRequest("refreshAntigo");
+            when(jwtService.validateToken("refreshAntigo")).thenReturn(true);
+            when(jwtService.isRefreshToken("refreshAntigo")).thenReturn(true);
+            when(jwtService.extractUsername("refreshAntigo")).thenReturn("test@example.com");
+            when(jwtService.getTokenExpirationInSeconds("refreshAntigo")).thenReturn(3600L);
+            when(usuarioRepository.findByEmailAndAtivoTrue(anyString())).thenReturn(Optional.of(usuario));
+            when(jwtService.generateRefreshToken(any())).thenReturn("refreshNovo");
+
+            authService.refreshToken(request);
+
+            verify(tokenBlacklistService).blacklistToken("refreshAntigo", 3600L);
+        }
+
+        @Test
+        @DisplayName("BUG-007: refresh token já usado ou revogado é recusado")
+        void refreshTokenRevogadoERecusado() {
+            RefreshTokenRequest request = new RefreshTokenRequest("refreshUsado");
+            when(jwtService.validateToken("refreshUsado")).thenReturn(true);
+            when(jwtService.isRefreshToken("refreshUsado")).thenReturn(true);
+            when(tokenBlacklistService.isTokenBlacklisted("refreshUsado")).thenReturn(true);
+
+            assertThatThrownBy(() -> authService.refreshToken(request))
+                    .isInstanceOf(AuthenticationException.class);
+            verify(jwtService, never()).generateRefreshToken(any());
+        }
+
+        @Test
+        @DisplayName("BUG-007: logout revoga o access token e o refresh token")
+        void logoutRevogaOsDoisTokens() {
+            when(jwtService.validateToken("refresh")).thenReturn(true);
+            when(jwtService.isRefreshToken("refresh")).thenReturn(true);
+            when(jwtService.getTokenExpirationInSeconds("refresh")).thenReturn(600000L);
+            when(jwtService.getTokenExpirationInSeconds("access")).thenReturn(900L);
+
+            authService.logout("Bearer access", "refresh");
+
+            verify(tokenBlacklistService).blacklistToken("refresh", 600000L);
+            verify(tokenBlacklistService).blacklistToken("access", 900L);
         }
 
         @Test

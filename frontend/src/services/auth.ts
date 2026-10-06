@@ -1,5 +1,6 @@
 import { api } from "@/lib/api";
 import { createLogger } from "@/lib/logger";
+import { encerrarSessaoNoServidor } from "@/lib/session-refresh";
 import type { User } from "@/types";
 
 const logger = createLogger("AuthService");
@@ -264,6 +265,8 @@ export const authService = {
   logout() {
     removeAuthCookie();
     if (typeof window !== "undefined") {
+      // Revoga os tokens no backend antes de apagá-los (BUG-007)
+      encerrarSessaoNoServidor(localStorage.getItem("auth_token"), localStorage.getItem(REFRESH_TOKEN_KEY));
       localStorage.removeItem("auth_token");
       localStorage.removeItem("auth_user");
       localStorage.removeItem(REFRESH_TOKEN_KEY);

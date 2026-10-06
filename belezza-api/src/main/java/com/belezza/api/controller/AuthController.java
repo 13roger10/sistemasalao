@@ -78,11 +78,14 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    @Operation(summary = "User logout", description = "Invalidates JWT token by adding to blacklist")
+    @Operation(summary = "User logout",
+            description = "Revoga o access token do cabeçalho e o refreshToken enviado no corpo (opcional)")
     @ApiResponse(responseCode = "200", description = "Logout successful")
-    public ResponseEntity<Map<String, String>> logout(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+    public ResponseEntity<Map<String, String>> logout(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestBody(required = false) Map<String, String> body) {
         log.info("Logout request");
-        authService.logout(authHeader);
+        authService.logout(authHeader, body != null ? body.get("refreshToken") : null);
         return ResponseEntity.ok(Map.of("message", "Logout realizado com sucesso"));
     }
 

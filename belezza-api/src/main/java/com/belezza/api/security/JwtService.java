@@ -14,6 +14,7 @@ import javax.crypto.SecretKey;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 
 /**
@@ -99,6 +100,9 @@ public class JwtService {
      */
     private String generateToken(Map<String, Object> extraClaims, String subject, long expiration) {
         return Jwts.builder()
+                // jti único: dois tokens do mesmo usuário emitidos no mesmo segundo eram idênticos,
+                // e revogar um (logout, rotação do refresh — BUG-007) revogava o outro
+                .id(UUID.randomUUID().toString())
                 .claims(extraClaims)
                 .subject(subject)
                 .issuer(issuer)

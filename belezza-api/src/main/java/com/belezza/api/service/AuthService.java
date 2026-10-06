@@ -212,6 +212,11 @@ public class AuthService {
         if (!jwtService.validateToken(refreshToken) || !jwtService.isRefreshToken(refreshToken)) {
             throw AuthenticationException.invalidToken();
         }
+        // BUG-007: refresh token já usado (rotação) ou revogado no logout não renova mais
+        if (tokenBlacklistService.isTokenBlacklisted(refreshToken)) {
+            log.warn("Refresh token revogado ou já usado foi apresentado");
+            throw AuthenticationException.invalidToken();
+        }
 
         String email = jwtService.extractUsername(refreshToken);
         Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(email)
@@ -221,6 +226,9 @@ public class AuthService {
         Long salonId = resolveSalonId(usuario);
         String newAccessToken = jwtService.generateAccessToken(usuario, salonId);
         String newRefreshToken = jwtService.generateRefreshToken(usuario);
+
+        // Rotação: o refresh token apresentado vale uma vez só
+        tokenBlacklistService.blacklistToken(refreshToken, jwtService.getTokenExpirationInSeconds(refreshToken));
 
         log.debug("Token refreshed for user: {}", usuario.getId());
 
@@ -403,6 +411,20 @@ public class AuthService {
      * Logs out user by blacklisting the JWT token.
      */
     public void logout(String authHeader) {
+        logout(authHeader, null);
+    }
+
+    /**
+     * Revoga o access token do cabeçalho e, quando enviado, o refresh token da sessão. Antes só o
+     * access token era revogado: o refresh token seguia gerando sessões novas por 7 dias (BUG-007).
+     */
+    public void logout(String authHeader, String refreshToken) {
+        if (refreshToken != null && !refreshToken.isBlank()
+                && jwtService.validateToken(refreshToken) && jwtService.isRefreshToken(refreshToken)) {
+            tokenBlacklistService.blacklistToken(refreshToken, jwtService.getTokenExpirationInSeconds(refreshToken));
+            log.info("Refresh token revogado no logout");
+        }
+
         log.info("Processing logout request");
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {

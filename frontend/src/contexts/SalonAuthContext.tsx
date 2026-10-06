@@ -11,7 +11,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { env } from "@/lib/env";
-import { gravarCookieSessao, SESSAO_RENOVADA_EVENT } from "@/lib/session-refresh";
+import { encerrarSessaoNoServidor, gravarCookieSessao, SESSAO_RENOVADA_EVENT } from "@/lib/session-refresh";
 import { esquecerUnidadeSelecionada } from "@/lib/salao-atual";
 import {
   SalonAuthUser,
@@ -228,6 +228,8 @@ export function SalonAuthProvider({ children }: SalonAuthProviderProps) {
 
   // ===== Logout =====
   const logout = useCallback(() => {
+    // Antes de apagar os tokens locais: o backend precisa deles para revogá-los
+    encerrarSessaoNoServidor();
     clearAuth();
     router.push("/salon/login");
   }, [clearAuth, router]);

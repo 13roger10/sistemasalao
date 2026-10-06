@@ -19,6 +19,29 @@ export const SESSAO_RENOVADA_EVENT = "salon-sessao-renovada";
 let emAndamento: Promise<string | null> | null = null;
 
 /**
+ * Avisa o backend do logout, revogando o access token e o refresh token da sessão. Antes o
+ * logout só limpava o navegador, e um refresh token copiado seguia válido por 7 dias (BUG-007).
+ * Não espera a resposta: o logout local acontece de qualquer jeito.
+ */
+export function encerrarSessaoNoServidor(
+  token: string | null = typeof window !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null,
+  refreshToken: string | null = typeof window !== "undefined" ? localStorage.getItem(REFRESH_TOKEN_KEY) : null,
+): void {
+  if (typeof window === "undefined" || typeof fetch !== "function" || (!token && !refreshToken)) return;
+  fetch(`${env.apiUrl}/auth/logout`, {
+    method: "POST",
+    keepalive: true,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ refreshToken }),
+  }).catch(() => {
+    /* sem rede: a sessão local já foi encerrada */
+  });
+}
+
+/**
  * Validade do cookie da sessão: a do refresh token (7 dias), não a do access token (15 min).
  * O proxy do Next só deixa abrir telas do salão com esse cookie; se ele expirasse junto com o
  * access token, recarregar a página depois de 15 minutos levava ao login mesmo com a sessão
