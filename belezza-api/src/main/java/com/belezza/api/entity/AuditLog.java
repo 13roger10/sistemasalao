@@ -55,6 +55,13 @@ public class AuditLog {
     private Long usuarioId;
 
     /**
+     * Salão (unidade) em que a ação aconteceu, vindo do token. Sem ele, os logs de todos os
+     * salões apareciam para qualquer admin (BUG-006).
+     */
+    @Column(name = "salon_id")
+    private Long salonId;
+
+    /**
      * Name of the user who performed the action (for display)
      */
     @Column(length = 150)

@@ -82,6 +82,8 @@ export default function BackupPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [selectedEntities, setSelectedEntities] = useState<AuditEntity[]>([]);
+  // Backup por salão ainda não existe no servidor (501): mostra o aviso em vez de uma tela vazia
+  const [indisponivel, setIndisponivel] = useState<string | null>(null);
 
   // Load data
   useEffect(() => {
@@ -100,6 +102,8 @@ export default function BackupPage() {
         setSelectedEntities(settingsResponse.entities);
       } catch (error) {
         console.error('Error loading backups:', error);
+        const mensagem = error instanceof Error ? error.message.replace(/^[HTTP d+]s*/, '') : '';
+        setIndisponivel(mensagem || 'Não foi possível carregar os backups.');
       } finally {
         setIsLoading(false);
       }
@@ -179,6 +183,22 @@ export default function BackupPage() {
       <SalonLayout requiredRole={["ADMIN"]}>
         <div className="flex min-h-[400px] items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-200 border-t-violet-500" />
+        </div>
+      </SalonLayout>
+    );
+  }
+
+  if (indisponivel) {
+    return (
+      <SalonLayout requiredRole={["ADMIN"]}>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 dark:border-amber-800 dark:bg-amber-900/20">
+          <div className="flex items-start gap-3">
+            <Database className="mt-0.5 h-6 w-6 text-amber-600 dark:text-amber-400" />
+            <div>
+              <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Backup por salão indisponível</h1>
+              <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">{indisponivel}</p>
+            </div>
+          </div>
         </div>
       </SalonLayout>
     );

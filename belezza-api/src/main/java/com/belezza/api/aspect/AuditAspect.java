@@ -2,6 +2,7 @@ package com.belezza.api.aspect;
 
 import com.belezza.api.entity.AuditLog;
 import com.belezza.api.repository.AuditLogRepository;
+import com.belezza.api.security.TenantContext;
 import com.belezza.api.security.annotation.Auditable;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -111,6 +112,7 @@ public class AuditAspect {
                         .entidadeId(entidadeId != null ? entidadeId : 0L)
                         .usuarioId(usuarioId)
                         .usuarioNome(usuarioNome)
+                        .salonId(TenantContext.getCurrentTenant())
                         .ipAddress(ipAddress)
                         .userAgent(truncate(userAgent, 500))
                         .detalhes(truncate(details, 500))

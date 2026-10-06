@@ -1,73 +1,73 @@
 package com.belezza.api.repository;
 
 import com.belezza.api.entity.AuditLog;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Locale;
 
 /**
  * Repository for AuditLog entity.
- * Provides methods to query audit logs with various filters.
+ *
+ * <p>Toda consulta deve partir de {@link #doSalao(Long)}: as consultas antigas (findAll, por
+ * usuário, por ação…) não filtravam o salão e mostravam a qualquer admin as ações de todos os
+ * salões (BUG-006). Os filtros opcionais são Specifications, e não JPQL com
+ * {@code :param IS NULL}, que dava 500 no PostgreSQL com parâmetro nulo (BUG-020).
  */
 @Repository
-public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
+public interface AuditLogRepository extends JpaRepository<AuditLog, Long>, JpaSpecificationExecutor<AuditLog> {
 
-    /**
-     * Find audit logs for a specific entity and its ID.
-     */
-    Page<AuditLog> findByEntidadeAndEntidadeId(String entidade, Long entidadeId, Pageable pageable);
+    static Specification<AuditLog> doSalao(Long salonId) {
+        return (root, query, cb) -> cb.equal(root.get("salonId"), salonId);
+    }
 
-    /**
-     * Find audit logs by user.
-     */
-    Page<AuditLog> findByUsuarioId(Long usuarioId, Pageable pageable);
+    static Specification<AuditLog> usuario(Long usuarioId) {
+        return usuarioId == null ? null : (root, query, cb) -> cb.equal(root.get("usuarioId"), usuarioId);
+    }
 
-    /**
-     * Find audit logs by action type.
-     */
-    Page<AuditLog> findByAcao(String acao, Pageable pageable);
+    /** Entidade sem diferenciar maiúsculas (o front envia "client", o log grava "Cliente"). */
+    static Specification<AuditLog> entidade(String entidade) {
+        return vazio(entidade) ? null
+                : (root, query, cb) -> cb.equal(cb.lower(root.get("entidade")), entidade.toLowerCase(Locale.ROOT));
+    }
 
-    /**
-     * Find audit logs by entity type.
-     */
-    Page<AuditLog> findByEntidade(String entidade, Pageable pageable);
+    static Specification<AuditLog> entidadeId(Long entidadeId) {
+        return entidadeId == null ? null : (root, query, cb) -> cb.equal(root.get("entidadeId"), entidadeId);
+    }
 
-    /**
-     * Find all audit logs ordered by creation date (most recent first).
-     */
-    Page<AuditLog> findAllByOrderByCriadoEmDesc(Pageable pageable);
+    static Specification<AuditLog> acao(String acao) {
+        return vazio(acao) ? null
+                : (root, query, cb) -> cb.equal(cb.upper(root.get("acao")), acao.toUpperCase(Locale.ROOT));
+    }
 
-    /**
-     * Find audit logs within a date range.
-     */
-    Page<AuditLog> findByCriadoEmBetween(LocalDateTime inicio, LocalDateTime fim, Pageable pageable);
+    static Specification<AuditLog> desde(LocalDateTime inicio) {
+        return inicio == null ? null : (root, query, cb) -> cb.greaterThanOrEqualTo(root.get("criadoEm"), inicio);
+    }
 
-    /**
-     * Find failed audit logs (when sucesso = false).
-     */
-    Page<AuditLog> findBySucessoFalse(Pageable pageable);
+    static Specification<AuditLog> ate(LocalDateTime fim) {
+        return fim == null ? null : (root, query, cb) -> cb.lessThanOrEqualTo(root.get("criadoEm"), fim);
+    }
 
-    /**
-     * Complex search with multiple optional filters.
-     */
-    @Query("SELECT a FROM AuditLog a WHERE " +
-           "(:usuarioId IS NULL OR a.usuarioId = :usuarioId) AND " +
-           "(:entidade IS NULL OR a.entidade = :entidade) AND " +
-           "(:acao IS NULL OR a.acao = :acao) AND " +
-           "(:inicio IS NULL OR a.criadoEm >= :inicio) AND " +
-           "(:fim IS NULL OR a.criadoEm <= :fim) " +
-           "ORDER BY a.criadoEm DESC")
-    Page<AuditLog> searchWithFilters(
-        @Param("usuarioId") Long usuarioId,
-        @Param("entidade") String entidade,
-        @Param("acao") String acao,
-        @Param("inicio") LocalDateTime inicio,
-        @Param("fim") LocalDateTime fim,
-        Pageable pageable
-    );
+    static Specification<AuditLog> falhas() {
+        return (root, query, cb) -> cb.isFalse(root.get("sucesso"));
+    }
+
+    /** Texto livre em usuário, entidade e detalhes. */
+    static Specification<AuditLog> texto(String termo) {
+        if (vazio(termo)) {
+            return null;
+        }
+        String like = "%" + termo.toLowerCase(Locale.ROOT) + "%";
+        return (root, query, cb) -> cb.or(
+                cb.like(cb.lower(root.get("usuarioNome")), like),
+                cb.like(cb.lower(root.get("entidade")), like),
+                cb.like(cb.lower(root.get("detalhes")), like));
+    }
+
+    private static boolean vazio(String s) {
+        return s == null || s.isBlank();
+    }
 }

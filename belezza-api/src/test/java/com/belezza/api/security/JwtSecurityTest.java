@@ -86,7 +86,13 @@ class JwtSecurityTest {
                 .build());
 
         // Generate tokens
-        adminToken = generateToken(admin);
+        // Admin com salão no token, como o login emite: /api/audit-logs mostra só o salão do
+        // token e nega token de admin sem salão (BUG-006). O salão 1 vem das migrations.
+        adminToken = jwtService.generateAccessToken(User.builder()
+                .username(admin.getEmail())
+                .password(admin.getPassword())
+                .roles(admin.getRole().name())
+                .build(), 1L);
         profissionalToken = generateToken(profissional);
         clienteToken = generateToken(cliente);
     }
