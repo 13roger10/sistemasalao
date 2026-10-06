@@ -4,11 +4,11 @@ import com.belezza.api.dto.metricas.MetricasAgendamentoResponse;
 import com.belezza.api.dto.metricas.MetricasFinanceirasResponse;
 import com.belezza.api.dto.metricas.MetricasSocialResponse;
 import com.belezza.api.dto.metricas.PeriodoFilter;
-import com.belezza.api.security.annotation.Authenticated;
 import org.springframework.security.access.prepost.PreAuthorize;
 import com.belezza.api.service.MetricasAgendamentoService;
 import com.belezza.api.service.MetricasFinanceirasService;
 import com.belezza.api.service.MetricasSocialService;
+import com.belezza.api.service.TenantIsolationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -28,6 +28,8 @@ import java.time.LocalDate;
 @RequestMapping("/api/metricas")
 @RequiredArgsConstructor
 @Slf4j
+// Não anotar os métodos com @Authenticated: a anotação do método substitui esta e liberava
+// as métricas para cliente e recepção (BUG-001 da auditoria)
 @PreAuthorize("hasAnyRole('ADMIN', 'PROFISSIONAL')")
 @Tag(name = "Métricas", description = "Relatórios e métricas do salão")
 public class MetricasController {
@@ -35,13 +37,13 @@ public class MetricasController {
     private final MetricasAgendamentoService metricasAgendamentoService;
     private final MetricasFinanceirasService metricasFinanceirasService;
     private final MetricasSocialService metricasSocialService;
+    private final TenantIsolationService tenantIsolationService;
 
     // ====================================
     // 8.1 Métricas de Agendamento
     // ====================================
 
     @GetMapping("/agendamentos")
-    @Authenticated
     @Operation(
         summary = "Obter métricas de agendamentos",
         description = "Retorna estatísticas completas sobre agendamentos do salão no período especificado. " +
@@ -56,6 +58,10 @@ public class MetricasController {
     ) {
         log.info("Get scheduling metrics for salon: {} from {} to {}", salonId, dataInicio, dataFim);
 
+        // BUG-001 (auditoria): o salonId vem da URL; sem esta checagem qualquer usuário lia as
+        // métricas de qualquer salão
+        tenantIsolationService.assertStaffTenant(salonId);
+
         PeriodoFilter periodo = buildPeriodoFilter(dataInicio, dataFim);
         MetricasAgendamentoResponse metricas = metricasAgendamentoService.calcularMetricas(salonId, periodo);
 
@@ -67,7 +73,6 @@ public class MetricasController {
     // ====================================
 
     @GetMapping("/faturamento")
-    @Authenticated
     @Operation(
         summary = "Obter métricas financeiras",
         description = "Retorna estatísticas financeiras do salão no período especificado. " +
@@ -83,6 +88,10 @@ public class MetricasController {
     ) {
         log.info("Get financial metrics for salon: {} from {} to {}", salonId, dataInicio, dataFim);
 
+        // BUG-001 (auditoria): o salonId vem da URL; sem esta checagem qualquer usuário lia as
+        // métricas de qualquer salão
+        tenantIsolationService.assertStaffTenant(salonId);
+
         PeriodoFilter periodo = buildPeriodoFilter(dataInicio, dataFim);
         MetricasFinanceirasResponse metricas = metricasFinanceirasService.calcularMetricas(salonId, periodo);
 
@@ -94,7 +103,6 @@ public class MetricasController {
     // ====================================
 
     @GetMapping("/social")
-    @Authenticated
     @Operation(
         summary = "Obter métricas de redes sociais",
         description = "Retorna estatísticas de engajamento nas redes sociais no período especificado. " +
@@ -109,6 +117,10 @@ public class MetricasController {
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim
     ) {
         log.info("Get social metrics for salon: {} from {} to {}", salonId, dataInicio, dataFim);
+
+        // BUG-001 (auditoria): o salonId vem da URL; sem esta checagem qualquer usuário lia as
+        // métricas de qualquer salão
+        tenantIsolationService.assertStaffTenant(salonId);
 
         PeriodoFilter periodo = buildPeriodoFilter(dataInicio, dataFim);
         MetricasSocialResponse metricas = metricasSocialService.calcularMetricas(salonId, periodo);

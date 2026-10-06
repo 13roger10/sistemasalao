@@ -108,6 +108,8 @@ class MetricasControllerIT {
                 .endereco("Test Address")
                 .telefone("11988888888")
                 .admin(adminUsuario)
+                .horarioAbertura(java.time.LocalTime.of(9, 0))
+                .horarioFechamento(java.time.LocalTime.of(19, 0))
                 .build());
 
         Usuario profUsuario = usuarioRepository.save(Usuario.builder()
@@ -138,6 +140,7 @@ class MetricasControllerIT {
 
         cliente = clienteRepository.save(Cliente.builder()
                 .usuario(clienteUsuario)
+                .salon(salon)
                 .noShows(0)
                 .build());
 
@@ -151,14 +154,111 @@ class MetricasControllerIT {
                 .ativo(true)
                 .build());
 
-        // Generate JWT token
-        UserDetails userDetails = User.builder()
-                .username(adminUsuario.getEmail())
-                .password(adminUsuario.getPassword())
-                .roles(adminUsuario.getRole().name())
-                .build();
+        // Token com o salão (claim salonId), como o login emite
+        authToken = token(adminUsuario, salon.getId());
+        profissionalToken = token(profUsuario, salon.getId());
+        clienteToken = token(clienteUsuario, null);
+        adminSemSalaoToken = token(adminUsuario, null);
+    }
 
-        authToken = jwtService.generateAccessToken(userDetails);
+    private String clienteToken;
+    private String profissionalToken;
+    private String adminSemSalaoToken;
+
+    private String token(Usuario usuario, Long salonId) {
+        UserDetails userDetails = User.builder()
+                .username(usuario.getEmail())
+                .password(usuario.getPassword())
+                .roles(usuario.getRole().name())
+                .build();
+        return salonId != null
+                ? jwtService.generateAccessToken(userDetails, salonId)
+                : jwtService.generateAccessToken(userDetails);
+    }
+
+    // ===== BUG-001 (auditoria): papel e salão =====
+
+    @Test
+    @DisplayName("Cliente não lê métricas (403)")
+    void clienteNaoLeMetricas() throws Exception {
+        for (String rota : new String[]{"agendamentos", "faturamento", "social"}) {
+            mockMvc.perform(get("/api/metricas/" + rota)
+                            .header("Authorization", "Bearer " + clienteToken)
+                            .param("salonId", salon.getId().toString()))
+                    .andExpect(status().isForbidden());
+        }
+    }
+
+    @Test
+    @DisplayName("Recepcionista não lê métricas (403)")
+    void recepcionistaNaoLeMetricas() throws Exception {
+        Usuario recep = usuarioRepository.save(Usuario.builder()
+                .email("recep@test.com")
+                .password("password")
+                .nome("Recep User")
+                .telefone("11955555555")
+                .role(Role.RECEPCIONISTA)
+                .plano(Plano.FREE)
+                .ativo(true)
+                .salon(salon)
+                .build());
+
+        mockMvc.perform(get("/api/metricas/faturamento")
+                        .header("Authorization", "Bearer " + token(recep, salon.getId()))
+                        .param("salonId", salon.getId().toString()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Admin não lê métricas de outro salão (403)")
+    void adminNaoLeMetricasDeOutroSalao() throws Exception {
+        Usuario outroAdmin = usuarioRepository.save(Usuario.builder()
+                .email("outro-admin@test.com")
+                .password("password")
+                .nome("Outro Admin")
+                .telefone("11944444444")
+                .role(Role.ADMIN)
+                .plano(Plano.PRO)
+                .ativo(true)
+                .build());
+        Salon outroSalao = salonRepository.save(Salon.builder()
+                .nome("Outro Salon")
+                .endereco("Outro Address")
+                .telefone("11933333333")
+                .admin(outroAdmin)
+                .horarioAbertura(java.time.LocalTime.of(9, 0))
+                .horarioFechamento(java.time.LocalTime.of(19, 0))
+                .build());
+
+        for (String rota : new String[]{"agendamentos", "faturamento", "social"}) {
+            mockMvc.perform(get("/api/metricas/" + rota)
+                            .header("Authorization", "Bearer " + authToken)
+                            .param("salonId", outroSalao.getId().toString()))
+                    .andExpect(status().isForbidden());
+        }
+    }
+
+    @Test
+    @DisplayName("Profissional lê métricas só do próprio salão")
+    void profissionalLeSoDoProprioSalao() throws Exception {
+        mockMvc.perform(get("/api/metricas/agendamentos")
+                        .header("Authorization", "Bearer " + profissionalToken)
+                        .param("salonId", salon.getId().toString()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/metricas/agendamentos")
+                        .header("Authorization", "Bearer " + profissionalToken)
+                        .param("salonId", String.valueOf(salon.getId() + 999)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Token de admin sem salão não lê métricas de nenhum salão (403)")
+    void adminSemSalaoNaoLeMetricas() throws Exception {
+        mockMvc.perform(get("/api/metricas/faturamento")
+                        .header("Authorization", "Bearer " + adminSemSalaoToken)
+                        .param("salonId", salon.getId().toString()))
+                .andExpect(status().isForbidden());
     }
 
     @Test
