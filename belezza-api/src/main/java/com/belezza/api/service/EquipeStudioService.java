@@ -5,6 +5,7 @@ import com.belezza.api.entity.*;
 import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.MembroStudioRepository;
+import com.belezza.api.security.TenantContext;
 import com.belezza.api.repository.SalonRepository;
 import com.belezza.api.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
@@ -160,16 +161,17 @@ public class EquipeStudioService {
      * Verifies that the user identified by {@code email} has at least {@code funcaoMinima}
      * in the given salon.
      *
-     * <p>System-level ADMIN users always pass this check.
+     * <p>ADMIN users pass this check only for the salon in their token (current unit).
      * <p>PROPRIETARIO members always pass this check (highest studio role).
      *
      * @throws BusinessException with HTTP 403 semantics if access is denied
      */
     @Transactional(readOnly = true)
     public void verificarAcesso(Long salonId, String email, FuncaoStudio funcaoMinima) {
-        // System ADMINs bypass all studio checks
+        // ADMIN passa direto só no salão em uso (o do token). Antes passava em qualquer salão e
+        // o admin do Salão A lia e apagava os posts do Salão B (BUG-005)
         Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(email).orElse(null);
-        if (usuario != null && usuario.getRole() == Role.ADMIN) {
+        if (usuario != null && usuario.getRole() == Role.ADMIN && isSalaoDoToken(salonId)) {
             return;
         }
 
@@ -183,9 +185,9 @@ public class EquipeStudioService {
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private void requireProprietario(Long salonId, String requesterEmail) {
-        // System ADMINs are treated as PROPRIETARIO
+        // ADMIN conta como PROPRIETARIO só no salão em uso (BUG-005)
         Usuario requester = usuarioRepository.findByEmailAndAtivoTrue(requesterEmail).orElse(null);
-        if (requester != null && requester.getRole() == Role.ADMIN) {
+        if (requester != null && requester.getRole() == Role.ADMIN && isSalaoDoToken(salonId)) {
             return;
         }
 
@@ -193,6 +195,11 @@ public class EquipeStudioService {
         if (funcao != FuncaoStudio.PROPRIETARIO) {
             throw new BusinessException("Apenas o Proprietário pode gerenciar a equipe.");
         }
+    }
+
+    private static boolean isSalaoDoToken(Long salonId) {
+        Long tenant = TenantContext.getCurrentTenant();
+        return tenant != null && tenant.equals(salonId);
     }
 
     @SuppressWarnings("null")
