@@ -5,8 +5,10 @@ import com.belezza.api.entity.*;
 import com.belezza.api.exception.DuplicateResourceException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.*;
+import com.belezza.api.security.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,8 +32,11 @@ public class ColoracaoService {
     @Transactional
     @SuppressWarnings("null")
     public FichaColoracaoResponse criarFicha(FichaColoracaoRequest request, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salaoDoOperador();
+        // Cliente de outro salão responde como inexistente (antes a ficha era criada e a resposta
+        // trazia nome, e-mail e telefone do cliente do outro estabelecimento — BUG-003)
         Cliente cliente = clienteRepository.findById(request.getClienteId())
+                .filter(c -> c.getSalon() != null && c.getSalon().getId().equals(salon.getId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", request.getClienteId()));
 
         if (fichaRepository.existsByClienteIdAndSalonId(request.getClienteId(), salon.getId())) {
@@ -72,7 +77,7 @@ public class ColoracaoService {
 
     @Transactional(readOnly = true)
     public FichaColoracaoResponse buscarFichaPorCliente(Long clienteId, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salaoDoOperador();
         FichaColoracao ficha = fichaRepository.findByClienteIdAndSalonId(clienteId, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Ficha", "cliente", clienteId.toString()));
         return FichaColoracaoResponse.fromEntity(ficha);
@@ -81,7 +86,7 @@ public class ColoracaoService {
     @Transactional
     @SuppressWarnings("null")
     public FichaColoracaoResponse atualizarFicha(Long id, FichaColoracaoRequest request, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salaoDoOperador();
         FichaColoracao ficha = fichaRepository.findById(id)
                 .filter(f -> f.getSalon().getId().equals(salon.getId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Ficha", id));
@@ -119,12 +124,13 @@ public class ColoracaoService {
     @Transactional
     @SuppressWarnings("null")
     public HistoricoColoracaoResponse registrarColoracao(HistoricoColoracaoRequest request, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salaoDoOperador();
         FichaColoracao ficha = fichaRepository.findById(request.getFichaId())
                 .filter(f -> f.getSalon().getId().equals(salon.getId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Ficha", request.getFichaId()));
 
         Profissional profissional = profissionalRepository.findById(request.getProfissionalId())
+                .filter(p -> p.getSalon() != null && p.getSalon().getId().equals(salon.getId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Profissional", request.getProfissionalId()));
 
         HistoricoColoracao historico = HistoricoColoracao.builder()
@@ -166,7 +172,10 @@ public class ColoracaoService {
 
     @Transactional(readOnly = true)
     public List<HistoricoColoracaoResponse> buscarHistoricoCliente(Long clienteId, String emailUsuario) {
+        // Só o histórico feito neste salão (antes devolvia o de qualquer salão, para qualquer perfil)
+        Long salonId = salaoDoOperador().getId();
         return historicoRepository.findByClienteId(clienteId).stream()
+                .filter(h -> doSalao(h, salonId))
                 .map(HistoricoColoracaoResponse::fromEntity)
                 .toList();
     }
@@ -174,9 +183,28 @@ public class ColoracaoService {
     @Transactional(readOnly = true)
     @SuppressWarnings("null")
     public HistoricoColoracaoResponse buscarHistoricoPorId(Long id) {
+        Long salonId = salaoDoOperador().getId();
         HistoricoColoracao historico = historicoRepository.findById(id)
+                .filter(h -> doSalao(h, salonId))
                 .orElseThrow(() -> new ResourceNotFoundException("Histórico", id));
         return HistoricoColoracaoResponse.fromEntity(historico);
+    }
+
+    private static boolean doSalao(HistoricoColoracao historico, Long salonId) {
+        return historico.getFicha() != null && historico.getFicha().getSalon() != null
+                && historico.getFicha().getSalon().getId().equals(salonId);
+    }
+
+    /**
+     * Salão em uso pelo operador, vindo do token. Antes era o "salão do admin" pelo e-mail, o que
+     * fazia a coloração falhar (404) para colorista e recepção.
+     */
+    private Salon salaoDoOperador() {
+        Long salonId = TenantContext.getCurrentTenant();
+        if (salonId == null) {
+            throw new AccessDeniedException("Acesso negado: usuário sem estabelecimento vinculado");
+        }
+        return salonService.getSalonEntity(salonId);
     }
 
     // ====== SUGESTÃO DE TONALIDADE ======

@@ -3,6 +3,7 @@ package com.belezza.api.controller;
 import com.belezza.api.dto.coloracao.*;
 import com.belezza.api.entity.SubtomPele;
 import com.belezza.api.entity.TomPele;
+import com.belezza.api.security.annotation.EquipeOnly;
 import com.belezza.api.service.ColoracaoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -19,6 +20,9 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/coloracao")
+// BUG-003 (auditoria): sem anotação de papel, qualquer usuário logado (até cliente) lia o
+// histórico de coloração de qualquer cliente
+@EquipeOnly
 @RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Coloração", description = "Consultoria de coloração e ficha técnica")
