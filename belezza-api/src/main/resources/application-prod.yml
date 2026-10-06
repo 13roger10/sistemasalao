@@ -96,6 +96,11 @@ belezza:
   encryption:
     aes-key: ${AES_SECRET_KEY}
 
+  # BUG-004: senha do admin inicial (admin@belezza.ai), que as migrations criam com a senha
+  # pública "Admin@123". Sem ela (ou com menos de 12 caracteres), o ContasDemoGuard desativa a conta.
+  admin-inicial:
+    senha: ${BELEZZA_ADMIN_INICIAL_SENHA:}
+
   # RabbitMQ enabled in production
   rabbitmq:
     enabled: true

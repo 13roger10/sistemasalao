@@ -70,6 +70,13 @@ spec:
                 secretKeyRef:
                   name: belezza-app-secret
                   key: AES_SECRET_KEY
+            # BUG-004: senha do admin inicial (admin@belezza.ai); sem ela a conta é desativada
+            - name: BELEZZA_ADMIN_INICIAL_SENHA
+              valueFrom:
+                secretKeyRef:
+                  name: belezza-app-secret
+                  key: BELEZZA_ADMIN_INICIAL_SENHA
+                  optional: true
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
