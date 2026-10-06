@@ -4,8 +4,9 @@ import com.belezza.api.dto.post.AuthUrlResponse;
 import com.belezza.api.dto.post.ContaSocialResponse;
 import com.belezza.api.entity.ContaSocial;
 import com.belezza.api.entity.PlataformaSocial;
-import com.belezza.api.security.annotation.Authenticated;
+import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.service.SocialAccountService;
+import com.belezza.api.service.TenantIsolationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,17 +27,20 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/social")
 @RequiredArgsConstructor
 @Slf4j
+// BUG-002 (auditoria): sem papel nem checagem de salão, qualquer usuário logado (até cliente)
+// listava, lia, desconectava e renovava as contas de qualquer salão passando o salonId
 @Tag(name = "Social Auth", description = "Social media OAuth and account management")
 public class SocialAuthController {
 
     private final SocialAccountService socialAccountService;
+    private final TenantIsolationService tenantIsolationService;
 
     // ====================================
     // 7.1 OAuth Flow
     // ====================================
 
     @GetMapping("/instagram/auth")
-    @Authenticated
+    @AdminOnly
     @Operation(
         summary = "Get Instagram OAuth URL",
         description = "Generate OAuth authorization URL for Instagram Business Account connection"
@@ -44,6 +48,7 @@ public class SocialAuthController {
     public ResponseEntity<AuthUrlResponse> getInstagramAuthUrl(
         @Parameter(description = "Salon ID") @RequestParam Long salonId
     ) {
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Generate Instagram auth URL for salon: {}", salonId);
 
         String authUrl = socialAccountService.generateAuthUrl(salonId, PlataformaSocial.INSTAGRAM);
@@ -58,7 +63,7 @@ public class SocialAuthController {
     }
 
     @GetMapping("/facebook/auth")
-    @Authenticated
+    @AdminOnly
     @Operation(
         summary = "Get Facebook OAuth URL",
         description = "Generate OAuth authorization URL for Facebook Page connection"
@@ -66,6 +71,7 @@ public class SocialAuthController {
     public ResponseEntity<AuthUrlResponse> getFacebookAuthUrl(
         @Parameter(description = "Salon ID") @RequestParam Long salonId
     ) {
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Generate Facebook auth URL for salon: {}", salonId);
 
         String authUrl = socialAccountService.generateAuthUrl(salonId, PlataformaSocial.FACEBOOK);
@@ -116,7 +122,7 @@ public class SocialAuthController {
     // ====================================
 
     @GetMapping("/accounts")
-    @Authenticated
+    @AdminOnly
     @Operation(
         summary = "List connected accounts",
         description = "Get all social media accounts connected to the salon"
@@ -125,6 +131,7 @@ public class SocialAuthController {
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Filter active accounts only") @RequestParam(defaultValue = "true") boolean activeOnly
     ) {
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("List social accounts for salon: {}", salonId);
 
         List<ContaSocial> contas = socialAccountService.listAccounts(salonId, activeOnly);
@@ -137,7 +144,7 @@ public class SocialAuthController {
     }
 
     @GetMapping("/accounts/{id}")
-    @Authenticated
+    @AdminOnly
     @Operation(
         summary = "Get account details",
         description = "Get details of a specific connected account"
@@ -146,6 +153,7 @@ public class SocialAuthController {
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Account ID") @PathVariable Long id
     ) {
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Get social account: {} for salon: {}", id, salonId);
 
         ContaSocial conta = socialAccountService.getAccount(salonId, id);
@@ -155,7 +163,7 @@ public class SocialAuthController {
     }
 
     @DeleteMapping("/accounts/{id}")
-    @Authenticated
+    @AdminOnly
     @Operation(
         summary = "Disconnect account",
         description = "Disconnect a social media account from the salon"
@@ -164,6 +172,7 @@ public class SocialAuthController {
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Account ID") @PathVariable Long id
     ) {
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Disconnect social account: {} for salon: {}", id, salonId);
 
         socialAccountService.disconnectAccount(salonId, id);
@@ -172,7 +181,7 @@ public class SocialAuthController {
     }
 
     @PostMapping("/accounts/{id}/refresh")
-    @Authenticated
+    @AdminOnly
     @Operation(
         summary = "Refresh account token",
         description = "Manually refresh the access token for a social media account"
@@ -181,6 +190,7 @@ public class SocialAuthController {
         @Parameter(description = "Salon ID") @RequestParam Long salonId,
         @Parameter(description = "Account ID") @PathVariable Long id
     ) {
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Refresh token for social account: {} in salon: {}", id, salonId);
 
         ContaSocial conta = socialAccountService.refreshAccountToken(salonId, id);
@@ -190,7 +200,7 @@ public class SocialAuthController {
     }
 
     @GetMapping("/accounts/status")
-    @Authenticated
+    @AdminOnly
     @Operation(
         summary = "Check account status",
         description = "Check which platforms have active accounts connected"
@@ -198,6 +208,7 @@ public class SocialAuthController {
     public ResponseEntity<AccountStatusResponse> checkAccountStatus(
         @Parameter(description = "Salon ID") @RequestParam Long salonId
     ) {
+        tenantIsolationService.assertStaffTenant(salonId);
         log.info("Check account status for salon: {}", salonId);
 
         boolean hasInstagram = socialAccountService.hasActiveAccount(salonId, PlataformaSocial.INSTAGRAM);
