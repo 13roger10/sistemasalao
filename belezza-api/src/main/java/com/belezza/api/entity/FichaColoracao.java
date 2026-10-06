@@ -103,14 +103,14 @@ public class FichaColoracao {
     @Column(length = 1000)
     private String observacoes;
 
-    // Fotos de referência (URLs)
-    @Column(length = 500)
+    // Fotos de referência (URLs) — nomes como criados na migration (foto_referencia_N)
+    @Column(name = "foto_referencia_1", length = 500)
     private String fotoReferencia1;
 
-    @Column(length = 500)
+    @Column(name = "foto_referencia_2", length = 500)
     private String fotoReferencia2;
 
-    @Column(length = 500)
+    @Column(name = "foto_referencia_3", length = 500)
     private String fotoReferencia3;
 
     @CreatedDate
