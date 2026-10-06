@@ -41,6 +41,7 @@ public class DisponibilidadeService {
     private final ServicoRepository servicoRepository;
     private final HorarioTrabalhoRepository horarioTrabalhoRepository;
     private final HorarioFuncionamentoSalonRepository horarioFuncionamentoSalonRepository;
+    private final DataEspecialService dataEspecialService;
     private final BloqueioHorarioRepository bloqueioHorarioRepository;
     private final AgendamentoRepository agendamentoRepository;
 
@@ -175,6 +176,20 @@ public class DisponibilidadeService {
         HorarioFuncionamentoSalon horarioSalon = horarioFuncionamentoSalonRepository
                 .findBySalonIdAndDiaSemana(salon.getId(), diaSemana)
                 .orElse(null);
+
+        // Feriado ou data especial vale antes da regra da semana (BUG-008)
+        DataEspecialService.Excecao excecao = dataEspecialService.excecaoDoDia(salon.getId(), data).orElse(null);
+        if (excecao != null && excecao.fechado()) {
+            log.info("Salão fechado em {} ({})", data, excecao.nome());
+            return slots;
+        }
+        if (excecao != null) {
+            // Horário especial do dia substitui o da semana na interseção abaixo
+            horarioSalon = HorarioFuncionamentoSalon.builder()
+                    .diaSemana(diaSemana).ativo(true)
+                    .horaInicio(excecao.inicio()).horaFim(excecao.fim())
+                    .build();
+        }
 
         if (horarioSalon != null && !horarioSalon.isAtivo()) {
             log.info("Salão fechado no dia {} conforme configuração do administrador", diaSemana);

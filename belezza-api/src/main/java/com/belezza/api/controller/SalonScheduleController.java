@@ -4,6 +4,8 @@ import com.belezza.api.entity.*;
 import com.belezza.api.repository.HorarioFuncionamentoSalonRepository;
 import com.belezza.api.exception.BusinessException;
 import com.belezza.api.security.annotation.AdminOnly;
+import com.belezza.api.security.TenantContext;
+import com.belezza.api.service.DataEspecialService;
 import com.belezza.api.service.SalonService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -11,6 +13,7 @@ import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -36,6 +39,7 @@ public class SalonScheduleController {
 
     private final SalonService salonService;
     private final HorarioFuncionamentoSalonRepository horarioFuncionamentoSalonRepository;
+    private final DataEspecialService dataEspecialService;
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
     // Map DayOfWeek index (0=Sun, 1=Mon..6=Sat) to DiaSemana
@@ -255,67 +259,87 @@ public class SalonScheduleController {
     }
 
     // ==================== HOLIDAYS ENDPOINTS ====================
+    // BUG-008 (auditoria): feriados e datas especiais eram fingidos (o POST devolvia um UUID
+    // aleatório sem gravar e o GET sempre []). Agora são gravados por salão (o do token) e a
+    // agenda e a disponibilidade os respeitam.
 
     @GetMapping("/holidays")
     public ResponseEntity<List<HolidayResponse>> getHolidays() {
-        return ResponseEntity.ok(List.of());
+        return ResponseEntity.ok(dataEspecialService.listar(salaoDoToken(), DataEspecialSalon.FERIADO).stream()
+                .map(SalonScheduleController::toHoliday).toList());
     }
 
     @PostMapping("/holidays")
     @AdminOnly
     public ResponseEntity<HolidayResponse> addHoliday(@RequestBody HolidayRequest request) {
-        HolidayResponse holiday = new HolidayResponse(
-                java.util.UUID.randomUUID().toString(),
-                request.date(), request.name(),
-                request.isOpen() != null && request.isOpen(),
-                request.schedule(),
-                request.recurring() != null && request.recurring()
-        );
-        return ResponseEntity.ok(holiday);
+        ScheduleTimeResponse h = request.schedule();
+        DataEspecialSalon salvo = dataEspecialService.salvarFeriado(salaoDoToken(), null, request.date(), request.name(),
+                request.isOpen(), h != null ? h.start() : null, h != null ? h.end() : null, request.recurring());
+        return ResponseEntity.ok(toHoliday(salvo));
     }
 
     @PutMapping("/holidays/{id}")
     @AdminOnly
     public ResponseEntity<HolidayResponse> updateHoliday(
-            @PathVariable String id, @RequestBody HolidayRequest request) {
-        HolidayResponse holiday = new HolidayResponse(
-                id,
-                request.date() != null ? request.date() : "2026-01-01",
-                request.name() != null ? request.name() : "Feriado",
-                request.isOpen() != null && request.isOpen(),
-                request.schedule(),
-                request.recurring() != null && request.recurring()
-        );
-        return ResponseEntity.ok(holiday);
+            @PathVariable Long id, @RequestBody HolidayRequest request) {
+        ScheduleTimeResponse h = request.schedule();
+        DataEspecialSalon salvo = dataEspecialService.salvarFeriado(salaoDoToken(), id, request.date(), request.name(),
+                request.isOpen(), h != null ? h.start() : null, h != null ? h.end() : null, request.recurring());
+        return ResponseEntity.ok(toHoliday(salvo));
     }
 
     @DeleteMapping("/holidays/{id}")
     @AdminOnly
-    public ResponseEntity<Void> deleteHoliday(@PathVariable String id) {
-        return ResponseEntity.ok().build();
+    public ResponseEntity<Void> deleteHoliday(@PathVariable Long id) {
+        dataEspecialService.excluir(salaoDoToken(), id, DataEspecialSalon.FERIADO);
+        return ResponseEntity.noContent().build();
     }
 
     // ==================== SPECIAL DATES ENDPOINTS ====================
 
     @GetMapping("/special-dates")
     public ResponseEntity<List<SpecialDateResponse>> getSpecialDates() {
-        return ResponseEntity.ok(List.of());
+        return ResponseEntity.ok(dataEspecialService.listar(salaoDoToken(), DataEspecialSalon.ESPECIAL).stream()
+                .map(SalonScheduleController::toSpecialDate).toList());
     }
 
     @PostMapping("/special-dates")
     @AdminOnly
     public ResponseEntity<SpecialDateResponse> addSpecialDate(@RequestBody SpecialDateRequest request) {
-        SpecialDateResponse sd = new SpecialDateResponse(
-                java.util.UUID.randomUUID().toString(),
-                request.date(), request.name(), request.type(), request.schedule()
-        );
-        return ResponseEntity.ok(sd);
+        ScheduleTimeResponse h = request.schedule();
+        DataEspecialSalon salvo = dataEspecialService.salvarDataEspecial(salaoDoToken(), request.date(), request.name(),
+                request.type(), h != null ? h.start() : null, h != null ? h.end() : null);
+        return ResponseEntity.ok(toSpecialDate(salvo));
     }
 
     @DeleteMapping("/special-dates/{id}")
     @AdminOnly
-    public ResponseEntity<Void> deleteSpecialDate(@PathVariable String id) {
-        return ResponseEntity.ok().build();
+    public ResponseEntity<Void> deleteSpecialDate(@PathVariable Long id) {
+        dataEspecialService.excluir(salaoDoToken(), id, DataEspecialSalon.ESPECIAL);
+        return ResponseEntity.noContent().build();
+    }
+
+    private static Long salaoDoToken() {
+        Long salonId = TenantContext.getCurrentTenant();
+        if (salonId == null) {
+            throw new AccessDeniedException("Acesso negado: usuário sem estabelecimento vinculado");
+        }
+        return salonId;
+    }
+
+    private static ScheduleTimeResponse horario(DataEspecialSalon d) {
+        return d.getHoraInicio() != null && d.getHoraFim() != null
+                ? new ScheduleTimeResponse(d.getHoraInicio().toString(), d.getHoraFim().toString()) : null;
+    }
+
+    private static HolidayResponse toHoliday(DataEspecialSalon d) {
+        return new HolidayResponse(String.valueOf(d.getId()), d.getData().toString(), d.getNome(),
+                d.isAberto(), horario(d), d.isRecorrente());
+    }
+
+    private static SpecialDateResponse toSpecialDate(DataEspecialSalon d) {
+        return new SpecialDateResponse(String.valueOf(d.getId()), d.getData().toString(), d.getNome(),
+                d.getTipo(), horario(d));
     }
 
     // ==================== RECORD DEFINITIONS ====================

@@ -34,6 +34,9 @@ class SalonScheduleControllerTest {
     @Mock
     private HorarioFuncionamentoSalonRepository horarioFuncionamentoSalonRepository;
 
+    @Mock
+    private com.belezza.api.service.DataEspecialService dataEspecialService;
+
     @InjectMocks
     private SalonScheduleController controller;
 

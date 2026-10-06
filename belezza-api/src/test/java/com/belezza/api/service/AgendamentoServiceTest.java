@@ -59,6 +59,9 @@ class AgendamentoServiceTest {
     private HorarioFuncionamentoSalonRepository horarioFuncionamentoSalonRepository;
 
     @Mock
+    private com.belezza.api.service.DataEspecialService dataEspecialService;
+
+    @Mock
     private SalonService salonService;
 
     @Mock

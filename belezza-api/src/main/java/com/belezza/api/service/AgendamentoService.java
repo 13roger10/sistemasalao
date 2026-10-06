@@ -48,6 +48,7 @@ public class AgendamentoService {
     private final ClienteRepository clienteRepository;
     private final HorarioTrabalhoRepository horarioTrabalhoRepository;
     private final HorarioFuncionamentoSalonRepository horarioFuncionamentoSalonRepository;
+    private final DataEspecialService dataEspecialService;
     private final TenantIsolationService tenantIsolationService;
     private final ProfissionalService profissionalService;
     private final ServicoService servicoService;
@@ -1194,15 +1195,24 @@ public class AgendamentoService {
         LocalTime horarioServico = dataHora.toLocalTime();
         LocalTime fimServico = horarioServico.plusMinutes(duracaoMinutos);
         DiaSemana diaSemana = toDiaSemana(dataHora.getDayOfWeek());
+        // Feriado ou data especial vale antes da regra da semana (BUG-008: o feriado era ignorado)
+        DataEspecialService.Excecao excecao = dataEspecialService
+                .excecaoDoDia(salon.getId(), dataHora.toLocalDate()).orElse(null);
+        if (excecao != null && excecao.fechado()) {
+            throw new BusinessException("O salão não abre neste dia (" + excecao.nome() + ")");
+        }
         HorarioFuncionamentoSalon horarioSalon = horarioFuncionamentoSalonRepository
                 .findBySalonIdAndDiaSemana(salon.getId(), diaSemana)
                 .orElse(null);
-        if (horarioSalon != null && !horarioSalon.isAtivo()) {
+        if (excecao == null && horarioSalon != null && !horarioSalon.isAtivo()) {
             throw new BusinessException("O salão não abre neste dia");
         }
         LocalTime abertura = salon.getHorarioAbertura();
         LocalTime fechamento = salon.getHorarioFechamento();
-        if (horarioSalon != null && horarioSalon.getHoraInicio() != null && horarioSalon.getHoraFim() != null) {
+        if (excecao != null) {
+            abertura = excecao.inicio();
+            fechamento = excecao.fim();
+        } else if (horarioSalon != null && horarioSalon.getHoraInicio() != null && horarioSalon.getHoraFim() != null) {
             abertura = horarioSalon.getHoraInicio();
             fechamento = horarioSalon.getHoraFim();
         }
