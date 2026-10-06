@@ -54,7 +54,7 @@ class PostIsolamentoIT {
                 .imagemUrl("https://example.com/b.jpg")
                 .legenda("Rascunho privado do Salao B")
                 .status(StatusPost.RASCUNHO)
-                .plataformas(List.of(PlataformaSocial.INSTAGRAM))
+                .plataformas(new java.util.ArrayList<>(List.of(PlataformaSocial.INSTAGRAM)))
                 .build());
     }
 
@@ -90,6 +90,30 @@ class PostIsolamentoIT {
                 .andExpect(status().isNotFound());
 
         assertThat(postRepository.findById(postB.getId())).isPresent();
+    }
+
+    @Test
+    @DisplayName("BUG-010: dono lista, abre e edita o próprio post sem erro 500")
+    void donoListaAbreEEditaOProprioPost() throws Exception {
+        String adminB = fx.tokenAdmin(salaoB);
+        String b = salaoB.getId().toString();
+
+        mockMvc.perform(get("/api/posts").param("salonId", b)
+                        .header("Authorization", "Bearer " + adminB))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].criadorNome").value(salaoB.getAdmin().getNome()))
+                .andExpect(jsonPath("$.content[0].plataformas[0]").value("INSTAGRAM"));
+        mockMvc.perform(get("/api/posts/" + postB.getId()).param("salonId", b)
+                        .header("Authorization", "Bearer " + adminB))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.legenda").value("Rascunho privado do Salao B"));
+        mockMvc.perform(put("/api/posts/" + postB.getId()).param("salonId", b)
+                        .header("Authorization", "Bearer " + adminB)
+                        .contentType("application/json")
+                        .content("{\"legenda\":\"Legenda revisada\",\"hashtags\":[\"#salao\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.legenda").value("Legenda revisada"))
+                .andExpect(jsonPath("$.hashtags[0]").value("#salao"));
     }
 
     @Test

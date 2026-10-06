@@ -10,6 +10,7 @@ import com.belezza.api.repository.SalonRepository;
 import com.belezza.api.repository.UsuarioRepository;
 import com.belezza.api.security.AesEncryptionService;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.Hibernate;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -78,7 +79,7 @@ public class PostService {
         post = postRepository.save(post);
 
         log.info("Post created: {} for salon: {}", post.getId(), salonId);
-        return post;
+        return carregado(post);
     }
 
     /**
@@ -118,7 +119,7 @@ public class PostService {
         post = postRepository.save(post);
 
         log.info("Post updated: {}", postId);
-        return post;
+        return carregado(post);
     }
 
     /**
@@ -126,7 +127,7 @@ public class PostService {
      */
     @Transactional(readOnly = true)
     public Post getPost(Long salonId, Long postId) {
-        return getPostBySalonAndId(salonId, postId);
+        return carregado(getPostBySalonAndId(salonId, postId));
     }
 
     /**
@@ -136,11 +137,11 @@ public class PostService {
     public Page<Post> listPosts(Long salonId, StatusPost status, Pageable pageable) {
         Salon salon = getSalonById(salonId);
 
-        if (status != null) {
-            return postRepository.findBySalonAndStatus(salon, status, pageable);
-        }
-
-        return postRepository.findBySalon(salon, pageable);
+        Page<Post> posts = status != null
+                ? postRepository.findBySalonAndStatus(salon, status, pageable)
+                : postRepository.findBySalon(salon, pageable);
+        posts.forEach(this::carregado);
+        return posts;
     }
 
     /**
@@ -207,7 +208,7 @@ public class PostService {
             log.error("Error publishing post {}: {}", postId, e.getMessage(), e);
         }
 
-        return postRepository.save(post);
+        return carregado(postRepository.save(post));
     }
 
     /**
@@ -268,7 +269,7 @@ public class PostService {
         post = postRepository.save(post);
 
         log.info("Post scheduled: {} for {}", postId, scheduledTime);
-        return post;
+        return carregado(post);
     }
 
     /**
@@ -367,7 +368,7 @@ public class PostService {
             log.error("Error syncing metrics for post {}: {}", postId, e.getMessage());
         }
 
-        return post;
+        return carregado(post);
     }
 
     // ====================================
@@ -574,5 +575,19 @@ public class PostService {
         return postRepository.findRetryable(MAX_RETRY_ATTEMPTS, LocalDateTime.now()).stream()
             .map(p -> new PostDispatchInfo(p.getId(), p.getSalon().getId()))
             .toList();
+    }
+
+    /**
+     * Carrega, ainda na transação, o que o PostResponse lê fora dela (criador, hashtags,
+     * plataformas). Sem isso, listar, abrir ou editar um post dava 500 com
+     * LazyInitializationException assim que existia um post (BUG-010).
+     */
+    private Post carregado(Post post) {
+        if (post != null) {
+            Hibernate.initialize(post.getCriador());
+            Hibernate.initialize(post.getHashtags());
+            Hibernate.initialize(post.getPlataformas());
+        }
+        return post;
     }
 }
