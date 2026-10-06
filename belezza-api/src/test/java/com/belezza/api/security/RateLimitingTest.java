@@ -10,14 +10,19 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Tests for rate limiting functionality.
+ *
+ * O limite é por IP de origem (remoteAddr): desde a SEC-015, X-Forwarded-For e X-Real-IP só valem
+ * vindos de proxy confiável. Cada teste usa um IP próprio — antes todos saíam de 127.0.0.1 e as
+ * requisições do teste de bloqueio esgotavam o limite dos outros (429 conforme a ordem dos testes).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -27,121 +32,120 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DisplayName("Rate Limiting Tests")
 class RateLimitingTest {
 
+    /** belezza.rate-limit.requests-per-minute (padrão do application.yml). */
+    private static final int LIMITE_POR_MINUTO = 60;
+
     @Autowired
     private MockMvc mockMvc;
+
+    private static MockHttpServletRequestBuilder health(String ipDeOrigem) {
+        return get("/actuator/health")
+                .contentType(MediaType.APPLICATION_JSON)
+                .with(request -> {
+                    request.setRemoteAddr(ipDeOrigem);
+                    return request;
+                });
+    }
+
+    /**
+     * Faz requisições do IP até receber 429. O balde recarrega aos poucos (Refill.greedy: ~1 ficha
+     * por segundo com 60/min), então o bloqueio pode vir algumas requisições depois do limite.
+     */
+    private boolean esgotarLimite(String ipDeOrigem, String xForwardedFor) throws Exception {
+        for (int i = 0; i < LIMITE_POR_MINUTO + 30; i++) {
+            MockHttpServletRequestBuilder req = health(ipDeOrigem);
+            if (xForwardedFor != null) {
+                req = req.header("X-Forwarded-For", xForwardedFor + i);
+            }
+            if (mockMvc.perform(req).andReturn().getResponse().getStatus() == 429) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     @Test
     @DisplayName("Should allow requests within rate limit")
     void shouldAllowRequestsWithinRateLimit() throws Exception {
-        // Make several requests to a public endpoint
         for (int i = 0; i < 5; i++) {
-            mockMvc.perform(get("/actuator/health")
-                            .contentType(MediaType.APPLICATION_JSON))
-                    .andExpect(status().isOk());
+            mockMvc.perform(health("10.1.0.1")).andExpect(status().isOk());
         }
     }
 
     @Test
     @DisplayName("Should return rate limit headers")
     void shouldReturnRateLimitHeaders() throws Exception {
-        mockMvc.perform(get("/actuator/health")
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk());
-        // Note: Rate limit headers depend on your RateLimitFilter implementation
-        // Adjust assertions based on your actual headers
+        mockMvc.perform(health("10.1.0.2")).andExpect(status().isOk());
     }
 
     @Test
     @DisplayName("Should handle concurrent requests")
     void shouldHandleConcurrentRequests() throws Exception {
-        // Create multiple threads making concurrent requests
         Thread[] threads = new Thread[10];
         int[] successCount = {0};
-        int[] failCount = {0};
 
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < threads.length; i++) {
             threads[i] = new Thread(() -> {
                 try {
-                    mockMvc.perform(get("/actuator/health")
-                                    .contentType(MediaType.APPLICATION_JSON))
-                            .andExpect(status().isOk());
+                    mockMvc.perform(health("10.1.0.3")).andExpect(status().isOk());
                     synchronized (successCount) {
                         successCount[0]++;
                     }
-                } catch (Exception e) {
-                    synchronized (failCount) {
-                        failCount[0]++;
-                    }
+                } catch (Throwable ignored) {
+                    // contado como falha pela asserção abaixo
                 }
             });
             threads[i].start();
         }
-
-        // Wait for all threads
         for (Thread thread : threads) {
             thread.join();
         }
 
-        // All requests should succeed under normal conditions
-        org.assertj.core.api.Assertions.assertThat(successCount[0]).isGreaterThan(0);
+        // Dez requisições ficam dentro do limite: todas devem passar
+        assertThat(successCount[0]).isEqualTo(threads.length);
     }
 
     @Test
     @DisplayName("Should block excessive requests from same IP")
     void shouldBlockExcessiveRequests() throws Exception {
-        // This test depends on your rate limit configuration
-        // With a low limit, rapid requests should eventually be blocked
         int successCount = 0;
         int blockedCount = 0;
 
-        // Make more requests than the rate limit allows
-        for (int i = 0; i < 150; i++) {
-            try {
-                mockMvc.perform(get("/actuator/health")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .header("X-Forwarded-For", "192.168.1.100"))
-                        .andExpect(status().isOk());
+        for (int i = 0; i < LIMITE_POR_MINUTO + 20; i++) {
+            int status = mockMvc.perform(health("10.1.0.4")).andReturn().getResponse().getStatus();
+            if (status == 200) {
                 successCount++;
-            } catch (AssertionError e) {
-                // Request was blocked (status was not 200)
+            } else if (status == 429) {
                 blockedCount++;
             }
         }
 
-        // At least some requests should succeed
-        org.assertj.core.api.Assertions.assertThat(successCount).isGreaterThan(0);
-
-        // Note: If rate limiting is working, some requests might be blocked
-        // The actual numbers depend on your rate limit configuration
+        // Passa o limite (mais alguma ficha recarregada durante o teste) e bloqueia o excesso
+        assertThat(successCount).isBetween(LIMITE_POR_MINUTO, LIMITE_POR_MINUTO + 5);
+        assertThat(blockedCount).isGreaterThan(0);
+        assertThat(successCount + blockedCount).isEqualTo(LIMITE_POR_MINUTO + 20);
     }
 
     @Test
     @DisplayName("Should differentiate between different IPs")
     void shouldDifferentiateBetweenDifferentIPs() throws Exception {
-        // Make requests from different "IPs"
-        for (int i = 0; i < 5; i++) {
-            mockMvc.perform(get("/actuator/health")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .header("X-Forwarded-For", "192.168.1." + i))
-                    .andExpect(status().isOk());
-        }
+        // Esgota o limite de um IP; outro IP continua sendo atendido
+        assertThat(esgotarLimite("10.1.0.5", null)).isTrue();
+        mockMvc.perform(health("10.1.0.6")).andExpect(status().isOk());
     }
 
     @Test
-    @DisplayName("Should handle X-Forwarded-For header correctly")
+    @DisplayName("Should ignore forged X-Forwarded-For header")
     void shouldHandleXForwardedForHeader() throws Exception {
-        mockMvc.perform(get("/actuator/health")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .header("X-Forwarded-For", "10.0.0.1, 192.168.1.1"))
-                .andExpect(status().isOk());
+        // Sem proxy confiável o cabeçalho é ignorado: um X-Forwarded-For diferente a cada
+        // requisição não renova o limite (o IP considerado continua sendo o de origem)
+        assertThat(esgotarLimite("10.1.0.7", "192.168.1.")).isTrue();
     }
 
     @Test
     @DisplayName("Should handle X-Real-IP header correctly")
     void shouldHandleXRealIPHeader() throws Exception {
-        mockMvc.perform(get("/actuator/health")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .header("X-Real-IP", "10.0.0.2"))
+        mockMvc.perform(health("10.1.0.8").header("X-Real-IP", "10.0.0.2"))
                 .andExpect(status().isOk());
     }
 }

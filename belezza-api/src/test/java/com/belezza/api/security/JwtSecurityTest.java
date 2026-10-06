@@ -50,8 +50,9 @@ class JwtSecurityTest {
 
     @BeforeEach
     void setUp() {
-        // Clean up
-        usuarioRepository.deleteAll();
+        // Sem deleteAll: o banco tem dados das migrations (admin dono de salão, FK fk_salon_admin)
+        // e apagar todos os usuários violava a chave. A classe é @Transactional: o que for
+        // criado aqui é desfeito ao fim de cada teste.
 
         // Create test users
         Usuario admin = usuarioRepository.save(Usuario.builder()

@@ -62,6 +62,7 @@ public class UsuarioService {
     private final CaixaRepository caixaRepository;
     private final MovimentacaoCaixaRepository movimentacaoCaixaRepository;
     private final LoginAttemptService loginAttemptService;
+    private final ProfissionalService profissionalService;
 
     /**
      * List users with pagination and filters.
@@ -615,7 +616,8 @@ public class UsuarioService {
 
     /**
      * Um ADMIN só acessa usuários vinculados ao próprio salão (como admin dono, membro da equipe,
-     * cliente ou profissional). Usuários sem vínculo com nenhum salão são permitidos.
+     * cliente ou profissional). Usuário sem vínculo com nenhum salão também é negado: antes
+     * qualquer admin desativava, reativava ou excluía essas contas (ex.: cliente recém-cadastrado).
      */
     private void verificarMesmoSalao(Usuario usuarioLogado, Usuario usuarioAlvo) {
         Long salonLogadoId = salaoDoAdmin(usuarioLogado);
@@ -632,7 +634,7 @@ public class UsuarioService {
         recepcionistaUnidadeRepository.findByUsuarioId(usuarioAlvo.getId())
                 .forEach(v -> saloesAlvo.add(v.getSalon().getId()));
 
-        if (!saloesAlvo.isEmpty() && (salonLogadoId == null || !saloesAlvo.contains(salonLogadoId))) {
+        if (salonLogadoId == null || !saloesAlvo.contains(salonLogadoId)) {
             throw new AccessDeniedException("Acesso negado: usuário pertence a outro estabelecimento");
         }
     }
@@ -721,6 +723,24 @@ public class UsuarioService {
             if (!usuarioAlvo.getId().equals(usuarioLogado.getId())) {
                 throw new AccessDeniedException("Acesso negado: profissional só acessa o próprio cadastro");
             }
+            return;
+        }
+
+        // RECEPCIONISTA acessa só pessoas vinculadas à unidade em uso (antes não havia checagem e
+        // ela lia e-mail, telefone e nascimento de usuários de qualquer salão)
+        if (usuarioLogado.getRole() == Role.RECEPCIONISTA) {
+            if (!usuarioAlvo.getId().equals(usuarioLogado.getId())) {
+                Long unidade = com.belezza.api.security.TenantContext.getCurrentTenant();
+                if (unidade == null || !vinculadoAUnidade(usuarioAlvo, unidade)) {
+                    throw new AccessDeniedException("Acesso negado: usuário pertence a outro estabelecimento");
+                }
+            }
+            return;
+        }
+
+        // Demais papéis: só o próprio cadastro
+        if (!usuarioAlvo.getId().equals(usuarioLogado.getId())) {
+            throw new AccessDeniedException("Acesso negado");
         }
     }
 
@@ -797,6 +817,8 @@ public class UsuarioService {
                 .build();
 
         profissional = profissionalRepository.save(profissional);
+        // Sem expediente o profissional não pode ser agendado em nenhum dia (sem horário = folga)
+        profissionalService.criarHorariosTrabalhoDefault(profissional, salon);
         log.info("Profissional criado e vinculado ao salão: usuario={}, salon={}",
                 usuario.getId(), salonId);
 

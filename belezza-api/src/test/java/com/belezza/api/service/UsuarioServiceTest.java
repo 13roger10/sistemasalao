@@ -49,6 +49,7 @@ class UsuarioServiceTest {
     @Mock private CaixaRepository caixaRepository;
     @Mock private MovimentacaoCaixaRepository movimentacaoCaixaRepository;
     @Mock private com.belezza.api.repository.RecepcionistaUnidadeRepository recepcionistaUnidadeRepository;
+    @Mock private ProfissionalService profissionalService;
 
     @InjectMocks
     private UsuarioService usuarioService;
@@ -132,6 +133,8 @@ class UsuarioServiceTest {
         usuarioService.criar(request, EMAIL_ADMIN_A);
 
         verify(profissionalRepository).save(argThat(p -> p.getSalon().getId().equals(1L)));
+        // Sem expediente o profissional não seria agendável em nenhum dia
+        verify(profissionalService).criarHorariosTrabalhoDefault(any(Profissional.class), eq(salonA));
     }
 
     @Test
@@ -560,6 +563,52 @@ class UsuarioServiceTest {
 
             assertThatThrownBy(() -> usuarioService.ficha(41L, "prof@a.com"))
                     .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("Acesso a usuários: recepção e contas sem vínculo")
+    class AcessoRecepcaoESemVinculo {
+
+        private static final String EMAIL_RECEP_A = "recep.a@teste.com";
+
+        @BeforeEach
+        void recepcaoNaUnidadeA() {
+            lenient().when(usuarioRepository.findByEmailAndAtivoTrue(EMAIL_RECEP_A)).thenReturn(Optional.of(recepA));
+            com.belezza.api.security.TenantContext.setCurrentTenant(1L);
+        }
+
+        @org.junit.jupiter.api.AfterEach
+        void limparTenant() {
+            com.belezza.api.security.TenantContext.clear();
+        }
+
+        @Test
+        @DisplayName("Recepcionista não lê dados de usuário de outro salão")
+        void recepcaoNaoLeOutroSalao() {
+            assertThatThrownBy(() -> usuarioService.buscarPorId(41L, EMAIL_RECEP_A))
+                    .isInstanceOf(AccessDeniedException.class);
+        }
+
+        @Test
+        @DisplayName("Recepcionista lê usuário vinculado à própria unidade")
+        void recepcaoLeDaPropriaUnidade() {
+            Usuario colega = Usuario.builder().id(15L).nome("Recep A2").role(Role.RECEPCIONISTA).salon(salonA).ativo(true).build();
+            when(usuarioRepository.findById(15L)).thenReturn(Optional.of(colega));
+
+            assertThat(usuarioService.buscarPorId(15L, EMAIL_RECEP_A).getId()).isEqualTo(15L);
+        }
+
+        @Test
+        @DisplayName("Admin não desativa conta sem vínculo com o salão dele")
+        void adminNaoMexeEmContaSemVinculo() {
+            Usuario semVinculo = Usuario.builder().id(77L).nome("Cliente novo").role(Role.CLIENTE).ativo(true).build();
+            when(usuarioRepository.findById(77L)).thenReturn(Optional.of(semVinculo));
+
+            assertThatThrownBy(() -> usuarioService.desativar(77L, EMAIL_ADMIN_A))
+                    .isInstanceOf(AccessDeniedException.class);
+            assertThat(semVinculo.isAtivo()).isTrue();
+            verify(usuarioRepository, never()).save(any());
         }
     }
 }

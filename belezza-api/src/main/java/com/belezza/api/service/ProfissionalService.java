@@ -84,9 +84,10 @@ public class ProfissionalService {
 
     /**
      * Cria horários de trabalho padrão para um novo profissional baseados no horário do salão.
+     * Usado também pelo cadastro via Usuários: sem expediente o profissional não é agendável.
      */
     @SuppressWarnings("null")
-    private void criarHorariosTrabalhoDefault(Profissional profissional, Salon salon) {
+    public void criarHorariosTrabalhoDefault(Profissional profissional, Salon salon) {
         LocalTime abertura = salon.getHorarioAbertura();
         LocalTime fechamento = salon.getHorarioFechamento();
         LocalTime intervaloInicio = LocalTime.of(12, 0);

@@ -21,6 +21,13 @@ spring:
     redis:
       enabled: false
 
+# "spring.mail.enabled" acima não é uma propriedade do Spring: o health do e-mail seguia ativo,
+# ficava DOWN sem servidor SMTP e /actuator/health respondia 503
+management:
+  health:
+    mail:
+      enabled: false
+
 logging:
   level:
     com.belezza: DEBUG

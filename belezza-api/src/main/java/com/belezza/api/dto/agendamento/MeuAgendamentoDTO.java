@@ -33,9 +33,16 @@ public class MeuAgendamentoDTO {
     private String endTime;
     private String status;
     private String source;
-    // Sem o @JsonProperty o Jackson publicava "paid" (getter isPaid()), e a tela lê "isPaid"
+    // Sem o @JsonProperty o Jackson publicava "paid" (getter isPaid()), e a tela lê "isPaid".
+    // Getter explícito com a mesma anotação: só no campo, o Jackson às vezes publicava os dois
+    // nomes ("paid" e "isPaid"), conforme a ordem em que a reflexão devolvia campo e getter.
     @JsonProperty("isPaid")
     private boolean isPaid;
+
+    @JsonProperty("isPaid")
+    public boolean isPaid() {
+        return isPaid;
+    }
     private BigDecimal totalPrice;
     private BigDecimal finalPrice;
     private int totalDurationMinutes;

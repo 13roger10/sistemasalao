@@ -207,6 +207,10 @@ public class JwtService {
             log.debug("JWT token is expired: {}", e.getMessage());
         } catch (UnsupportedJwtException e) {
             log.debug("JWT token is unsupported: {}", e.getMessage());
+        } catch (JwtException e) {
+            // Assinatura inválida (token adulterado ou emitido com outro segredo) e demais erros
+            // do JWT: sem isto a exceção escapava do filtro e a requisição respondia 500 em vez de 401
+            log.debug("JWT token rejected: {}", e.getMessage());
         } catch (IllegalArgumentException e) {
             log.debug("JWT claims string is empty: {}", e.getMessage());
         }
