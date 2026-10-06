@@ -49,6 +49,11 @@ spring:
 belezza:
   rate-limit:
     enabled: false
+  # O application.yml não tem default para os segredos (BUG-009)
+  jwt:
+    secret: belezza-dev-secret-key-change-in-production-min-256-bits-required
+  encryption:
+    aes-key: belezza-dev-aes-key-32-chars!!
 
 # Logging
 logging:

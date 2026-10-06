@@ -51,6 +51,10 @@ services:
       SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
       SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.PostgreSQLDialect
       SPRING_JPA_HIBERNATE_DDL_AUTO: none
+      # BUG-009: sem default no application.yml — sem eles o backend não sobe (antes subia com o
+      # segredo público do código e qualquer um forjava tokens)
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET no arquivo .env - veja .env.example}
+      AES_SECRET_KEY: ${AES_SECRET_KEY:?Defina AES_SECRET_KEY no arquivo .env - veja .env.example}
       REDIS_ENABLED: "false"
       CACHE_TYPE: simple
       FRONTEND_URL: http://localhost:3000

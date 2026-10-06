@@ -1,3 +1,10 @@
+# Segredos só para os testes (o application.yml não tem default — BUG-009)
+belezza:
+  jwt:
+    secret: belezza-dev-secret-key-change-in-production-min-256-bits-required
+  encryption:
+    aes-key: belezza-dev-aes-key-32-chars!!
+
 spring:
   jpa:
     hibernate:

@@ -13,7 +13,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/dev")
 @RequiredArgsConstructor
-@Profile("!prod")
+// BUG-009: era "!prod" e ficava exposto em qualquer ambiente sem perfil (ex.: docker-compose)
+@Profile({"dev", "local"})
 public class DevController {
 
     private final PasswordEncoder passwordEncoder;

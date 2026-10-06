@@ -173,12 +173,13 @@ management:
 
 # SpringDoc / Swagger Configuration
 springdoc:
+  # BUG-009: documentação desligada por padrão (ficava pública sem o perfil prod); dev/local ligam
   api-docs:
     path: /v3/api-docs
-    enabled: true
+    enabled: ${SWAGGER_ENABLED:false}
   swagger-ui:
     path: /swagger-ui.html
-    enabled: true
+    enabled: ${SWAGGER_ENABLED:false}
     operations-sorter: alpha
     tags-sorter: alpha
     disable-swagger-default-url: true
@@ -189,7 +190,9 @@ springdoc:
 belezza:
   # JWT Configuration
   jwt:
-    secret: ${JWT_SECRET:belezza-dev-secret-key-change-in-production-min-256-bits-required}
+    # BUG-009: sem default. Sem JWT_SECRET a aplicação não sobe (antes subia com um segredo público
+    # e qualquer um forjava tokens). Os perfis dev/local/test definem um valor de conveniência.
+    secret: ${JWT_SECRET}
     access-token-expiration: 900000 # 15 minutes in milliseconds
     refresh-token-expiration: 604800000 # 7 days in milliseconds
     issuer: belezza-api
@@ -251,7 +254,8 @@ belezza:
 
   # AES-256-GCM Encryption (OAuth tokens at rest)
   encryption:
-    aes-key: ${AES_SECRET_KEY:belezza-dev-aes-key-32-chars!!}
+    # Sem default pelo mesmo motivo (BUG-009); dev/local/test definem um valor de conveniência
+    aes-key: ${AES_SECRET_KEY}
 
   # Meta Graph API Configuration (Instagram/Facebook)
   meta:

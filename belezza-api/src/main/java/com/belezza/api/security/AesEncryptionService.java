@@ -36,7 +36,7 @@ public class AesEncryptionService {
     private final SecretKey secretKey;
 
     public AesEncryptionService(
-            @Value("${belezza.encryption.aes-key:belezza-dev-aes-key-32-chars!!}") String rawKey) {
+            @Value("${belezza.encryption.aes-key}") String rawKey) {
         this.secretKey = deriveKey(rawKey);
         log.info("AesEncryptionService initialized.");
     }

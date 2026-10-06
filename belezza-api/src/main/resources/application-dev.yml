@@ -64,6 +64,11 @@ logging:
 
 # Development-specific settings
 belezza:
+  # Segredos de conveniência só para desenvolvimento (o application.yml não tem default — BUG-009)
+  jwt:
+    secret: ${JWT_SECRET:belezza-dev-secret-key-change-in-production-min-256-bits-required}
+  encryption:
+    aes-key: ${AES_SECRET_KEY:belezza-dev-aes-key-32-chars!!}
   # Relaxed CORS for development
   cors:
     allowed-origins: http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000
@@ -74,6 +79,8 @@ belezza:
 
 # Swagger enabled in dev
 springdoc:
+  api-docs:
+    enabled: true
   swagger-ui:
     enabled: true
 

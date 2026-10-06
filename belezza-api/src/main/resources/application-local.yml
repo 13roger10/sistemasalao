@@ -59,6 +59,11 @@ spring:
 
 # Application settings
 belezza:
+  # Segredos de conveniência só para desenvolvimento (o application.yml não tem default — BUG-009)
+  jwt:
+    secret: ${JWT_SECRET:belezza-dev-secret-key-change-in-production-min-256-bits-required}
+  encryption:
+    aes-key: ${AES_SECRET_KEY:belezza-dev-aes-key-32-chars!!}
   # Disable rate limiting
   rate-limit:
     enabled: false
@@ -80,6 +85,8 @@ belezza:
 
 # Swagger enabled
 springdoc:
+  api-docs:
+    enabled: true
   swagger-ui:
     enabled: true
 
