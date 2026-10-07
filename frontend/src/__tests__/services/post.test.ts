@@ -16,11 +16,11 @@ describe("postService", () => {
   };
 
   beforeAll(() => {
-    Object.defineProperty(process.env, "NODE_ENV", { value: "development" });
+    (process.env as Record<string, string | undefined>).NODE_ENV = "development";
   });
 
   afterAll(() => {
-    Object.defineProperty(process.env, "NODE_ENV", { value: originalEnv });
+    (process.env as Record<string, string | undefined>).NODE_ENV = originalEnv;
   });
 
   beforeEach(() => {

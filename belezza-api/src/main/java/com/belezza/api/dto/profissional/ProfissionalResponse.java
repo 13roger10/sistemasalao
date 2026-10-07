@@ -97,4 +97,12 @@ public class ProfissionalResponse {
         this.usuarioId = null;
         return this;
     }
+
+    /** O acordo de comissão é entre o salão e o profissional; os demais não o veem (BUG-021). */
+    public ProfissionalResponse semComissao() {
+        this.tipoComissao = null;
+        this.tipoComissaoDescricao = null;
+        this.valorComissao = null;
+        return this;
+    }
 }

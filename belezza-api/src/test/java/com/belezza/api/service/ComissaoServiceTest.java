@@ -122,6 +122,68 @@ class ComissaoServiceTest {
         verify(comissaoRepository).save(c);
     }
 
+    /** Atendimento de R$ 85 com 10%: comissão integral de R$ 8,50. */
+    private Comissao comissaoDe10PorCento(StatusComissao status, String valorAtual) {
+        return Comissao.builder().id(1L).status(status)
+                .valorServico(new BigDecimal("85.00")).tipoComissao(TipoComissao.PORCENTAGEM)
+                .taxaComissao(new BigDecimal("10.00")).valorComissao(new BigDecimal(valorAtual)).build();
+    }
+
+    @Test
+    @DisplayName("Estorno de uma parte deixa a comissão proporcional ao que ficou pago (BUG-022)")
+    void estornoParcialFicaProporcional() {
+        Comissao c = comissaoDe10PorCento(StatusComissao.CALCULADA, "8.50");
+        when(comissaoRepository.findByAgendamentoId(100L)).thenReturn(Optional.of(c));
+
+        comissaoService.ajustarAoValorPago(100L, new BigDecimal("40.00"), new BigDecimal("85.00"));
+
+        assertThat(c.getStatus()).isEqualTo(StatusComissao.CALCULADA);
+        assertThat(c.getValorComissao()).isEqualByComparingTo("4.00");
+        verify(comissaoRepository).save(c);
+    }
+
+    @Test
+    @DisplayName("Estorno parcial refaz o total do repasse ainda não pago (BUG-022)")
+    void estornoParcialRefazRepasse() {
+        Comissao c = comissaoDe10PorCento(StatusComissao.CALCULADA, "8.50");
+        PagamentoProfissional repasse = PagamentoProfissional.builder().id(9L)
+                .status(StatusPagamentoProfissional.PENDENTE).totalServicos(1)
+                .valorTotalServicos(new BigDecimal("85.00")).valorTotalComissoes(new BigDecimal("8.50"))
+                .comissoes(new ArrayList<>(List.of(c))).build();
+        c.setPagamentoProfissional(repasse);
+        when(comissaoRepository.findByAgendamentoId(100L)).thenReturn(Optional.of(c));
+
+        comissaoService.ajustarAoValorPago(100L, new BigDecimal("40.00"), new BigDecimal("85.00"));
+
+        assertThat(repasse.getValorTotalComissoes()).isEqualByComparingTo("4.00");
+        assertThat(repasse.getComissoes()).containsExactly(c);
+        verify(pagamentoProfissionalRepository).save(repasse);
+    }
+
+    @Test
+    @DisplayName("Comissão já paga bloqueia também o estorno parcial (BUG-022)")
+    void estornoParcialComComissaoPaga() {
+        Comissao c = comissaoDe10PorCento(StatusComissao.PAGA, "8.50");
+        when(comissaoRepository.findByAgendamentoId(100L)).thenReturn(Optional.of(c));
+
+        assertThatThrownBy(() -> comissaoService.ajustarAoValorPago(100L, new BigDecimal("40.00"), new BigDecimal("85.00")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("já foi paga ao profissional");
+        verify(comissaoRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Pagar o restante devolve a comissão ao valor integral (BUG-022)")
+    void novaCobrancaRestauraValorIntegral() {
+        Comissao c = comissaoDe10PorCento(StatusComissao.CALCULADA, "4.00");
+        when(comissaoRepository.findByAgendamentoId(100L)).thenReturn(Optional.of(c));
+
+        comissaoService.reativarAposPagamento(100L);
+
+        assertThat(c.getValorComissao()).isEqualByComparingTo("8.50");
+        verify(comissaoRepository).save(c);
+    }
+
     @Test
     @DisplayName("Primeira cobrança não mexe na comissão calculada")
     void primeiraCobrancaNaoMexe() {

@@ -74,4 +74,12 @@ public class SalonResponse {
                 .atualizadoEm(salon.getAtualizadoEm())
                 .build();
     }
+
+    /** A comissão padrão é configuração interna do salão: só o admin dele a vê (BUG-021). */
+    public SalonResponse semComissao() {
+        this.tipoComissaoPadrao = null;
+        this.tipoComissaoPadraoDescricao = null;
+        this.valorComissaoPadrao = null;
+        return this;
+    }
 }

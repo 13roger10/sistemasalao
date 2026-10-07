@@ -1,6 +1,6 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { authService } from "@/services/auth";
+import { authService, getTokenExpiry } from "@/services/auth";
 
 // Mock the auth service
 jest.mock("@/services/auth", () => ({
@@ -9,7 +9,10 @@ jest.mock("@/services/auth", () => ({
     logout: jest.fn(),
     verifyToken: jest.fn(),
     getProfile: jest.fn(),
+    refreshToken: jest.fn(),
   },
+  // Sem expiração legível, o contexto não agenda a renovação automática do token
+  getTokenExpiry: jest.fn(() => null),
 }));
 
 const mockAuthService = authService as jest.Mocked<typeof authService>;
@@ -33,6 +36,7 @@ describe("AuthContext", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(getTokenExpiry).mockReturnValue(null);
     localStorage.clear();
     // Reset document.cookie
     document.cookie = "auth_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
@@ -261,33 +265,38 @@ describe("AuthContext", () => {
       expect(result.current.user?.role).toBe(mockUser.role);
     });
 
-    it("should clear invalid session", async () => {
+    // A sessão guardada é restaurada e a renovação é agendada para antes do vencimento; um token já
+    // vencido é renovado na hora, e se a renovação falhar a sessão é encerrada.
+    it("should clear the session when an expired token cannot be refreshed", async () => {
       localStorage.setItem("auth_token", "expired-token");
       localStorage.setItem("auth_user", JSON.stringify(mockUser));
-      mockAuthService.verifyToken.mockResolvedValue(false);
+      jest.mocked(getTokenExpiry).mockReturnValue(Math.floor(Date.now() / 1000) - 60);
+      mockAuthService.refreshToken.mockRejectedValue(new Error("Sessão expirada"));
 
       const { result } = renderHook(() => useAuth(), { wrapper });
 
       await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
+        expect(result.current.isAuthenticated).toBe(false);
       });
-
-      expect(result.current.isAuthenticated).toBe(false);
       expect(result.current.user).toBeNull();
+      expect(mockAuthService.logout).toHaveBeenCalled();
     });
 
-    it("should handle verification errors", async () => {
-      localStorage.setItem("auth_token", mockToken);
+    it("should keep the session when the expired token is refreshed", async () => {
+      localStorage.setItem("auth_token", "expired-token");
       localStorage.setItem("auth_user", JSON.stringify(mockUser));
-      mockAuthService.verifyToken.mockRejectedValue(new Error("Network error"));
+      jest.mocked(getTokenExpiry).mockReturnValueOnce(Math.floor(Date.now() / 1000) - 60);
+      mockAuthService.refreshToken.mockResolvedValue({ user: mockUser, token: "new-token" });
 
       const { result } = renderHook(() => useAuth(), { wrapper });
 
       await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
+        expect(mockAuthService.refreshToken).toHaveBeenCalledWith("expired-token");
       });
-
-      expect(result.current.isAuthenticated).toBe(false);
+      await waitFor(() => {
+        expect(localStorage.getItem("auth_token")).toBe("new-token");
+      });
+      expect(result.current.isAuthenticated).toBe(true);
     });
   });
 });

@@ -97,7 +97,7 @@ public class ProfissionalController {
     @Operation(summary = "Buscar profissional", description = "Busca um profissional por ID")
     public ResponseEntity<ProfissionalResponse> buscarPorId(@PathVariable Long id, @AuthenticationPrincipal Usuario quem) {
         ProfissionalResponse response = profissionalService.buscarPorId(id);
-        return ResponseEntity.ok(podeVerContato(quem) ? response : response.semDadosDeContato());
+        return ResponseEntity.ok(paraQuemPede(response, quem));
     }
 
     @GetMapping("/salon/{salonId}")
@@ -133,8 +133,20 @@ public class ProfissionalController {
         return quem != null && quem.getRole() != Role.CLIENTE;
     }
 
+    /** A comissão só para o admin e para o próprio profissional; o resto da equipe e o cliente não a veem (BUG-021). */
+    private static boolean podeVerComissao(ProfissionalResponse prof, Usuario quem) {
+        if (quem == null) return false;
+        if (quem.getRole() == Role.ADMIN) return true;
+        return quem.getId() != null && quem.getId().equals(prof.getUsuarioId());
+    }
+
+    private static ProfissionalResponse paraQuemPede(ProfissionalResponse prof, Usuario quem) {
+        if (!podeVerComissao(prof, quem)) prof.semComissao();
+        return podeVerContato(quem) ? prof : prof.semDadosDeContato();
+    }
+
     private static List<ProfissionalResponse> paraQuemPede(List<ProfissionalResponse> lista, Usuario quem) {
-        return podeVerContato(quem) ? lista : lista.stream().map(ProfissionalResponse::semDadosDeContato).toList();
+        return lista.stream().map(p -> paraQuemPede(p, quem)).toList();
     }
 
     @PutMapping("/me")

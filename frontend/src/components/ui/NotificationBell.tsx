@@ -158,12 +158,13 @@ export function NotificationBell() {
               </span>
               {/* WS status dot */}
               {conectado ? (
-                <Wifi className="h-3 w-3 text-green-500" title="Conectado" />
+                <span title="Conectado">
+                  <Wifi className="h-3 w-3 text-green-500" />
+                </span>
               ) : (
-                <WifiOff
-                  className="h-3 w-3 text-gray-400"
-                  title="Desconectado"
-                />
+                <span title="Desconectado">
+                  <WifiOff className="h-3 w-3 text-gray-400" />
+                </span>
               )}
             </div>
 

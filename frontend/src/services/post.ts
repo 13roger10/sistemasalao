@@ -18,7 +18,8 @@ export interface UpdatePostData extends Partial<CreatePostData> {
 }
 
 // Verificar se está em modo desenvolvimento
-const isDev = process.env.NODE_ENV === "development";
+// Lido a cada chamada (e não ao carregar o módulo) para os testes poderem trocar o NODE_ENV
+const isDev = () => process.env.NODE_ENV === "development";
 
 // Chave de armazenamento local
 const POSTS_STORAGE_KEY = "social_studio_posts";
@@ -74,7 +75,7 @@ const getCurrentUserId = (): string => {
 export const postService = {
   // Criar novo post
   async createPost(data: CreatePostData): Promise<Post> {
-    if (isDev) {
+    if (isDev()) {
       await simulateNetworkDelay();
 
       const now = new Date();
@@ -107,7 +108,7 @@ export const postService = {
   async updatePost(data: UpdatePostData): Promise<Post> {
     const { id, ...updateData } = data;
 
-    if (isDev) {
+    if (isDev()) {
       await simulateNetworkDelay();
 
       const posts = getStoredPosts();
@@ -135,7 +136,7 @@ export const postService = {
 
   // Buscar post por ID
   async getPost(id: string): Promise<Post | null> {
-    if (isDev) {
+    if (isDev()) {
       await simulateNetworkDelay(100);
 
       const posts = getStoredPosts();
@@ -157,7 +158,7 @@ export const postService = {
     limit?: number;
     offset?: number;
   }): Promise<{ posts: Post[]; total: number }> {
-    if (isDev) {
+    if (isDev()) {
       await simulateNetworkDelay(200);
 
       let posts = getStoredPosts();
@@ -199,7 +200,7 @@ export const postService = {
 
   // Deletar post
   async deletePost(id: string): Promise<void> {
-    if (isDev) {
+    if (isDev()) {
       await simulateNetworkDelay();
 
       const posts = getStoredPosts();
@@ -213,7 +214,7 @@ export const postService = {
 
   // Publicar post (mudar status para published)
   async publishPost(id: string): Promise<Post> {
-    if (isDev) {
+    if (isDev()) {
       await simulateNetworkDelay(500); // Simular tempo de publicação
 
       const posts = getStoredPosts();
@@ -243,7 +244,7 @@ export const postService = {
 
   // Agendar post
   async schedulePost(id: string, scheduledAt: Date): Promise<Post> {
-    if (isDev) {
+    if (isDev()) {
       await simulateNetworkDelay();
 
       const posts = getStoredPosts();
@@ -274,7 +275,7 @@ export const postService = {
 
   // Cancelar agendamento (voltar para rascunho)
   async cancelSchedule(id: string): Promise<Post> {
-    if (isDev) {
+    if (isDev()) {
       await simulateNetworkDelay();
 
       const posts = getStoredPosts();
@@ -322,7 +323,7 @@ export const postService = {
 
   // Duplicar post
   async duplicatePost(id: string): Promise<Post> {
-    if (isDev) {
+    if (isDev()) {
       await simulateNetworkDelay();
 
       const posts = getStoredPosts();

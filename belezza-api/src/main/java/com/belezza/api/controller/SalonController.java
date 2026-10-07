@@ -2,6 +2,8 @@ package com.belezza.api.controller;
 
 import com.belezza.api.dto.salon.SalonRequest;
 import com.belezza.api.dto.salon.SalonResponse;
+import com.belezza.api.entity.Role;
+import com.belezza.api.entity.Usuario;
 import com.belezza.api.security.annotation.AdminOnly;
 import com.belezza.api.service.SalonService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -46,16 +48,23 @@ public class SalonController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Buscar salão", description = "Busca um salão por ID")
-    public ResponseEntity<SalonResponse> buscarPorId(@PathVariable Long id) {
+    public ResponseEntity<SalonResponse> buscarPorId(@PathVariable Long id, @AuthenticationPrincipal Usuario quem) {
         SalonResponse response = salonService.buscarPorId(id);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(paraQuemPede(response, quem));
     }
 
     @GetMapping
     @Operation(summary = "Listar salões", description = "Lista todos os salões ativos")
-    public ResponseEntity<List<SalonResponse>> listar() {
+    public ResponseEntity<List<SalonResponse>> listar(@AuthenticationPrincipal Usuario quem) {
         List<SalonResponse> response = salonService.listarAtivos();
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(response.stream().map(s -> paraQuemPede(s, quem)).toList());
+    }
+
+    /** Só o admin dono do salão vê a comissão padrão (BUG-021). */
+    private static SalonResponse paraQuemPede(SalonResponse salon, Usuario quem) {
+        boolean donoDoSalao = quem != null && quem.getRole() == Role.ADMIN
+                && quem.getId() != null && quem.getId().equals(salon.getAdminId());
+        return donoDoSalao ? salon : salon.semComissao();
     }
 
     @PutMapping("/{id}")

@@ -1,155 +1,140 @@
 import { authService } from "@/services/auth";
+import { api } from "@/lib/api";
+import { encerrarSessaoNoServidor } from "@/lib/session-refresh";
 
-// Set NODE_ENV to development for tests
-const originalEnv = process.env.NODE_ENV;
+// O login passa pela rota do Next (/api/auth/login), que conversa com o backend. Antes este teste
+// cobria um login simulado com usuário fixo, que não existe mais fora do modo de desenvolvimento.
+jest.mock("@/lib/api", () => ({ api: { get: jest.fn() } }));
+jest.mock("@/lib/session-refresh", () => ({ encerrarSessaoNoServidor: jest.fn() }));
+
+const usuarioDoBackend = {
+  id: 7,
+  email: "ana@salao.com",
+  nome: "Ana",
+  telefone: "11999990000",
+  role: "ADMIN" as const,
+  plano: "FREE",
+  emailVerificado: true,
+  criadoEm: "2026-01-01T10:00:00",
+};
+
+function resposta(status: number, corpo: unknown) {
+  return Promise.resolve({
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.resolve(corpo),
+  } as Response);
+}
+
+const fetchMock = jest.fn();
 
 describe("authService", () => {
   beforeAll(() => {
-    Object.defineProperty(process.env, "NODE_ENV", { value: "development" });
-  });
-
-  afterAll(() => {
-    Object.defineProperty(process.env, "NODE_ENV", { value: originalEnv });
+    global.fetch = fetchMock as unknown as typeof fetch;
   });
 
   beforeEach(() => {
+    fetchMock.mockReset();
+    jest.mocked(api.get).mockReset();
+    jest.mocked(encerrarSessaoNoServidor).mockReset();
     localStorage.clear();
     document.cookie = "auth_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
   });
 
   describe("login", () => {
-    it("should login with valid credentials", async () => {
-      const result = await authService.login(
-        "admin@socialstudio.com",
-        "Admin@2024!Secure"
+    it("entra, guarda o refresh token e grava o cookie", async () => {
+      fetchMock.mockReturnValue(
+        resposta(200, { user: usuarioDoBackend, accessToken: "acesso-1", refreshToken: "refresh-1" })
       );
 
-      expect(result).toHaveProperty("user");
-      expect(result).toHaveProperty("token");
-      expect(result.user.email).toBe("admin@socialstudio.com");
+      const result = await authService.login("ana@salao.com", "Senha@123");
+
+      expect(fetchMock).toHaveBeenCalledWith("/api/auth/login", expect.objectContaining({ method: "POST" }));
+      expect(result.token).toBe("acesso-1");
+      expect(result.user.email).toBe("ana@salao.com");
       expect(result.user.role).toBe("admin");
+      expect(localStorage.getItem("refresh_token")).toBe("refresh-1");
+      expect(document.cookie).toContain("auth_token=acesso-1");
     });
 
-    it("should throw error with invalid credentials", async () => {
-      await expect(
-        authService.login("wrong@email.com", "wrongpassword")
-      ).rejects.toThrow("Credenciais inválidas");
+    it("mostra a mensagem do backend quando o login é recusado", async () => {
+      fetchMock.mockReturnValue(resposta(403, { message: "Confirme seu e-mail antes de entrar." }));
+
+      await expect(authService.login("ana@salao.com", "Senha@123")).rejects.toThrow(
+        "Confirme seu e-mail antes de entrar."
+      );
+      expect(document.cookie).not.toContain("auth_token=acesso");
     });
 
-    it("should throw error with wrong password", async () => {
-      await expect(
-        authService.login("admin@socialstudio.com", "wrongpassword")
-      ).rejects.toThrow("Credenciais inválidas");
+    it("usa a mensagem padrão quando o backend não manda uma", async () => {
+      fetchMock.mockReturnValue(resposta(401, {}));
+
+      await expect(authService.login("ana@salao.com", "errada")).rejects.toThrow("Credenciais inválidas");
     });
 
-    it("should set auth cookie on successful login", async () => {
-      await authService.login("admin@socialstudio.com", "Admin@2024!Secure");
+    it("pede o código 2FA sem guardar tokens", async () => {
+      fetchMock.mockReturnValue(resposta(200, { requiresTwoFactor: true }));
 
-      expect(document.cookie).toContain("auth_token=");
+      const result = await authService.login("ana@salao.com", "Senha@123");
+
+      expect(result.requiresTwoFactor).toBe(true);
+      expect(localStorage.getItem("refresh_token")).toBeNull();
     });
   });
 
   describe("verifyToken", () => {
-    it("should return true for valid token", async () => {
-      const { token } = await authService.login(
-        "admin@socialstudio.com",
-        "Admin@2024!Secure"
-      );
+    it("token aceito pela API é válido", async () => {
+      jest.mocked(api.get).mockResolvedValue({ data: {} });
 
-      const isValid = await authService.verifyToken(token);
-      expect(isValid).toBe(true);
+      await expect(authService.verifyToken("token")).resolves.toBe(true);
     });
 
-    it("should return false for invalid token", async () => {
-      const isValid = await authService.verifyToken("invalid-token");
-      expect(isValid).toBe(false);
-    });
+    it("token recusado pela API é inválido", async () => {
+      jest.mocked(api.get).mockRejectedValue(new Error("401"));
 
-    it("should return false for malformed token", async () => {
-      const isValid = await authService.verifyToken("not-base64");
-      expect(isValid).toBe(false);
-    });
-
-    it("should return false for expired token", async () => {
-      // Create an expired token
-      const expiredPayload = {
-        userId: "test",
-        email: "test@test.com",
-        exp: Date.now() - 1000, // Expired
-      };
-      const expiredToken = btoa(JSON.stringify(expiredPayload));
-
-      const isValid = await authService.verifyToken(expiredToken);
-      expect(isValid).toBe(false);
-    });
-  });
-
-  describe("getProfile", () => {
-    it("should return user profile for valid token", async () => {
-      const { token } = await authService.login(
-        "admin@socialstudio.com",
-        "Admin@2024!Secure"
-      );
-
-      const profile = await authService.getProfile(token);
-
-      expect(profile).toHaveProperty("id");
-      expect(profile).toHaveProperty("name");
-      expect(profile).toHaveProperty("email");
-      expect(profile.email).toBe("admin@socialstudio.com");
-    });
-
-    it("should throw error for invalid token", async () => {
-      await expect(authService.getProfile("invalid-token")).rejects.toThrow(
-        "Token inválido"
-      );
+      await expect(authService.verifyToken("token")).resolves.toBe(false);
     });
   });
 
   describe("refreshToken", () => {
-    it("should return new token for valid token", async () => {
-      const { token: originalToken } = await authService.login(
-        "admin@socialstudio.com",
-        "Admin@2024!Secure"
-      );
-
-      const result = await authService.refreshToken(originalToken);
-
-      expect(result).toHaveProperty("user");
-      expect(result).toHaveProperty("token");
-      // Token may or may not be different depending on timing
-      expect(typeof result.token).toBe("string");
-      expect(result.token.length).toBeGreaterThan(0);
+    it("sem refresh token guardado, pede novo login", async () => {
+      await expect(authService.refreshToken("qualquer")).rejects.toThrow("Refresh token não encontrado");
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("should throw error for invalid token", async () => {
-      await expect(authService.refreshToken("invalid-token")).rejects.toThrow(
-        "Token inválido"
+    it("troca o refresh token por um par novo", async () => {
+      localStorage.setItem("refresh_token", "refresh-1");
+      fetchMock.mockReturnValue(
+        resposta(200, { user: usuarioDoBackend, accessToken: "acesso-2", refreshToken: "refresh-2" })
       );
+
+      const result = await authService.refreshToken("acesso-1");
+
+      expect(result.token).toBe("acesso-2");
+      expect(localStorage.getItem("refresh_token")).toBe("refresh-2");
+    });
+
+    it("refresh recusado encerra a sessão", async () => {
+      localStorage.setItem("refresh_token", "refresh-1");
+      fetchMock.mockReturnValue(resposta(401, {}));
+
+      await expect(authService.refreshToken("acesso-1")).rejects.toThrow("Sessão expirada");
     });
   });
 
   describe("logout", () => {
-    it("should clear auth cookie", async () => {
-      await authService.login("admin@socialstudio.com", "Admin@2024!Secure");
-      expect(document.cookie).toContain("auth_token=");
-
-      authService.logout();
-
-      // Cookie should be cleared (expired)
-      const cookies = document.cookie.split(";");
-      const authCookie = cookies.find((c) => c.trim().startsWith("auth_token="));
-      expect(authCookie?.split("=")[1]).toBeFalsy();
-    });
-
-    it("should clear localStorage", async () => {
-      localStorage.setItem("auth_token", "test-token");
+    it("revoga os tokens no servidor e limpa o navegador", () => {
+      localStorage.setItem("auth_token", "acesso-1");
+      localStorage.setItem("refresh_token", "refresh-1");
       localStorage.setItem("auth_user", "{}");
+      document.cookie = "auth_token=acesso-1; path=/";
 
       authService.logout();
 
-      expect(localStorage.getItem("auth_token")).toBeNull();
+      expect(encerrarSessaoNoServidor).toHaveBeenCalledWith("acesso-1", "refresh-1");
+      expect(localStorage.getItem("refresh_token")).toBeNull();
       expect(localStorage.getItem("auth_user")).toBeNull();
+      expect(document.cookie).not.toContain("auth_token=acesso-1");
     });
   });
 });

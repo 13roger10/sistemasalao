@@ -304,16 +304,76 @@ public class ComissaoService {
     }
 
     /**
-     * Atendimento cobrado de novo depois de um estorno: a comissão cancelada volta a ser devida.
+     * Estorno de só uma parte de um pagamento dividido: o atendimento continua pago em parte, então a
+     * comissão passa a ser proporcional ao que ficou pago, em vez de ser cancelada inteira (BUG-022).
+     * Comissão já paga ao profissional bloqueia o estorno, como no estorno total.
+     */
+    @Transactional
+    public void ajustarAoValorPago(Long agendamentoId, BigDecimal valorPago, BigDecimal valorAtendimento) {
+        comissaoRepository.findByAgendamentoId(agendamentoId).ifPresent(comissao -> {
+            if (comissao.getStatus() == StatusComissao.CANCELADA) {
+                return;
+            }
+            BigDecimal pago = valorPago.min(valorAtendimento);
+            BigDecimal novoValor = valorIntegral(comissao).multiply(pago)
+                    .divide(valorAtendimento, 2, RoundingMode.HALF_UP);
+            if (novoValor.compareTo(comissao.getValorComissao()) == 0) {
+                return;
+            }
+            if (comissao.getStatus() == StatusComissao.PAGA) {
+                throw new BusinessException("A comissão deste atendimento já foi paga ao profissional. "
+                        + "Acerte o repasse com o profissional antes de estornar o pagamento.");
+            }
+            alterarValor(comissao, novoValor);
+            log.info("Comissao do agendamento {} ajustada a {} apos estorno parcial ({} de {} pagos)",
+                    agendamentoId, novoValor, pago, valorAtendimento);
+        });
+    }
+
+    /**
+     * Atendimento cobrado de novo depois de um estorno: a comissão cancelada volta a ser devida, e a
+     * reduzida por um estorno parcial volta ao valor integral.
      */
     @Transactional
     public void reativarAposPagamento(Long agendamentoId) {
         comissaoRepository.findByAgendamentoId(agendamentoId)
-                .filter(c -> c.getStatus() == StatusComissao.CANCELADA)
+                .filter(c -> c.getStatus() != StatusComissao.PAGA)
                 .ifPresent(comissao -> {
-                    comissao.setStatus(StatusComissao.CALCULADA);
-                    comissaoRepository.save(comissao);
+                    BigDecimal integral = valorIntegral(comissao);
+                    boolean cancelada = comissao.getStatus() == StatusComissao.CANCELADA;
+                    if (!cancelada && integral.compareTo(comissao.getValorComissao()) == 0) {
+                        return;
+                    }
+                    if (cancelada) {
+                        // saiu do repasse ao ser cancelada: volta sem repasse, já com o valor integral
+                        comissao.setValorComissao(integral);
+                        comissao.setStatus(StatusComissao.CALCULADA);
+                        comissaoRepository.save(comissao);
+                    } else {
+                        alterarValor(comissao, integral);
+                    }
                     log.info("Comissao reativada apos novo pagamento do agendamento {}", agendamentoId);
                 });
+    }
+
+    /** Comissão sobre o valor inteiro do serviço; sem tipo ou taxa gravados, fica o valor atual. */
+    private BigDecimal valorIntegral(Comissao comissao) {
+        if (comissao.getTipoComissao() == null || comissao.getTaxaComissao() == null
+                || comissao.getValorServico() == null) {
+            return comissao.getValorComissao();
+        }
+        return calcularValorComissao(comissao.getValorServico(), comissao.getTipoComissao(), comissao.getTaxaComissao());
+    }
+
+    /** Muda o valor da comissão e, se ela já está num repasse ainda não pago, o total do repasse. */
+    private void alterarValor(Comissao comissao, BigDecimal novoValor) {
+        BigDecimal diferenca = novoValor.subtract(comissao.getValorComissao());
+        PagamentoProfissional repasse = comissao.getPagamentoProfissional();
+        if (repasse != null) {
+            repasse.setValorTotalComissoes(repasse.getValorTotalComissoes().add(diferenca));
+            pagamentoProfissionalRepository.save(repasse);
+        }
+        comissao.setValorComissao(novoValor);
+        comissaoRepository.save(comissao);
     }
 }

@@ -178,8 +178,9 @@ describe("Permissões do perfil ADMIN", () => {
 describe("Permissões do perfil RECEPCIONIST", () => {
   const permissions = AUTH_ROLE_PERMISSIONS.RECEPCIONIST;
 
-  it("deve ter dashboard.view mas não dashboard.view_full", () => {
-    expect(permissions).toContain("dashboard.view");
+  // A recepcionista usa o painel próprio em /recepcao, não o dashboard do salão
+  it("não deve ter o dashboard do salão", () => {
+    expect(permissions).not.toContain("dashboard.view");
     expect(permissions).not.toContain("dashboard.view_full");
   });
 

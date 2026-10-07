@@ -326,14 +326,18 @@ public class PagamentoService {
             throw new BusinessException("Apenas pagamentos aprovados podem ser estornados");
         }
 
-        // Atendimento deixa de estar pago por inteiro: a comissão deixa de ser devida (comissão já
-        // repassada ao profissional bloqueia o estorno). Vem antes do caixa para nada ser gravado.
+        // Atendimento deixa de estar pago por inteiro: sem nada pago, a comissão deixa de ser devida;
+        // com parte ainda paga (pagamento dividido), fica proporcional a ela (BUG-022). Comissão já
+        // repassada ao profissional bloqueia o estorno. Vem antes do caixa para nada ser gravado.
         Agendamento agendamento = pagamento.getAgendamento();
         if (agendamento != null) {
             BigDecimal pagoDepois = pagamentoRepository.sumAprovadoByAgendamentoId(agendamento.getId())
                     .subtract(pagamento.getValor());
-            if (pagoDepois.compareTo(valorDoAtendimento(agendamento)) < 0) {
+            BigDecimal valorAtendimento = valorDoAtendimento(agendamento);
+            if (pagoDepois.signum() <= 0) {
                 comissaoService.cancelarPorEstorno(agendamento.getId());
+            } else if (pagoDepois.compareTo(valorAtendimento) < 0) {
+                comissaoService.ajustarAoValorPago(agendamento.getId(), pagoDepois, valorAtendimento);
             }
         }
 

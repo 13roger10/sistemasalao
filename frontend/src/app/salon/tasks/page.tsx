@@ -122,6 +122,7 @@ export default function TasksPage() {
   // List states
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [totalItems, setTotalItems] = useState(0);
@@ -175,6 +176,7 @@ export default function TasksPage() {
   // Load tasks
   const loadTasks = useCallback(async () => {
     setIsLoading(true);
+    setLoadError(null);
     try {
       const response = await taskService.list({
         page,
@@ -198,81 +200,13 @@ export default function TasksPage() {
       });
     } catch (error) {
       console.error("Erro ao carregar tarefas:", error);
-      // Mock data for development
-      const mockTasks: Task[] = [
-        {
-          id: "1",
-          titulo: "Limpar área de espera",
-          descricao: "Limpar sofás, mesa de centro e organizar revistas",
-          status: "PENDENTE",
-          statusDescricao: "Pendente",
-          prioridade: "ALTA",
-          prioridadeDescricao: "Alta",
-          recorrencia: "DIARIA",
-          recorrenciaDescricao: "Diária",
-          salonId: "1",
-          criadoPorId: "1",
-          criadoPorNome: "Admin",
-          atribuidoAId: "2",
-          atribuidoANome: "Maria Santos",
-          dataPrevista: new Date().toISOString(),
-          horaPrevista: "08:00",
-          tempoEstimadoMinutos: 30,
-          atrasada: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        {
-          id: "2",
-          titulo: "Organizar estoque de produtos",
-          descricao: "Verificar validades e organizar prateleiras",
-          status: "EM_ANDAMENTO",
-          statusDescricao: "Em Andamento",
-          prioridade: "MEDIA",
-          prioridadeDescricao: "Média",
-          recorrencia: "SEMANAL",
-          recorrenciaDescricao: "Semanal",
-          salonId: "1",
-          criadoPorId: "1",
-          criadoPorNome: "Admin",
-          atribuidoAId: "2",
-          atribuidoANome: "Maria Santos",
-          dataPrevista: new Date().toISOString(),
-          dataInicio: new Date().toISOString(),
-          tempoEstimadoMinutos: 60,
-          atrasada: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        {
-          id: "3",
-          titulo: "Higienizar equipamentos",
-          descricao: "Esterilizar tesouras, pentes e outros equipamentos",
-          status: "PENDENTE",
-          statusDescricao: "Pendente",
-          prioridade: "URGENTE",
-          prioridadeDescricao: "Urgente",
-          recorrencia: "DIARIA",
-          recorrenciaDescricao: "Diária",
-          salonId: "1",
-          criadoPorId: "1",
-          criadoPorNome: "Admin",
-          dataPrevista: new Date(Date.now() - 86400000).toISOString(),
-          tempoEstimadoMinutos: 45,
-          atrasada: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ];
-      setTasks(mockTasks);
-      setTotalPages(1);
-      setTotalItems(mockTasks.length);
-      setStats({
-        pendentes: 2,
-        emAndamento: 1,
-        concluidas: 0,
-        atrasadas: 1,
-      });
+      // Antes a tela mostrava tarefas inventadas quando a API falhava (BUG-025)
+      const err = error as { response?: { data?: { message?: string } } };
+      setLoadError(err.response?.data?.message || "Não foi possível carregar as tarefas. Tente novamente.");
+      setTasks([]);
+      setTotalPages(0);
+      setTotalItems(0);
+      setStats({ pendentes: 0, emAndamento: 0, concluidas: 0, atrasadas: 0 });
     } finally {
       setIsLoading(false);
     }
@@ -583,6 +517,18 @@ export default function TasksPage() {
             <option value="URGENTE">Urgente</option>
           </select>
         </div>
+
+        {loadError && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300">
+            <span className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              {loadError}
+            </span>
+            <Button variant="outline" size="sm" onClick={loadTasks}>
+              Tentar novamente
+            </Button>
+          </div>
+        )}
 
         {/* Table */}
         <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">

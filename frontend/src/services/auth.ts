@@ -49,7 +49,7 @@ export function getTokenExpiry(token: string): number | null {
 }
 
 // Mapeia resposta do backend para formato do frontend
-function mapBackendUserToFrontend(backendUser: BackendLoginResponse["user"]): User {
+function mapBackendUserToFrontend(backendUser: NonNullable<BackendLoginResponse["user"]>): User {
   return {
     id: backendUser.id.toString(),
     email: backendUser.email,

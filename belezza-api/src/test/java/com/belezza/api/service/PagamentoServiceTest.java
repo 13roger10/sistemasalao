@@ -428,6 +428,24 @@ class PagamentoServiceTest {
         }
 
         @Test
+        @DisplayName("Estorno de uma parte do pagamento dividido ajusta a comissão em vez de cancelá-la (BUG-022)")
+        void estornoParcialAjustaComissao() {
+            Usuario admin = Usuario.builder().id(1L).role(Role.ADMIN).build();
+            Pagamento pagamento = pagamentoAprovado(salonA);
+            BigDecimal valorAtendimento = pagamento.getAgendamento().getValorCobrado();
+            // a outra parte, ainda aprovada, soma R$ 10 ao que este pagamento cobriu
+            when(pagamentoRepository.findById(50L)).thenReturn(Optional.of(pagamento));
+            when(pagamentoRepository.sumAprovadoByAgendamentoId(100L))
+                    .thenReturn(pagamento.getValor().add(new BigDecimal("10.00")));
+            when(pagamentoRepository.save(any(Pagamento.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            pagamentoService.estornar(50L, admin);
+
+            verify(comissaoService).ajustarAoValorPago(100L, new BigDecimal("10.00"), valorAtendimento);
+            verify(comissaoService, never()).cancelarPorEstorno(any());
+        }
+
+        @Test
         @DisplayName("Comissão já paga ao profissional bloqueia o estorno antes de mexer no caixa")
         void comissaoPagaBloqueiaEstorno() {
             Usuario admin = Usuario.builder().id(1L).role(Role.ADMIN).build();

@@ -85,7 +85,8 @@ export interface Appointment extends Timestamps, SoftDelete {
 }
 
 export interface AppointmentCreateInput {
-  clientId: ID;
+  // Sem clientId (agendamento do próprio cliente), o backend identifica o cliente pelo token
+  clientId?: ID;
   professionalId: ID;
   serviceIds: ID[];
   date: Date;

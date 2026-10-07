@@ -120,7 +120,7 @@ export default function HistoryPage() {
       if (searchTerm) {
         const s = searchTerm.toLowerCase();
         const clientName = (a.client?.name ?? "").toLowerCase();
-        const serviceNames = (a.services ?? []).map((sv) => sv.name?.toLowerCase() ?? "").join(" ");
+        const serviceNames = (a.services ?? []).map((sv) => sv.service?.name?.toLowerCase() ?? "").join(" ");
         if (!clientName.includes(s) && !serviceNames.includes(s)) return false;
       }
 
@@ -289,7 +289,7 @@ export default function HistoryPage() {
                   .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                   .map((appt) => {
                     const serviceNames = (appt.services ?? [])
-                      .map((s) => s.name)
+                      .map((s) => s.service?.name)
                       .filter(Boolean)
                       .join(", ");
                     return (

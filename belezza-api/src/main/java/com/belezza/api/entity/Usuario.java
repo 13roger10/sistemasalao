@@ -58,6 +58,11 @@ public class Usuario implements UserDetails {
         this.senhaAlteradaEm = LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
     }
 
+    /** Conta de auto-cadastro que ainda não abriu o link de confirmação enviado por e-mail. */
+    public boolean confirmacaoDeEmailPendente() {
+        return !emailVerificado && emailVerificationToken != null;
+    }
+
     /** O token emitido em {@code emitidoEm} é anterior à última troca de senha? */
     public boolean tokenAnteriorATrocaDeSenha(java.util.Date emitidoEm) {
         if (senhaAlteradaEm == null || emitidoEm == null) {

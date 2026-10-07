@@ -11,6 +11,7 @@ import com.belezza.api.entity.Salon;
 import com.belezza.api.entity.Usuario;
 import com.belezza.api.exception.AuthenticationException;
 import com.belezza.api.exception.BusinessException;
+import org.springframework.http.HttpStatus;
 import com.belezza.api.exception.DuplicateResourceException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.ClienteRepository;
@@ -164,6 +165,16 @@ public class AuthService {
 
         Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(request.getEmail().toLowerCase().trim())
                 .orElseThrow(AuthenticationException::invalidCredentials);
+
+        // Auto-cadastro ainda não confirmado: o cadastro promete a confirmação por e-mail, e antes o
+        // login funcionava logo em seguida (BUG-023). Contas criadas pelo admin não têm esse token.
+        // Só chega aqui quem acertou a senha, então a mensagem não revela quais e-mails existem.
+        if (usuario.confirmacaoDeEmailPendente()) {
+            log.info("Login recusado: e-mail ainda não confirmado (usuario {})", usuario.getId());
+            throw new BusinessException("Confirme seu e-mail antes de entrar. Abra o link que enviamos no "
+                    + "cadastro ou use \"Esqueci minha senha\" para receber um novo e-mail.",
+                    HttpStatus.FORBIDDEN, "EMAIL_NAO_VERIFICADO");
+        }
 
         // Check 2FA: if enabled and no code provided, signal client to ask for TOTP
         if (usuario.isTotpEnabled()) {
@@ -384,6 +395,11 @@ public class AuthService {
         usuario.trocarSenha(passwordEncoder.encode(request.getNewPassword()));
         usuario.setResetPasswordToken(null);
         usuario.setResetPasswordExpires(null);
+        // O link de redefinição chegou ao e-mail: isso também confirma o e-mail do auto-cadastro (BUG-023)
+        if (usuario.confirmacaoDeEmailPendente()) {
+            usuario.setEmailVerificado(true);
+            usuario.setEmailVerificationToken(null);
+        }
         usuarioRepository.save(usuario);
         // Quem provou ser o dono do e-mail ao redefinir a senha tem a conta desbloqueada
         loginAttemptService.desbloquear(usuario.getEmail());

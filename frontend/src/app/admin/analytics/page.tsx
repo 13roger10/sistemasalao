@@ -337,7 +337,7 @@ function TabFinanceiro({ data }: { data: MetricasFinanceiras }) {
                 axisLine={false}
                 tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`}
               />
-              <Tooltip formatter={(v: number) => fmtMoney(v)} />
+              <Tooltip formatter={(v) => fmtMoney(Number(v))} />
               <Area
                 type="monotone"
                 dataKey="Faturamento"
@@ -371,7 +371,7 @@ function TabFinanceiro({ data }: { data: MetricasFinanceiras }) {
                       <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(v: number) => `${v.toFixed(1)}%`} />
+                  <Tooltip formatter={(v) => `${Number(v).toFixed(1)}%`} />
                 </PieChart>
               </ResponsiveContainer>
               <ul className="space-y-2 text-xs">

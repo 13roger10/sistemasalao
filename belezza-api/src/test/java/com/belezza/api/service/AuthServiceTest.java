@@ -238,6 +238,23 @@ class AuthServiceTest {
                     .isInstanceOf(AuthenticationException.class)
                     .hasMessageContaining("Email ou senha inválidos");
         }
+
+        @Test
+        @DisplayName("Auto-cadastro sem e-mail confirmado não entra (BUG-023)")
+        void autoCadastroNaoConfirmadoNaoEntra() {
+            usuario.setEmailVerificado(false);
+            usuario.setEmailVerificationToken("token-pendente");
+            when(authenticationManager.authenticate(any())).thenReturn(
+                    new UsernamePasswordAuthenticationToken(usuario, null)
+            );
+            when(usuarioRepository.findByEmailAndAtivoTrue(anyString())).thenReturn(Optional.of(usuario));
+
+            assertThatThrownBy(() -> authService.login(loginRequest))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("Confirme seu e-mail");
+            verify(jwtService, never()).generateAccessToken(any(), any());
+            verify(usuarioRepository, never()).updateLastLogin(any(), any());
+        }
     }
 
     @Nested

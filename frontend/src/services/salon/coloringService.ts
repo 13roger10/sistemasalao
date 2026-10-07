@@ -59,9 +59,10 @@ export const coloringService = {
   // ===== SUGGESTIONS =====
   // Get tonality suggestions
   getSuggestions: (tomPele: SkinTone, subtomPele: SkinUndertone): Promise<TonalitySuggestion> => {
-    return api.post<TonalitySuggestion>(`${BASE_PATH}/sugestao`, null, {
-      params: { tomPele, subtomPele },
-    });
+    // O backend lê tom e subtom da query; o api.post daqui não tem opção de params (o terceiro
+    // argumento era ignorado e a sugestão sempre respondia 400)
+    const query = new URLSearchParams({ tomPele, subtomPele });
+    return api.post<TonalitySuggestion>(`${BASE_PATH}/sugestao?${query}`);
   },
 
   // ===== ENUMS =====

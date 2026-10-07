@@ -153,9 +153,13 @@ export function NotificationCenter() {
                 Notificações
               </span>
               {conectado ? (
-                <Wifi className="h-3 w-3 text-green-500" title="Conectado em tempo real" />
+                <span title="Conectado em tempo real">
+                  <Wifi className="h-3 w-3 text-green-500" />
+                </span>
               ) : (
-                <WifiOff className="h-3 w-3 text-gray-400" title="Desconectado" />
+                <span title="Desconectado">
+                  <WifiOff className="h-3 w-3 text-gray-400" />
+                </span>
               )}
             </div>
             <div className="flex items-center gap-1">

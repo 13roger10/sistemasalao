@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useSalonAuth } from '@/contexts/SalonAuthContext';
@@ -23,6 +23,8 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { api } from '@/services/salon/api';
+import { appointmentService } from '@/services/salon/appointmentService';
 
 export default function ClientProfilePage() {
   const { user, logout } = useSalonAuth();
@@ -40,11 +42,42 @@ export default function ClientProfilePage() {
     }
   };
 
-  // Estatisticas do cliente (mock - substituir por dados reais)
+  // Estatísticas reais do cliente: antes eram números fixos iguais para todos (BUG-025)
+  const [resumo, setResumo] = useState<{ agendamentos?: number; avaliacoes?: number; fidelidade?: string }>({});
+  const [carregandoResumo, setCarregandoResumo] = useState(true);
+
+  useEffect(() => {
+    let ativo = true;
+    Promise.allSettled([
+      appointmentService.getMyAppointments({ page: 1, limit: 1 }),
+      api.get<unknown[]>('/avaliacoes/me'),
+      api.get<{ visitasAtuais: number; visitasNecessarias: number }[]>('/fidelidade/me'),
+    ]).then(([agendamentos, avaliacoes, fidelidade]) => {
+      if (!ativo) return;
+      const programa = fidelidade.status === 'fulfilled' ? fidelidade.value?.[0] : undefined;
+      setResumo({
+        agendamentos: agendamentos.status === 'fulfilled' ? agendamentos.value.meta.total : undefined,
+        avaliacoes: avaliacoes.status === 'fulfilled' ? avaliacoes.value?.length ?? 0 : undefined,
+        fidelidade:
+          fidelidade.status !== 'fulfilled'
+            ? undefined
+            : programa
+              ? `${programa.visitasAtuais}/${programa.visitasNecessarias}`
+              : '0',
+      });
+      setCarregandoResumo(false);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  // Falha ao carregar um número mostra "—", nunca um valor inventado
+  const exibir = (valor?: number | string) => (carregandoResumo ? '…' : valor ?? '—');
   const stats = [
-    { icon: Calendar, label: 'Agendamentos', value: '12' },
-    { icon: Star, label: 'Avaliações', value: '8' },
-    { icon: Gift, label: 'Pontos', value: '650' },
+    { icon: Calendar, label: 'Agendamentos', value: exibir(resumo.agendamentos) },
+    { icon: Star, label: 'Avaliações', value: exibir(resumo.avaliacoes) },
+    { icon: Gift, label: 'Visitas na fidelidade', value: exibir(resumo.fidelidade) },
   ];
 
   // Menu de configurações

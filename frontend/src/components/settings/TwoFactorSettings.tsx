@@ -13,6 +13,12 @@ interface TwoFactorStatus {
   remainingBackupCodes: number;
 }
 
+/** O axios guarda o motivo do backend em response.data.message; err.message é só "status code 400". */
+function mensagemDoErro(err: unknown, padrao: string): string {
+  const e = err as { response?: { data?: { message?: string } } };
+  return e.response?.data?.message || padrao;
+}
+
 export function TwoFactorSettings() {
   const { success, error: showError } = useToast();
 
@@ -28,7 +34,7 @@ export function TwoFactorSettings() {
   const fetchStatus = async () => {
     setInitialLoading(true);
     try {
-      const data = await apiClient.get<TwoFactorStatus>("/2fa/status");
+      const { data } = await apiClient.get<TwoFactorStatus>("/2fa/status");
       setStatus(data);
     } catch {
       showError("Erro", "Não foi possível carregar o status do 2FA.");
@@ -45,12 +51,12 @@ export function TwoFactorSettings() {
   const handleSetup = async () => {
     setLoading(true);
     try {
-      const data = await apiClient.post<{ qrCodeUri: string; message: string }>("/2fa/setup", {});
+      const { data } = await apiClient.post<{ qrCodeUri: string; message: string }>("/2fa/setup", {});
       setQrCodeUri(data.qrCodeUri);
       setStep("setup");
       setCode("");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro ao iniciar configuração do 2FA.";
+      const msg = mensagemDoErro(err, "Erro ao iniciar configuração do 2FA.");
       showError("Erro", msg);
     } finally {
       setLoading(false);
@@ -64,12 +70,12 @@ export function TwoFactorSettings() {
     }
     setLoading(true);
     try {
-      const data = await apiClient.post<{ message: string; backupCodes: string[] }>("/2fa/enable", { code });
+      const { data } = await apiClient.post<{ message: string; backupCodes: string[] }>("/2fa/enable", { code });
       setBackupCodes(data.backupCodes);
       setStep("backup-codes");
       setCode("");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Código inválido. Tente novamente.";
+      const msg = mensagemDoErro(err, "Código inválido. Tente novamente.");
       showError("Código inválido", msg);
     } finally {
       setLoading(false);
@@ -89,7 +95,7 @@ export function TwoFactorSettings() {
       setCode("");
       await fetchStatus();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Código inválido.";
+      const msg = mensagemDoErro(err, "Código inválido.");
       showError("Erro", msg);
     } finally {
       setLoading(false);
@@ -103,13 +109,13 @@ export function TwoFactorSettings() {
     }
     setLoading(true);
     try {
-      const data = await apiClient.post<{ backupCodes: string[] }>("/2fa/backup-codes/regenerate", { code });
+      const { data } = await apiClient.post<{ backupCodes: string[] }>("/2fa/backup-codes/regenerate", { code });
       setBackupCodes(data.backupCodes);
       setCodesVisible(true);
       setCode("");
       success("Códigos Regenerados", "Novos backup codes foram gerados.");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Código inválido.";
+      const msg = mensagemDoErro(err, "Código inválido.");
       showError("Erro", msg);
     } finally {
       setLoading(false);
