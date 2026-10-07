@@ -409,7 +409,7 @@ public class UsuarioService {
 
         // Verificar email duplicado (troca de email só é permitida a ADMIN; o auto-serviço
         // altera apenas nome/telefone/avatar/senha)
-        if (request.getEmail() != null && !request.getEmail().equals(usuario.getEmail())) {
+        if (request.getEmail() != null && !request.getEmail().trim().equalsIgnoreCase(usuario.getEmail())) {
             if (!isAdmin) {
                 throw new AccessDeniedException("Você não pode alterar o email do seu perfil");
             }
@@ -430,7 +430,7 @@ public class UsuarioService {
             if (isSelf) {
                 verificarSenhaAtual(usuario, request.getSenhaAtual(), request.getPassword());
             }
-            usuario.setPassword(passwordEncoder.encode(request.getPassword()));
+            usuario.trocarSenha(passwordEncoder.encode(request.getPassword()));
         }
 
         // Campos administrativos — somente ADMIN
@@ -483,7 +483,7 @@ public class UsuarioService {
         if (request.getAvatarUrl() != null) usuario.setAvatarUrl(request.getAvatarUrl());
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
             verificarSenhaAtual(usuario, request.getSenhaAtual(), request.getPassword());
-            usuario.setPassword(passwordEncoder.encode(request.getPassword()));
+            usuario.trocarSenha(passwordEncoder.encode(request.getPassword()));
         }
 
         usuario = usuarioRepository.save(usuario);

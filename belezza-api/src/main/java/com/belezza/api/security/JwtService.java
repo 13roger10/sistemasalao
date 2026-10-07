@@ -165,11 +165,20 @@ public class JwtService {
     public boolean isTokenValid(String token, UserDetails userDetails) {
         try {
             final String username = extractUsername(token);
-            return username.equals(userDetails.getUsername()) && !isTokenExpired(token);
+            return username.equals(userDetails.getUsername()) && !isTokenExpired(token)
+                    && !anteriorATrocaDeSenha(token, userDetails);
         } catch (JwtException | IllegalArgumentException e) {
             log.debug("JWT validation failed: {}", e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * BUG-016: token emitido antes da última troca de senha do usuário não vale mais.
+     */
+    public boolean anteriorATrocaDeSenha(String token, UserDetails userDetails) {
+        return userDetails instanceof Usuario usuario
+                && usuario.tokenAnteriorATrocaDeSenha(extractClaim(token, Claims::getIssuedAt));
     }
 
     /**

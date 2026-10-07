@@ -500,7 +500,7 @@ public class ClienteService {
             usuario.setTelefone(request.getPhone().trim());
         }
         if (request.getEmail() != null && !request.getEmail().endsWith("@cliente.belezza.ai")
-                && !request.getEmail().equalsIgnoreCase(usuario.getEmail())) {
+                && !request.getEmail().trim().equalsIgnoreCase(usuario.getEmail())) {
             // E-mail de outra conta: antes estourava na restrição única do banco (erro 500)
             if (usuarioRepository.existsByEmail(request.getEmail())) {
                 throw new DuplicateResourceException("Já existe uma conta com este email");
@@ -603,6 +603,10 @@ public class ClienteService {
             throw new AccessDeniedException("Cliente não pertence a este salão");
         }
 
+        // BUG-018: mesmo limite da coluna (500); acima disso o banco recusava com erro 500
+        if (observacoes != null && observacoes.length() > 500) {
+            throw new BusinessException("Observações devem ter no máximo 500 caracteres");
+        }
         cliente.setObservacoes(observacoes);
         cliente = clienteRepository.save(cliente);
 

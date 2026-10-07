@@ -21,11 +21,18 @@ import java.util.Optional;
 @Repository
 public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
 
-    Optional<Usuario> findByEmail(String email);
+    // BUG-017: o e-mail é gravado em minúsculas e sem espaços, e as buscas normalizam o que chega.
+    // Antes "ADMIN.A@X" não achava "admin.a@x", passava pela checagem de duplicado e o cadastro
+    // estourava na restrição única do banco (erro 500).
 
-    Optional<Usuario> findByEmailAndAtivoTrue(String email);
+    @Query("SELECT u FROM Usuario u WHERE u.email = LOWER(TRIM(:email))")
+    Optional<Usuario> findByEmail(@Param("email") String email);
 
-    boolean existsByEmail(String email);
+    @Query("SELECT u FROM Usuario u WHERE u.email = LOWER(TRIM(:email)) AND u.ativo = true")
+    Optional<Usuario> findByEmailAndAtivoTrue(@Param("email") String email);
+
+    @Query("SELECT COUNT(u) > 0 FROM Usuario u WHERE u.email = LOWER(TRIM(:email))")
+    boolean existsByEmail(@Param("email") String email);
 
     boolean existsByTelefone(String telefone);
 

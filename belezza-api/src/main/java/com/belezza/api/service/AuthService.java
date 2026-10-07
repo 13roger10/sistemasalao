@@ -221,6 +221,10 @@ public class AuthService {
         String email = jwtService.extractUsername(refreshToken);
         Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(email)
                 .orElseThrow(AuthenticationException::invalidToken);
+        // BUG-016: refresh token de antes da troca de senha não renova a sessão
+        if (jwtService.anteriorATrocaDeSenha(refreshToken, usuario)) {
+            throw AuthenticationException.invalidToken();
+        }
 
         // Generate new tokens with tenant claim
         Long salonId = resolveSalonId(usuario);
@@ -377,7 +381,7 @@ public class AuthService {
             throw new AuthenticationException("Token de reset expirado");
         }
 
-        usuario.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        usuario.trocarSenha(passwordEncoder.encode(request.getNewPassword()));
         usuario.setResetPasswordToken(null);
         usuario.setResetPasswordExpires(null);
         usuarioRepository.save(usuario);

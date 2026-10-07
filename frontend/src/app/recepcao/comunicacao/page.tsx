@@ -191,6 +191,7 @@ function SendModal({ appt, messageType, onClose }: SendModalProps) {
   const [mensagem, setMensagem] = useState(buildMessage(messageType, appt));
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<"ok" | "error" | null>(null);
+  const [erroEnvio, setErroEnvio] = useState<string | null>(null);
 
   async function handleSend() {
     if (!telefone.trim() || !mensagem.trim()) return;
@@ -204,7 +205,10 @@ function SendModal({ appt, messageType, onClose }: SendModalProps) {
       });
       setResult("ok");
       setTimeout(onClose, 1500);
-    } catch {
+    } catch (e) {
+      // Mostra o motivo vindo do backend (ex.: WhatsApp não configurado — BUG-019)
+      const motivo = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setErroEnvio(motivo ?? null);
       setResult("error");
     } finally {
       setSending(false);
@@ -274,8 +278,7 @@ function SendModal({ appt, messageType, onClose }: SendModalProps) {
           )}
           {result === "error" && (
             <p className="flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-              <XCircle className="h-4 w-4" /> Falha ao enviar. Verifique o
-              número e tente novamente.
+              <XCircle className="h-4 w-4 shrink-0" /> {erroEnvio ?? "Falha ao enviar. Verifique o número e tente novamente."}
             </p>
           )}
         </div>

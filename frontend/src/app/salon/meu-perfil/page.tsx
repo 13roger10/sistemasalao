@@ -46,7 +46,7 @@ const semPrefixoHttp = (e: unknown) =>
   e instanceof Error ? e.message.replace(/^\[HTTP \d+\]\s*/, "") : "Tente novamente.";
 
 export default function MeuPerfilPage() {
-  const { user } = useSalonAuth();
+  const { user, logout } = useSalonAuth();
   const toast = useToast();
   const [me, setMe] = useState<UsuarioMe | null>(null);
   const [horarios, setHorarios] = useState<Horario[] | null>(null);
@@ -143,7 +143,13 @@ export default function MeuPerfilPage() {
       } catch {
         // armazenamento indisponível: o nome novo aparece no próximo login
       }
-      toast.success("Perfil atualizado", novaSenha ? "Dados e senha alterados." : "Seus dados foram salvos.");
+      if (novaSenha) {
+        // A troca de senha encerra todas as sessões, inclusive esta (BUG-016): entra de novo com a senha nova
+        toast.success("Senha alterada", "Entre de novo com a nova senha.");
+        setTimeout(logout, 1500);
+        return;
+      }
+      toast.success("Perfil atualizado", "Seus dados foram salvos.");
     } catch (e) {
       toast.error("Não foi possível salvar", semPrefixoHttp(e));
     } finally {

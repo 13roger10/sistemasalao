@@ -43,6 +43,30 @@ public class Usuario implements UserDetails {
     @Column(nullable = false)
     private String password;
 
+    /**
+     * Momento da última troca de senha, truncado ao segundo como o {@code iat} do JWT. Tokens
+     * emitidos antes dele são recusados (BUG-016): antes, quem tivesse roubado a sessão continuava
+     * dentro mesmo depois de a vítima trocar a senha. Nulo = senha nunca trocada.
+     */
+    @JsonIgnore
+    @Column(name = "senha_alterada_em")
+    private LocalDateTime senhaAlteradaEm;
+
+    /** Grava a nova senha (já codificada) e invalida as sessões abertas antes dela. */
+    public void trocarSenha(String senhaCodificada) {
+        this.password = senhaCodificada;
+        this.senhaAlteradaEm = LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+    }
+
+    /** O token emitido em {@code emitidoEm} é anterior à última troca de senha? */
+    public boolean tokenAnteriorATrocaDeSenha(java.util.Date emitidoEm) {
+        if (senhaAlteradaEm == null || emitidoEm == null) {
+            return false;
+        }
+        LocalDateTime emissao = LocalDateTime.ofInstant(emitidoEm.toInstant(), java.time.ZoneId.systemDefault());
+        return emissao.isBefore(senhaAlteradaEm);
+    }
+
     @Column(nullable = false, length = 100)
     private String nome;
 
@@ -136,6 +160,15 @@ public class Usuario implements UserDetails {
     @Column(nullable = false)
     @Builder.Default
     private boolean totpEnabled = false;
+
+    /** BUG-017: todo e-mail vai para o banco em minúsculas e sem espaços, venha de onde vier. */
+    @PrePersist
+    @PreUpdate
+    void normalizarEmail() {
+        if (email != null) {
+            email = email.trim().toLowerCase();
+        }
+    }
 
     // UserDetails implementation
 

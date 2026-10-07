@@ -120,18 +120,13 @@ public class WhatsAppMessageController {
     public ResponseEntity<Map<String, String>> enviarMensagem(@Valid @RequestBody WhatsAppSendRequest request) {
         log.info("Enviando mensagem WhatsApp para {}", request.getTelefone());
 
+        // Integração não configurada (503) ou envio recusado pela Meta (502) viram erro com mensagem
+        // clara no serviço; antes as duas situações chegavam à tela como 500 genérico (BUG-019)
         String messageId = whatsAppService.enviarMensagemDireta(request.getTelefone(), request.getMensagem());
-
-        if (messageId != null) {
-            return ResponseEntity.ok(Map.of(
-                "message", "Mensagem enviada com sucesso",
-                "messageId", messageId
-            ));
-        } else {
-            return ResponseEntity.internalServerError().body(Map.of(
-                "message", "Falha ao enviar mensagem"
-            ));
-        }
+        return ResponseEntity.ok(Map.of(
+            "message", "Mensagem enviada com sucesso",
+            "messageId", messageId
+        ));
     }
 
     @GetMapping("/stats/salon/{salonId}")

@@ -36,7 +36,7 @@ interface FormErrors {
 }
 
 export default function EditProfilePage() {
-  const { user, token } = useSalonAuth();
+  const { user, token, logout } = useSalonAuth();
   const router = useRouter();
 
   const [form, setForm] = useState<FormData>({
@@ -169,6 +169,13 @@ export default function EditProfilePage() {
           avatar: body.avatarUrl || parsedUser.avatar,
         };
         localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
+      }
+
+      if (body.password) {
+        // A troca de senha encerra todas as sessões, inclusive esta (BUG-016): entra de novo com a senha nova
+        setFeedback({ type: 'success', message: 'Senha alterada. Entre de novo com a nova senha.' });
+        setTimeout(logout, 1500);
+        return;
       }
 
       setFeedback({ type: 'success', message: 'Perfil atualizado com sucesso!' });

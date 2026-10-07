@@ -28,6 +28,7 @@ public class ClienteRequest {
     private String phone;
 
     @Email(message = "Email inválido")
+    @Size(max = 255, message = "Email deve ter no máximo 255 caracteres")
     private String email;
 
     @Size(max = 20, message = "WhatsApp deve ter no máximo 20 caracteres")
@@ -37,6 +38,8 @@ public class ClienteRequest {
     @Past(message = "Data de nascimento deve estar no passado")
     private LocalDate birthDate;
 
+    // BUG-018: a coluna clientes.observacoes tem 500 caracteres; acima disso o banco recusava (erro 500)
+    @Size(max = 500, message = "Observações devem ter no máximo 500 caracteres")
     private String notes;
 
     private Boolean acceptsMarketing;

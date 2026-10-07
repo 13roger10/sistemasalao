@@ -2,6 +2,7 @@ package com.belezza.api.integration.impl;
 
 import com.belezza.api.entity.WhatsAppMessage;
 import com.belezza.api.entity.WhatsAppMessageStatus;
+import com.belezza.api.exception.BusinessException;
 import com.belezza.api.integration.WhatsAppService;
 import com.belezza.api.repository.WhatsAppMessageRepository;
 import lombok.RequiredArgsConstructor;
@@ -98,6 +99,7 @@ public class WhatsAppServiceImpl implements WhatsAppService {
 
     @Override
     public String enviarMensagemDireta(String telefone, String mensagem) {
+        exigirConfiguracao();
         String messageId = null;
         boolean success = false;
         String errorMsg = null;
@@ -141,11 +143,26 @@ public class WhatsAppServiceImpl implements WhatsAppService {
             saveMessageLogSimple(messageId, telefone, "text", null, mensagem, success, errorMsg);
         }
 
-        if (!success && errorMsg != null) {
-            throw new RuntimeException("Falha ao enviar mensagem direta WhatsApp: " + errorMsg);
+        if (!success) {
+            // O detalhe técnico fica no log e no histórico da mensagem; quem enviou recebe um 502 claro
+            throw new BusinessException("O WhatsApp não aceitou a mensagem. Tente de novo em instantes.",
+                    HttpStatus.BAD_GATEWAY, "WHATSAPP_FALHA_ENVIO");
         }
 
         return messageId;
+    }
+
+    /**
+     * BUG-019: sem o token ou o número da conta WhatsApp Business, o envio chegava à API da Meta com
+     * a URL e o cabeçalho incompletos e a tela recebia o 500 genérico. Agora responde 503 dizendo
+     * que a integração não está configurada (e não grava tentativa no histórico).
+     */
+    private void exigirConfiguracao() {
+        if (accessToken == null || accessToken.isBlank() || phoneNumberId == null || phoneNumberId.isBlank()) {
+            throw new BusinessException(
+                    "A integração com o WhatsApp não está configurada. Peça ao administrador para configurá-la.",
+                    HttpStatus.SERVICE_UNAVAILABLE, "WHATSAPP_NAO_CONFIGURADO");
+        }
     }
 
     @Override
