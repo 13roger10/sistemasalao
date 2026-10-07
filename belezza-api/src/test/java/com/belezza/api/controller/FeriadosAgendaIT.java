@@ -71,8 +71,9 @@ class FeriadosAgendaIT {
                 .build());
         profissionalService.criarHorariosTrabalhoDefault(profissional, salao);
         cliente = fx.cliente(salao);
-        // Terça daqui a 3 semanas: dia útil normal do salão e do profissional
-        LocalDate d = LocalDate.now().plusWeeks(3);
+        // Terça entre 7 e 13 dias à frente: longe do mínimo de antecedência e, mesmo +1 semana,
+        // dentro do limite de 30 dias para agendar
+        LocalDate d = LocalDate.now().plusDays(7);
         while (d.getDayOfWeek() != DayOfWeek.TUESDAY) d = d.plusDays(1);
         terca = d;
     }

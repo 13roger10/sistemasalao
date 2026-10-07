@@ -148,7 +148,7 @@ public class AgendamentoService {
         LocalDateTime fimPrevisto = request.getDataHora().plusMinutes(servico.getDuracaoMinutos());
 
         // Check for conflicts
-        validarConflitos(profissional.getId(), request.getDataHora(), fimPrevisto);
+        validarConflitos(profissional.getId(), cliente.getId(), request.getDataHora(), fimPrevisto);
 
         // Create appointment
         Agendamento agendamento = Agendamento.builder()
@@ -220,7 +220,7 @@ public class AgendamentoService {
         validarAgendamento(salon, profissional, servicos.get(0), cliente, request.getDataHora(), duracaoTotal);
 
         // Check for conflicts
-        validarConflitos(profissional.getId(), request.getDataHora(), fimPrevisto);
+        validarConflitos(profissional.getId(), cliente.getId(), request.getDataHora(), fimPrevisto);
 
         // Calculate total price
         BigDecimal valorTotal = servicos.stream()
@@ -1007,7 +1007,7 @@ public class AgendamentoService {
         }
 
         LocalDateTime novoFim = request.getNovaDataHora().plusMinutes(duracaoTotal);
-        validarConflitos(profissional.getId(), request.getNovaDataHora(), novoFim, agendamento.getId());
+        validarConflitos(profissional.getId(), agendamento.getCliente().getId(), request.getNovaDataHora(), novoFim, agendamento.getId());
 
         agendamento.setDataHora(request.getNovaDataHora());
         agendamento.setFimPrevisto(novoFim);
@@ -1310,22 +1310,36 @@ public class AgendamentoService {
      * simultâneas (duplo clique, dois clientes no mesmo horário) passavam juntas pela consulta e
      * gravavam agendamentos duplicados no mesmo horário.
      */
-    private void validarConflitos(Long profissionalId, LocalDateTime inicio, LocalDateTime fim) {
-        validarConflitos(profissionalId, inicio, fim, null);
+    private void validarConflitos(Long profissionalId, Long clienteId, LocalDateTime inicio, LocalDateTime fim) {
+        validarConflitos(profissionalId, clienteId, inicio, fim, null);
     }
 
     /**
      * @param ignorarId agendamento que está sendo reagendado: não conta como conflito com ele
      *                  mesmo (BUG-021 — antes, mover 10:00→10:30 num serviço de 1 h era recusado
      *                  porque o novo horário cruzava o antigo, do próprio agendamento).
+     *
+     * O cliente também não pode estar em dois lugares ao mesmo tempo (BUG-015): antes, o mesmo
+     * cliente era agendado às 10:00 com dois profissionais diferentes. A trava do cliente vem
+     * sempre depois da do profissional, na mesma ordem em todo pedido.
      */
-    private void validarConflitos(Long profissionalId, LocalDateTime inicio, LocalDateTime fim, Long ignorarId) {
+    private void validarConflitos(Long profissionalId, Long clienteId, LocalDateTime inicio, LocalDateTime fim,
+                                  Long ignorarId) {
         agendamentoRepository.lockProfissional(profissionalId);
         List<Agendamento> conflitos = agendamentoRepository.findConflicts(profissionalId, inicio, fim).stream()
                 .filter(a -> ignorarId == null || !ignorarId.equals(a.getId()))
                 .toList();
         if (!conflitos.isEmpty()) {
             throw new BusinessException("Profissional já possui agendamento neste horário");
+        }
+        if (clienteId == null) {
+            return;
+        }
+        agendamentoRepository.lockCliente(clienteId);
+        boolean clienteOcupado = agendamentoRepository.findConflitosDoCliente(clienteId, inicio, fim).stream()
+                .anyMatch(a -> ignorarId == null || !ignorarId.equals(a.getId()));
+        if (clienteOcupado) {
+            throw new BusinessException("O cliente já tem outro agendamento neste horário");
         }
     }
 

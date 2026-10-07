@@ -98,6 +98,20 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long> 
         @Param("fim") LocalDateTime fim
     );
 
+    /** Trava a linha do cliente, como {@link #lockProfissional}, para checar a agenda dele (BUG-015). */
+    @Query(value = "SELECT id FROM clientes WHERE id = :clienteId FOR UPDATE", nativeQuery = true)
+    Long lockCliente(@Param("clienteId") Long clienteId);
+
+    /** Agendamentos ativos do cliente que se sobrepõem ao intervalo, com qualquer profissional (BUG-015). */
+    @Query("SELECT a FROM Agendamento a WHERE a.cliente.id = :clienteId " +
+           "AND a.status NOT IN ('CANCELADO', 'NO_SHOW') " +
+           "AND a.dataHora < :fim AND a.fimPrevisto > :inicio")
+    List<Agendamento> findConflitosDoCliente(
+        @Param("clienteId") Long clienteId,
+        @Param("inicio") LocalDateTime inicio,
+        @Param("fim") LocalDateTime fim
+    );
+
     // Find appointments that need 24h reminder
     @Query("SELECT a FROM Agendamento a WHERE a.status = 'CONFIRMADO' " +
            "AND a.lembreteEnviado24h = false " +
