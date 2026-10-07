@@ -174,6 +174,10 @@ public class PublicApiController {
     // ── Guards ────────────────────────────────────────────────────────────────
 
     private void guardSalonAccess(ApiKey apiKey, Long salonId) {
+        if (apiKey == null) {
+            throw new org.springframework.security.authentication.InsufficientAuthenticationException(
+                "X-API-Key header is required");
+        }
         if (!apiKey.getSalon().getId().equals(salonId)) {
             throw new org.springframework.security.access.AccessDeniedException(
                 "API key does not belong to salon " + salonId);

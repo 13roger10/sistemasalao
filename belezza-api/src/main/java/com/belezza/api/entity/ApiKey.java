@@ -43,8 +43,8 @@ public class ApiKey {
     @Column(nullable = false, length = 100)
     private String nome;
 
-    /** First 8 characters of the raw key shown in the UI. */
-    @Column(name = "key_prefix", nullable = false, length = 10)
+    /** Início da chave exibido na UI ("bz_live_" + 8 caracteres). */
+    @Column(name = "key_prefix", nullable = false, length = 20)
     private String keyPrefix;
 
     /** SHA-256 hex digest of the full raw key. */

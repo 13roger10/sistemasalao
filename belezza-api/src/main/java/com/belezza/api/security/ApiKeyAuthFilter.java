@@ -36,7 +36,9 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     @SuppressWarnings("null")
     protected boolean shouldNotFilter(HttpServletRequest request) {
         // Only runs for /api/v1/** paths
-        return !request.getServletPath().startsWith("/api/v1/");
+        // Caminho sem o context path: o servletPath fica vazio em alguns mapeamentos (e no MockMvc)
+        String caminho = request.getRequestURI().substring(request.getContextPath().length());
+        return !caminho.startsWith("/api/v1/");
     }
 
     @Override

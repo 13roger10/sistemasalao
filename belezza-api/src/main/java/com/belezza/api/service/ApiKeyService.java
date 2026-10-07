@@ -5,6 +5,7 @@ import com.belezza.api.dto.apikey.ApiKeyRequest;
 import com.belezza.api.dto.apikey.ApiKeyResponse;
 import com.belezza.api.entity.ApiKey;
 import com.belezza.api.entity.Salon;
+import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.ApiKeyRepository;
 import com.belezza.api.repository.SalonRepository;
@@ -80,6 +81,9 @@ public class ApiKeyService {
             .orElseThrow(() -> new ResourceNotFoundException("Salão não encontrado: " + salonId));
 
         List<String> escopos = resolveScopes(req.escopos());
+        if (req.expiraEm() != null && !req.expiraEm().isAfter(LocalDateTime.now())) {
+            throw new BusinessException("A validade da chave deve ser uma data futura");
+        }
         String rawKey = KEY_PREFIX + UUID.randomUUID().toString().replace("-", "");
         String prefix = rawKey.substring(0, Math.min(rawKey.length(), 16));
         String hash   = sha256(rawKey);
@@ -133,10 +137,11 @@ public class ApiKeyService {
 
     private List<String> resolveScopes(List<String> requested) {
         if (requested == null || requested.isEmpty()) return List.of("read");
-        return requested.stream()
-            .filter(VALID_SCOPES::contains)
-            .distinct()
-            .toList();
+        List<String> invalidos = requested.stream().filter(s -> !VALID_SCOPES.contains(s)).toList();
+        if (!invalidos.isEmpty()) {
+            throw new BusinessException("Escopo inválido: " + String.join(", ", invalidos) + " (use read ou write)");
+        }
+        return requested.stream().distinct().toList();
     }
 
     public static String sha256(String input) {
