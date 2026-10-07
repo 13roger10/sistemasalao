@@ -31,7 +31,7 @@ public class MetaService {
     @Transactional
     @SuppressWarnings("null")
     public MetaResponse criar(MetaRequest request, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Usuario criador = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", emailUsuario));
 
@@ -64,7 +64,7 @@ public class MetaService {
 
     @Transactional(readOnly = true)
     public Page<MetaResponse> listar(String emailUsuario, Pageable pageable) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         return metaRepository.findBySalonIdAndAtivoTrue(salon.getId(), pageable)
                 .map(MetaResponse::fromEntity);
     }
@@ -72,7 +72,7 @@ public class MetaService {
     @Transactional(readOnly = true)
     @SuppressWarnings("null")
     public MetaResponse buscarPorId(Long id, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Meta meta = metaRepository.findByIdAndSalonId(id, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Meta", id));
         return MetaResponse.fromEntity(meta);
@@ -81,7 +81,7 @@ public class MetaService {
     @Transactional(readOnly = true)
     @SuppressWarnings("null")
     public List<HistoricoMetaResponse> buscarHistorico(Long metaId, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Meta meta = metaRepository.findByIdAndSalonId(metaId, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Meta", metaId));
 
@@ -93,7 +93,7 @@ public class MetaService {
     @Transactional
     @SuppressWarnings("null")
     public MetaResponse atualizar(Long id, MetaRequest request, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Meta meta = metaRepository.findByIdAndSalonId(id, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Meta", id));
 
@@ -123,7 +123,7 @@ public class MetaService {
 
     @Transactional
     public void excluir(Long id, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Meta meta = metaRepository.findByIdAndSalonId(id, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Meta", id));
 
@@ -134,7 +134,7 @@ public class MetaService {
 
     @Transactional(readOnly = true)
     public MetaDashboardResponse getDashboard(String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         LocalDate hoje = LocalDate.now();
 
         List<Meta> metasAtuais = metaRepository.findMetasAtuais(salon.getId(), hoje);

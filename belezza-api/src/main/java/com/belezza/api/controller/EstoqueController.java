@@ -13,6 +13,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import com.belezza.api.security.annotation.EquipeOnly;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -24,6 +26,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Estoque", description = "Gerenciamento de estoque e produtos")
+@EquipeOnly
 public class EstoqueController {
 
     private final EstoqueService estoqueService;
@@ -32,6 +35,7 @@ public class EstoqueController {
     // ====== PRODUTOS ======
 
     @PostMapping("/products")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
     @Operation(summary = "Criar produto", description = "Cria um novo produto no estoque")
     public ResponseEntity<ProdutoResponse> criarProduto(
             @Valid @RequestBody ProdutoRequest request,
@@ -59,6 +63,7 @@ public class EstoqueController {
     }
 
     @PatchMapping("/products/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
     @Operation(summary = "Atualizar produto", description = "Atualiza um produto existente")
     public ResponseEntity<ProdutoResponse> atualizarProduto(
             @PathVariable Long id,
@@ -69,6 +74,7 @@ public class EstoqueController {
     }
 
     @DeleteMapping("/products/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
     @Operation(summary = "Desativar produto", description = "Desativa um produto (soft delete)")
     public ResponseEntity<Void> desativarProduto(
             @PathVariable Long id,
@@ -98,6 +104,7 @@ public class EstoqueController {
     // ====== CATEGORIAS ======
 
     @PostMapping("/categories")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
     @Operation(summary = "Criar categoria", description = "Cria uma nova categoria de produto")
     public ResponseEntity<CategoriaProdutoResponse> criarCategoria(
             @Valid @RequestBody CategoriaProdutoRequest request,
@@ -117,6 +124,7 @@ public class EstoqueController {
     // ====== FORNECEDORES ======
 
     @PostMapping("/suppliers")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
     @Operation(summary = "Criar fornecedor", description = "Cria um novo fornecedor")
     public ResponseEntity<FornecedorResponse> criarFornecedor(
             @Valid @RequestBody FornecedorRequest request,
@@ -143,6 +151,7 @@ public class EstoqueController {
     }
 
     @PatchMapping("/suppliers/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
     @Operation(summary = "Atualizar fornecedor", description = "Atualiza um fornecedor existente")
     public ResponseEntity<FornecedorResponse> atualizarFornecedor(
             @PathVariable Long id,
@@ -153,6 +162,7 @@ public class EstoqueController {
     }
 
     @DeleteMapping("/suppliers/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
     @Operation(summary = "Desativar fornecedor", description = "Desativa um fornecedor (soft delete)")
     public ResponseEntity<Void> desativarFornecedor(
             @PathVariable Long id,

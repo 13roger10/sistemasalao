@@ -42,7 +42,7 @@ public class FidelidadeService {
     public FidelidadeProgramaResponse criarPrograma(FidelidadeProgramaRequest request, String emailAdmin) {
         log.info("Criando programa de fidelidade: {}", request.getNome());
 
-        Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
+        Salon salon = salonService.getSalonDoOperador(emailAdmin);
 
         if (programaRepository.existsBySalonIdAndNome(salon.getId(), request.getNome().trim())) {
             throw new DuplicateResourceException("Programa de fidelidade", "nome", request.getNome());
@@ -78,7 +78,7 @@ public class FidelidadeService {
     public FidelidadeProgramaResponse atualizarPrograma(Long programaId, FidelidadeProgramaRequest request, String emailAdmin) {
         log.info("Atualizando programa de fidelidade: {}", programaId);
 
-        Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
+        Salon salon = salonService.getSalonDoOperador(emailAdmin);
         FidelidadePrograma programa = programaRepository.findByIdAndSalonIdAndAtivoTrue(programaId, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Programa de fidelidade", programaId));
 
@@ -107,7 +107,7 @@ public class FidelidadeService {
 
     @Transactional(readOnly = true)
     public List<FidelidadeProgramaResponse> listarProgramas(String emailAdmin) {
-        Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
+        Salon salon = salonService.getSalonDoOperador(emailAdmin);
         return programaRepository.findAllActiveBySalon(salon.getId()).stream()
                 .map(FidelidadeProgramaResponse::fromEntity)
                 .toList();
@@ -115,7 +115,7 @@ public class FidelidadeService {
 
     @Transactional(readOnly = true)
     public FidelidadeProgramaResponse buscarPrograma(Long programaId, String emailAdmin) {
-        Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
+        Salon salon = salonService.getSalonDoOperador(emailAdmin);
         FidelidadePrograma programa = programaRepository.findByIdAndSalonIdAndAtivoTrue(programaId, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Programa de fidelidade", programaId));
         return FidelidadeProgramaResponse.fromEntity(programa);
@@ -124,7 +124,7 @@ public class FidelidadeService {
     @Transactional
     public void desativarPrograma(Long programaId, String emailAdmin) {
         log.info("Desativando programa de fidelidade: {}", programaId);
-        Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
+        Salon salon = salonService.getSalonDoOperador(emailAdmin);
         FidelidadePrograma programa = programaRepository.findByIdAndSalonIdAndAtivoTrue(programaId, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Programa de fidelidade", programaId));
         programa.setAtivo(false);
@@ -139,7 +139,7 @@ public class FidelidadeService {
     public FidelidadeClienteResponse inscreverCliente(Long clienteId, Long programaId, String emailAdmin) {
         log.info("Inscrevendo cliente {} no programa {}", clienteId, programaId);
 
-        Salon salon = salonService.getSalonByAdminEmail(emailAdmin);
+        Salon salon = salonService.getSalonDoOperador(emailAdmin);
 
         Cliente cliente = clienteRepository.findById(clienteId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", clienteId));

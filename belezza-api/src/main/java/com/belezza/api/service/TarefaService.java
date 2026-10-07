@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,7 +32,7 @@ public class TarefaService {
 
     @Transactional
     public TarefaResponse criar(TarefaRequest request, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Usuario criador = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", emailUsuario));
 
@@ -67,7 +68,7 @@ public class TarefaService {
 
     @Transactional(readOnly = true)
     public Page<TarefaResponse> listar(String emailUsuario, Pageable pageable) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         return tarefaRepository.findBySalonIdAndAtivoTrue(salon.getId(), pageable)
                 .map(TarefaResponse::fromEntity);
     }
@@ -83,7 +84,7 @@ public class TarefaService {
 
     @Transactional(readOnly = true)
     public List<TarefaResponse> listarTarefasHoje(String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         return tarefaRepository.findTarefasDoDia(salon.getId(), LocalDate.now()).stream()
                 .map(TarefaResponse::fromEntity)
                 .toList();
@@ -91,7 +92,7 @@ public class TarefaService {
 
     @Transactional(readOnly = true)
     public TarefaResponse buscarPorId(Long id, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         TarefaSalon tarefa = tarefaRepository.findByIdAndSalonId(id, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Tarefa", id));
         return TarefaResponse.fromEntity(tarefa);
@@ -99,7 +100,7 @@ public class TarefaService {
 
     @Transactional
     public TarefaResponse atualizar(Long id, TarefaRequest request, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", emailUsuario));
 
@@ -135,12 +136,17 @@ public class TarefaService {
 
     @Transactional
     public TarefaResponse alterarStatus(Long id, TarefaStatusRequest request, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", emailUsuario));
 
         TarefaSalon tarefa = tarefaRepository.findByIdAndSalonId(id, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Tarefa", id));
+        // O profissional só movimenta as tarefas atribuídas a ele (BUG-013)
+        if (usuario.getRole() == Role.PROFISSIONAL
+                && (tarefa.getAtribuidoA() == null || !tarefa.getAtribuidoA().getId().equals(usuario.getId()))) {
+            throw new AccessDeniedException("Você só pode alterar as tarefas atribuídas a você");
+        }
 
         StatusTarefa statusAnterior = tarefa.getStatus();
         tarefa.setStatus(request.getStatus());
@@ -172,7 +178,7 @@ public class TarefaService {
 
     @Transactional
     public void excluir(Long id, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         TarefaSalon tarefa = tarefaRepository.findByIdAndSalonId(id, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Tarefa", id));
 
@@ -183,7 +189,7 @@ public class TarefaService {
 
     @Transactional(readOnly = true)
     public List<TarefaResponse> listarAtrasadas(String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         return tarefaRepository.findTarefasAtrasadas(salon.getId(), LocalDate.now()).stream()
                 .map(TarefaResponse::fromEntity)
                 .toList();
@@ -191,7 +197,7 @@ public class TarefaService {
 
     @Transactional(readOnly = true)
     public List<TarefaResponse> listarPorStatus(String emailUsuario, StatusTarefa status) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         return tarefaRepository.findByStatusAndSalonId(salon.getId(), status).stream()
                 .map(TarefaResponse::fromEntity)
                 .toList();
@@ -199,7 +205,7 @@ public class TarefaService {
 
     @Transactional(readOnly = true)
     public List<String> listarCategorias(String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         return tarefaRepository.findCategoriasBySalonId(salon.getId());
     }
 

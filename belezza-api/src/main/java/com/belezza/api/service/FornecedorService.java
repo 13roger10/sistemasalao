@@ -27,7 +27,7 @@ public class FornecedorService {
     @Transactional
     @SuppressWarnings("null")
     public FornecedorResponse criar(FornecedorRequest request, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
 
         if (request.getCnpj() != null && fornecedorRepository.existsByCnpjAndSalonId(request.getCnpj(), salon.getId())) {
             throw new DuplicateResourceException("Fornecedor", "CNPJ", request.getCnpj());
@@ -58,14 +58,14 @@ public class FornecedorService {
 
     @Transactional(readOnly = true)
     public Page<FornecedorResponse> listar(String emailUsuario, Pageable pageable) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         return fornecedorRepository.findBySalonIdAndAtivoTrue(salon.getId(), pageable)
                 .map(FornecedorResponse::fromEntity);
     }
 
     @Transactional(readOnly = true)
     public List<FornecedorResponse> listarTodos(String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         return fornecedorRepository.findBySalonIdAndAtivoTrue(salon.getId()).stream()
                 .map(FornecedorResponse::fromEntity)
                 .toList();
@@ -73,7 +73,7 @@ public class FornecedorService {
 
     @Transactional(readOnly = true)
     public FornecedorResponse buscarPorId(Long id, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Fornecedor fornecedor = fornecedorRepository.findByIdAndSalonId(id, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Fornecedor", id));
         return FornecedorResponse.fromEntity(fornecedor);
@@ -81,7 +81,7 @@ public class FornecedorService {
 
     @Transactional
     public FornecedorResponse atualizar(Long id, FornecedorRequest request, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Fornecedor fornecedor = fornecedorRepository.findByIdAndSalonId(id, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Fornecedor", id));
 
@@ -107,7 +107,7 @@ public class FornecedorService {
 
     @Transactional
     public void desativar(Long id, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Fornecedor fornecedor = fornecedorRepository.findByIdAndSalonId(id, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Fornecedor", id));
         fornecedor.setAtivo(false);

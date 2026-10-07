@@ -12,6 +12,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import com.belezza.api.security.annotation.AdminOnly;
+import com.belezza.api.security.annotation.EquipeOnly;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -23,11 +25,13 @@ import java.util.List;
 @RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Metas", description = "Gerenciamento de metas do salão")
+@EquipeOnly
 public class MetaController {
 
     private final MetaService metaService;
 
     @PostMapping
+    @AdminOnly
     @Operation(summary = "Criar meta", description = "Cria uma nova meta")
     public ResponseEntity<MetaResponse> criar(
             @Valid @RequestBody MetaRequest request,
@@ -72,6 +76,7 @@ public class MetaController {
     }
 
     @PutMapping("/{id}")
+    @AdminOnly
     @Operation(summary = "Atualizar meta", description = "Atualiza uma meta existente")
     public ResponseEntity<MetaResponse> atualizar(
             @PathVariable Long id,
@@ -82,6 +87,7 @@ public class MetaController {
     }
 
     @DeleteMapping("/{id}")
+    @AdminOnly
     @Operation(summary = "Excluir meta", description = "Exclui uma meta (soft delete)")
     public ResponseEntity<Void> excluir(
             @PathVariable Long id,

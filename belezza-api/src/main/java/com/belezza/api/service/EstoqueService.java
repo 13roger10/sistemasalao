@@ -35,7 +35,7 @@ public class EstoqueService {
     @Transactional
     @SuppressWarnings("null")
     public ProdutoResponse criarProduto(ProdutoRequest request, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
 
         if (request.getSku() != null && produtoRepository.existsBySkuAndSalonId(request.getSku(), salon.getId())) {
             throw new DuplicateResourceException("Produto", "SKU", request.getSku());
@@ -81,14 +81,14 @@ public class EstoqueService {
 
     @Transactional(readOnly = true)
     public Page<ProdutoResponse> listarProdutos(String emailUsuario, Pageable pageable) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         return produtoRepository.findBySalonIdAndAtivoTrue(salon.getId(), pageable)
                 .map(ProdutoResponse::fromEntity);
     }
 
     @Transactional(readOnly = true)
     public ProdutoResponse buscarProduto(Long id, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Produto produto = produtoRepository.findByIdAndSalonId(id, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Produto", id));
         return ProdutoResponse.fromEntity(produto);
@@ -96,7 +96,7 @@ public class EstoqueService {
 
     @Transactional
     public ProdutoResponse atualizarProduto(Long id, ProdutoRequest request, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Produto produto = produtoRepository.findByIdAndSalonId(id, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Produto", id));
 
@@ -132,7 +132,7 @@ public class EstoqueService {
 
     @Transactional
     public void desativarProduto(Long id, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Produto produto = produtoRepository.findByIdAndSalonId(id, salon.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Produto", id));
         produto.setAtivo(false);
@@ -142,7 +142,7 @@ public class EstoqueService {
 
     @Transactional
     public MovimentacaoResponse ajustarEstoque(Long produtoId, AjusteEstoqueRequest request, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", emailUsuario));
         Produto produto = produtoRepository.findByIdAndSalonId(produtoId, salon.getId())
@@ -182,7 +182,7 @@ public class EstoqueService {
 
     @Transactional(readOnly = true)
     public List<ProdutoResponse> listarEstoqueBaixo(String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         return produtoRepository.findProdutosEstoqueBaixo(salon.getId()).stream()
                 .map(ProdutoResponse::fromEntity)
                 .toList();
@@ -193,7 +193,7 @@ public class EstoqueService {
     @Transactional
     @SuppressWarnings("null")
     public MovimentacaoResponse registrarMovimentacao(MovimentacaoRequest request, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", emailUsuario));
         Produto produto = produtoRepository.findByIdAndSalonId(request.getProdutoId(), salon.getId())
@@ -245,7 +245,7 @@ public class EstoqueService {
 
     @Transactional(readOnly = true)
     public Page<MovimentacaoResponse> listarMovimentacoes(String emailUsuario, Pageable pageable) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         return movimentacaoRepository.findBySalonId(salon.getId(), pageable)
                 .map(MovimentacaoResponse::fromEntity);
     }
@@ -255,7 +255,7 @@ public class EstoqueService {
     @Transactional
     @SuppressWarnings("null")
     public CategoriaProdutoResponse criarCategoria(CategoriaProdutoRequest request, String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
 
         if (categoriaRepository.existsByNomeAndSalonId(request.getNome(), salon.getId())) {
             throw new DuplicateResourceException("Categoria", "nome", request.getNome());
@@ -278,7 +278,7 @@ public class EstoqueService {
 
     @Transactional(readOnly = true)
     public List<CategoriaProdutoResponse> listarCategorias(String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
         return categoriaRepository.findBySalonIdAndAtivoTrue(salon.getId()).stream()
                 .map(CategoriaProdutoResponse::fromEntity)
                 .toList();
@@ -306,7 +306,7 @@ public class EstoqueService {
 
     @Transactional(readOnly = true)
     public EstoqueStatsResponse getEstatisticas(String emailUsuario) {
-        Salon salon = salonService.getSalonByAdminEmail(emailUsuario);
+        Salon salon = salonService.getSalonDoOperador(emailUsuario);
 
         long totalProdutos = produtoRepository.countBySalonId(salon.getId());
         long estoqueBaixo = produtoRepository.countEstoqueBaixo(salon.getId());

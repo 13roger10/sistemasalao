@@ -169,6 +169,30 @@ public class SalonService {
     }
 
     /**
+     * Salão de quem está operando (BUG-013): o ADMIN usa a unidade atual dele, como em
+     * {@link #getSalonByAdminEmail}; a equipe (recepcionista e profissional) usa o salão do token.
+     * Antes os módulos só procuravam "o salão do admin" e a equipe recebia 404. Cliente não opera.
+     */
+    @Transactional(readOnly = true)
+    public Salon getSalonDoOperador(String email) {
+        Usuario usuario = usuarioRepository.findByEmailAndAtivoTrue(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário", "email", email));
+        if (usuario.getRole() == Role.ADMIN) {
+            return unidadeAtualDoAdmin(usuario)
+                    .orElseThrow(() -> new ResourceNotFoundException("Salão", "admin", email));
+        }
+        if (usuario.getRole() != Role.RECEPCIONISTA && usuario.getRole() != Role.PROFISSIONAL) {
+            throw new AccessDeniedException("Acesso restrito à equipe do salão");
+        }
+        Long doToken = TenantContext.getCurrentTenant();
+        if (doToken == null) {
+            throw new AccessDeniedException("Sessão sem salão: entre novamente");
+        }
+        return salonRepository.findByIdAndAtivoTrue(doToken)
+                .orElseThrow(() -> new ResourceNotFoundException("Salão", doToken));
+    }
+
+    /**
      * Unidade em que o admin está trabalhando (ele pode ter várias): a do token da requisição
      * (claim salonId), se for dele e estiver ativa; senão a da sessão, de {@link #unidadePreferida}.
      * Assim todas as telas que buscam "o salão do admin" passam a respeitar a unidade escolhida.

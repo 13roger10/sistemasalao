@@ -15,6 +15,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import com.belezza.api.security.annotation.EquipeOnly;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -26,11 +28,13 @@ import java.util.List;
 @RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Tarefas", description = "Gerenciamento de tarefas do salão")
+@EquipeOnly
 public class TarefaController {
 
     private final TarefaService tarefaService;
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
     @Operation(summary = "Criar tarefa", description = "Cria uma nova tarefa no salão")
     public ResponseEntity<TarefaResponse> criar(
             @Valid @RequestBody TarefaRequest request,
@@ -99,6 +103,7 @@ public class TarefaController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
     @Operation(summary = "Atualizar tarefa", description = "Atualiza uma tarefa existente")
     public ResponseEntity<TarefaResponse> atualizar(
             @PathVariable Long id,
@@ -128,6 +133,7 @@ public class TarefaController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPCIONISTA')")
     @Operation(summary = "Excluir tarefa", description = "Exclui uma tarefa (soft delete)")
     public ResponseEntity<Void> excluir(
             @PathVariable Long id,
