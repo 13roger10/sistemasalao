@@ -23,6 +23,7 @@ public class UnidadeRequest {
     private String telefone;
 
     @Size(max = 20, message = "CNPJ deve ter no máximo 20 caracteres")
+    @com.belezza.api.validation.Cnpj
     private String cnpj;
 
     @Size(max = 500, message = "Descrição deve ter no máximo 500 caracteres")

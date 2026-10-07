@@ -53,21 +53,6 @@ export const commissionService = {
     return api.get<Commission>(`${BASE_PATH}/${id}`);
   },
 
-  // Get commissions for a specific professional
-  getByProfessional: (
-    professionalId: string,
-    params: PaginationParams & Omit<CommissionFilters, 'professionalId'>
-  ): Promise<PaginatedResponse<Commission>> => {
-    return api.get<PaginatedResponse<Commission>>(
-      `${BASE_PATH}/professional/${professionalId}`,
-      {
-        ...params,
-        startDate: params.dateRange?.startDate?.toISOString(),
-        endDate: params.dateRange?.endDate?.toISOString(),
-      }
-    );
-  },
-
   // Mark commission as paid
   markAsPaid: (id: string): Promise<Commission> => {
     return api.post<Commission>(`${BASE_PATH}/${id}/pay`);

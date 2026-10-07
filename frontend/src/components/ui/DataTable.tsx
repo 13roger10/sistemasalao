@@ -8,6 +8,10 @@ import { Button } from "./Button";
 // Context para fechar o menu de ações
 const ActionMenuContext = createContext<(() => void) | null>(null);
 
+// A coluna de ações fica presa à direita: no celular a tabela rola de lado e os botões de editar
+// e excluir só apareciam depois de arrastar (BUG-036). A sombra marca o que passa por baixo.
+const ACOES_FIXAS = "sticky right-0 z-[1] shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.15)]";
+
 export interface Column<T> {
   key: string;
   header: string | ReactNode;
@@ -169,7 +173,7 @@ export function DataTable<T>({
               ))}
 
               {/* Actions column */}
-              {rowActions && <th className={`${cellPadding} w-12`}></th>}
+              {rowActions && <th className={`${cellPadding} w-12 ${ACOES_FIXAS} bg-gray-50 dark:bg-gray-800`}></th>}
             </tr>
           </thead>
 
@@ -259,7 +263,7 @@ export function DataTable<T>({
 
                     {/* Actions */}
                     {rowActions && (
-                      <td className={cellPadding} onClick={(e) => e.stopPropagation()}>
+                      <td className={`${cellPadding} ${ACOES_FIXAS} bg-inherit`} onClick={(e) => e.stopPropagation()}>
                         <ActionMenuButton
                           id={id}
                           isOpen={openActionMenu === id}

@@ -38,6 +38,7 @@ public class SalonRequest {
     private String telefone;
 
     @Size(max = 20)
+    @com.belezza.api.validation.Cnpj
     private String cnpj;
 
     private String horarioAbertura;

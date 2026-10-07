@@ -84,7 +84,7 @@ public class SalonBusinessController {
 
     @PutMapping("/profile")
     public ResponseEntity<BusinessProfileResponse> updateProfile(
-            @RequestBody BusinessProfileUpdateRequest request,
+            @RequestBody @jakarta.validation.Valid BusinessProfileUpdateRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
         // SEC-018: persiste no salão do próprio admin (tenant), com dados reais.
         Salon salon = salonService.getSalonByAdminEmail(userDetails.getUsername());
@@ -198,7 +198,7 @@ public class SalonBusinessController {
     public record BusinessProfileUpdateRequest(
             String name,
             String tradeName,
-            String cnpj,
+            @com.belezza.api.validation.Cnpj String cnpj,
             String phone,
             String whatsapp,
             String email,

@@ -156,7 +156,7 @@ public class FinanceController {
         boolean estornado = pagamento.getStatus() == StatusPagamento.ESTORNADO;
 
         return new TransactionResponse(
-                String.valueOf(pagamento.getId()),
+                "pag-" + pagamento.getId(), // BUG-037: pagamento e movimentação têm sequências próprias
                 pagamento.getCaixa() != null ? String.valueOf(pagamento.getCaixa().getId()) : null,
                 String.valueOf(pagamento.getSalon().getId()),
                 "income",
@@ -191,7 +191,7 @@ public class FinanceController {
             default -> "";
         };
         return new TransactionResponse(
-                String.valueOf(mov.getId()),
+                "mov-" + mov.getId(),
                 String.valueOf(mov.getCaixa().getId()),
                 String.valueOf(mov.getCaixa().getSalon().getId()),
                 type,

@@ -2,6 +2,7 @@ package com.belezza.api.service;
 
 import com.belezza.api.dto.estoque.*;
 import com.belezza.api.entity.*;
+import com.belezza.api.exception.BusinessException;
 import com.belezza.api.exception.DuplicateResourceException;
 import com.belezza.api.exception.ResourceNotFoundException;
 import com.belezza.api.repository.*;
@@ -150,7 +151,7 @@ public class EstoqueService {
 
         int estoqueAnterior = produto.getEstoqueAtual();
         int novoEstoque = estoqueAnterior + request.getQuantidade();
-        if (novoEstoque < 0) novoEstoque = 0;
+        exigirSaldo(produto, novoEstoque);
 
         TipoMovimentacao tipo = request.getQuantidade() > 0 ? TipoMovimentacao.ENTRADA : TipoMovimentacao.SAIDA;
         if (request.getQuantidade() == 0) tipo = TipoMovimentacao.AJUSTE;
@@ -205,7 +206,8 @@ public class EstoqueService {
         if (request.getTipo() == TipoMovimentacao.ENTRADA) {
             novoEstoque = estoqueAnterior + request.getQuantidade();
         } else {
-            novoEstoque = Math.max(0, estoqueAnterior - request.getQuantidade());
+            novoEstoque = estoqueAnterior - request.getQuantidade();
+            exigirSaldo(produto, novoEstoque);
         }
 
         BigDecimal custoTotal = null;
@@ -357,6 +359,18 @@ public class EstoqueService {
                 alertaRepository.save(alerta);
                 log.info("Alerta de estoque criado: {} para produto {}", tipo, produto.getId());
             }
+        }
+    }
+
+    /**
+     * Saída maior que o saldo é recusada (BUG-033): antes o saldo era cortado para zero e o
+     * histórico registrava uma saída que não aconteceu.
+     */
+    private static void exigirSaldo(Produto produto, int novoEstoque) {
+        if (novoEstoque < 0) {
+            throw new BusinessException(String.format(
+                    "Saldo insuficiente: \"%s\" tem %d em estoque e a saída pedida é de %d.",
+                    produto.getNome(), produto.getEstoqueAtual(), produto.getEstoqueAtual() - novoEstoque));
         }
     }
 }

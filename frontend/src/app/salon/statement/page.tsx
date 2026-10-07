@@ -187,7 +187,8 @@ export default function StatementPage() {
     setIsLoading(true);
     try {
       const [commRes, paymRes] = await Promise.allSettled([
-        commissionService.getByProfessional(user.professionalId, { page: 0, limit: 500 }),
+        // /api/comissoes/profissional/{id}: a rota antiga (/salon/commissions/...) não existe (BUG-038)
+        commissionService.listByProfessional(user.professionalId, { page: 1, size: 500 }),
         api.get<{ content: ProfessionalPayment[]; totalElements: number }>(
           `/pagamentos-profissional/profissional/${user.professionalId}`,
           { page: 0, size: 200 }

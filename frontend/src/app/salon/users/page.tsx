@@ -279,7 +279,9 @@ export default function SalonUsersPage() {
               errors.push("serviços");
             }
           } else {
-            console.warn("[handleCreate] Nenhum serviço disponível para vincular");
+            // Sem serviço vinculado, todo agendamento com o profissional é recusado: avisa o admin
+            // em vez de só registrar no console (BUG-034)
+            errors.push("serviços (nenhum serviço cadastrado para vincular)");
           }
 
           // Determinar quais horários configurar:

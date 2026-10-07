@@ -24,6 +24,8 @@ public class ServicoRequest {
 
     @NotNull(message = "Preço é obrigatório")
     @DecimalMin(value = "0.0", message = "Preço deve ser positivo")
+    // A coluna é numeric(10,2): antes 10.999 era aceito e 1e12 estourava no banco como 409 (BUG-031)
+    @Digits(integer = 8, fraction = 2, message = "Preço deve ter no máximo 2 casas decimais e ser menor que R$ 100.000.000")
     private BigDecimal preco;
 
     @NotNull(message = "Duração é obrigatória")

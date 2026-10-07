@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Check,
   Filter,
+  AlertTriangle,
 } from "lucide-react";
 import { SalonLayout } from "@/components/layout/SalonLayout";
 import { DataTable, ActionMenuItem, Column } from "@/components/ui/DataTable";
@@ -98,6 +99,9 @@ const StatsCard = ({
     </div>
   </div>
 );
+
+// Profissional ativo sem serviço vinculado: todo agendamento com ele é recusado (BUG-034)
+const semServicos = (p: Professional) => p.status === "active" && (p.serviceIds?.length ?? 0) === 0;
 
 export default function ProfessionalsPage() {
   const { user } = useSalonAuth();
@@ -472,6 +476,12 @@ export default function ProfessionalsPage() {
           <div>
             <p className="font-medium text-gray-900 dark:text-white">{item.name || "Sem nome"}</p>
             <p className="text-sm text-gray-500 dark:text-gray-400">{item.email || "-"}</p>
+            {semServicos(item) && (
+              <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                <AlertTriangle className="h-3 w-3" />
+                Sem serviços: não pode ser agendado
+              </span>
+            )}
           </div>
         </div>
       ),
@@ -604,6 +614,18 @@ export default function ProfessionalsPage() {
             <option value="inactive">Inativos</option>
           </select>
         </div>
+
+        {professionals.filter(semServicos).length > 0 && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-300">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>
+              {professionals.filter(semServicos).length === 1
+                ? "1 profissional ativo não tem serviços vinculados"
+                : `${professionals.filter(semServicos).length} profissionais ativos não têm serviços vinculados`}
+              {" "}e não aparece(m) para agendamento. Edite o profissional e marque os serviços que ele realiza.
+            </p>
+          </div>
+        )}
 
         {/* Tabela */}
         <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">

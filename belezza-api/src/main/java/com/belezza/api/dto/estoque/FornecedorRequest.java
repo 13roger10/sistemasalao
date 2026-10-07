@@ -21,6 +21,7 @@ public class FornecedorRequest {
     private String nomeFantasia;
 
     @Size(max = 20)
+    @com.belezza.api.validation.Cnpj
     private String cnpj;
 
     @Size(max = 100)

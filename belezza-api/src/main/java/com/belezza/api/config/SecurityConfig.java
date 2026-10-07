@@ -136,6 +136,13 @@ public class SecurityConfig {
                 // disponíveis (sem dados pessoais), usada pelo calendário de reserva.
                 auth.requestMatchers(HttpMethod.GET, "/api/agendamentos/disponibilidade").permitAll();
 
+                // BUG-035: nota média e ranking público (só agregados, sem comentários nem dados
+                // do cliente) para a vitrine do salão, que é aberta a quem não fez login
+                auth.requestMatchers(HttpMethod.GET,
+                        "/api/avaliacoes/salon/*/media",
+                        "/api/avaliacoes/profissional/*/media",
+                        "/api/avaliacoes/salon/*/ranking").permitAll();
+
                 // SEC-010: console H2 só é público quando explicitamente habilitado
                 // (perfil local/dev); em produção nunca é registrado.
                 if (h2ConsoleEnabled) {
