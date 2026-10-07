@@ -61,10 +61,11 @@ function mapBackendUserToFrontend(backendUser: BackendLoginResponse["user"]): Us
   };
 }
 
-// Credenciais de administrador (usar variáveis de ambiente em produção)
+// Credenciais do login simulado, que só existe em desenvolvimento (ver useMockAuth). Fora dele
+// a senha nem entra no bundle: antes ela ia para o navegador em produção.
 const ADMIN_CREDENTIALS = {
   email: process.env.NEXT_PUBLIC_ADMIN_EMAIL || "admin@belezza.ai",
-  password: process.env.ADMIN_PASSWORD || "Admin@123",
+  password: process.env.NODE_ENV === "development" ? "Admin@123" : "",
 };
 
 // Usuário mock para desenvolvimento
@@ -90,7 +91,9 @@ const generateMockToken = () => {
 
 // Verificar se deve usar autenticação mock (sem backend)
 // Mock auth está desabilitado - usando API real do backend Java
-const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH === "true";
+// Só em desenvolvimento: em produção a flag é ignorada e o login vai sempre ao backend.
+const useMockAuth =
+  process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_USE_MOCK_AUTH === "true";
 
 const REFRESH_TOKEN_KEY = "refresh_token";
 

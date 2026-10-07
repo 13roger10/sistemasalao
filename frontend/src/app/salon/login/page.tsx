@@ -52,12 +52,17 @@ export default function SalonLoginPage() {
     }
   };
 
-  // Usuários de demonstração
-  const demoUsers = [
-    { email: "admin@belezza.ai", password: "Admin@123", role: "ADMIN" as AuthUserRole },
-    { email: "prof@prof.com", password: "prof123", role: "PROFESSIONAL" as AuthUserRole },
-    { email: "cliente@cliente.com", password: "cliente123", role: "CLIENT" as AuthUserRole },
-  ];
+  // Usuários de demonstração: só em desenvolvimento. No build de produção o NODE_ENV vira
+  // constante e esta lista (com as senhas) nem entra no JavaScript enviado ao navegador —
+  // antes a tela de login de produção oferecia a qualquer um o e-mail e a senha do admin.
+  const demoUsers =
+    process.env.NODE_ENV === "development"
+      ? [
+          { email: "admin@belezza.ai", password: "Admin@123", role: "ADMIN" as AuthUserRole },
+          { email: "prof@prof.com", password: "prof123", role: "PROFESSIONAL" as AuthUserRole },
+          { email: "cliente@cliente.com", password: "cliente123", role: "CLIENT" as AuthUserRole },
+        ]
+      : [];
 
   const fillDemoUser = (demoEmail: string, demoPassword: string) => {
     setEmail(demoEmail);
@@ -200,7 +205,8 @@ export default function SalonLoginPage() {
             </button>
           </form>
 
-          {/* Demo users */}
+          {/* Demo users (só em desenvolvimento) */}
+          {demoUsers.length > 0 && (
           <div className="mt-8">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -226,6 +232,7 @@ export default function SalonLoginPage() {
               ))}
             </div>
           </div>
+          )}
 
           {/* Link para agendamento público */}
           <div className="mt-8 text-center">
