@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import Link from "next/link";
 import { useSalonAuth } from "@/contexts/SalonAuthContext";
+import { coloringService } from "@/services/salon/coloringService";
 import type { ColoringProfile, SkinToneLabels, SkinUndertoneLabels } from "@/types/salon/coloring";
 
 // Client Card with Coloring Info
@@ -117,6 +118,7 @@ export default function ColoringPage() {
   const [profiles, setProfiles] = useState<ColoringProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Stats
   const [stats, setStats] = useState({
@@ -128,89 +130,19 @@ export default function ColoringPage() {
   // Load profiles
   const loadProfiles = useCallback(async () => {
     setIsLoading(true);
+    setLoadError(null);
     try {
-      // Mock data for development
-      const mockProfiles: ColoringProfile[] = [
-        {
-          id: "1",
-          clienteId: "1",
-          clienteNome: "Maria Silva",
-          clienteEmail: "maria@email.com",
-          clienteTelefone: "(11) 99999-0001",
-          salonId: "1",
-          tomPele: "MORENO_CLARO",
-          tomPeleDescricao: "Moreno Claro",
-          subtomPele: "QUENTE",
-          subtomPeleDescricao: "Quente",
-          tipoCabelo: "ONDULADO",
-          tipoCabeloDescricao: "Ondulado",
-          corNatural: "Castanho Escuro",
-          corAtual: "Castanho Iluminado",
-          porcentagemBrancos: "10%",
-          temQuimica: true,
-          historicoQuimico: "Balayage há 3 meses",
-          ultimaQuimica: "2026-01-15T00:00:00",
-          temAlergia: false,
-          sensibilidadeCouro: false,
-          preferenciaCores: "Tons quentes, mel e caramelo",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        {
-          id: "2",
-          clienteId: "2",
-          clienteNome: "Ana Costa",
-          clienteEmail: "ana@email.com",
-          clienteTelefone: "(11) 99999-0002",
-          salonId: "1",
-          tomPele: "CLARO",
-          tomPeleDescricao: "Claro",
-          subtomPele: "FRIO",
-          subtomPeleDescricao: "Frio",
-          tipoCabelo: "LISO",
-          tipoCabeloDescricao: "Liso",
-          corNatural: "Loiro Escuro",
-          corAtual: "Loiro Platinado",
-          porcentagemBrancos: "0%",
-          temQuimica: true,
-          temAlergia: true,
-          alergias: "Amônia",
-          sensibilidadeCouro: true,
-          coresEvitar: "Tons com amônia",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        {
-          id: "3",
-          clienteId: "3",
-          clienteNome: "Juliana Santos",
-          clienteEmail: "juliana@email.com",
-          clienteTelefone: "(11) 99999-0003",
-          salonId: "1",
-          tomPele: "MEDIO",
-          tomPeleDescricao: "Médio",
-          subtomPele: "NEUTRO",
-          subtomPeleDescricao: "Neutro",
-          tipoCabelo: "CACHEADO",
-          tipoCabeloDescricao: "Cacheado",
-          corNatural: "Castanho",
-          corAtual: "Castanho",
-          temQuimica: false,
-          temAlergia: false,
-          sensibilidadeCouro: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ];
-
-      setProfiles(mockProfiles);
+      const data = await coloringService.profile.list();
+      setProfiles(data);
       setStats({
-        totalFichas: mockProfiles.length,
-        comAlergia: mockProfiles.filter(p => p.temAlergia).length,
-        comQuimica: mockProfiles.filter(p => p.temQuimica).length,
+        totalFichas: data.length,
+        comAlergia: data.filter(p => p.temAlergia).length,
+        comQuimica: data.filter(p => p.temQuimica).length,
       });
     } catch (error) {
       console.error("Erro ao carregar fichas:", error);
+      setProfiles([]);
+      setLoadError("Não foi possível carregar as fichas de coloração.");
     } finally {
       setIsLoading(false);
     }
@@ -222,8 +154,8 @@ export default function ColoringPage() {
 
   // Filter profiles
   const filteredProfiles = profiles.filter(
-    p => p.clienteNome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-         p.clienteEmail.toLowerCase().includes(searchTerm.toLowerCase())
+    p => (p.clienteNome ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+         (p.clienteEmail ?? "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -273,6 +205,12 @@ export default function ColoringPage() {
             />
           </div>
         </div>
+
+        {loadError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+            {loadError}
+          </div>
+        )}
 
         {/* Profiles Grid */}
         {isLoading ? (

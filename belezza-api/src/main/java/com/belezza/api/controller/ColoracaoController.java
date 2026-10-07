@@ -41,6 +41,12 @@ public class ColoracaoController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @GetMapping("/fichas")
+    @Operation(summary = "Listar fichas", description = "Lista as fichas de coloração do salão")
+    public ResponseEntity<List<FichaColoracaoResponse>> listarFichas() {
+        return ResponseEntity.ok(coloracaoService.listarFichas());
+    }
+
     @GetMapping("/ficha/cliente/{clienteId}")
     @Operation(summary = "Buscar ficha por cliente", description = "Busca a ficha de coloração de um cliente")
     public ResponseEntity<FichaColoracaoResponse> buscarFichaPorCliente(

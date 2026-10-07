@@ -17,6 +17,11 @@ const BASE_PATH = '/coloracao';
 export const coloringService = {
   // ===== PROFILE (FICHA) =====
   profile: {
+    // List the salon's profiles
+    list: (): Promise<ColoringProfile[]> => {
+      return api.get<ColoringProfile[]>(`${BASE_PATH}/fichas`);
+    },
+
     // Get profile by client ID
     getByClientId: (clientId: string): Promise<ColoringProfile> => {
       return api.get<ColoringProfile>(`${BASE_PATH}/ficha/cliente/${clientId}`);

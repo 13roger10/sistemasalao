@@ -75,6 +75,17 @@ public class ColoracaoService {
         return FichaColoracaoResponse.fromEntity(ficha);
     }
 
+    /** Fichas do salão de quem chama, para a lista da tela de Coloração (BUG-012: antes era fictícia). */
+    @Transactional(readOnly = true)
+    public List<FichaColoracaoResponse> listarFichas() {
+        Salon salon = salaoDoOperador();
+        return fichaRepository.findBySalonId(salon.getId()).stream()
+                .map(FichaColoracaoResponse::fromEntity)
+                .sorted(java.util.Comparator.comparing(FichaColoracaoResponse::getClienteNome,
+                        java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
+                .toList();
+    }
+
     @Transactional(readOnly = true)
     public FichaColoracaoResponse buscarFichaPorCliente(Long clienteId, String emailUsuario) {
         Salon salon = salaoDoOperador();

@@ -483,183 +483,68 @@ const NPSGauge = ({ score }: { score: number }) => {
   );
 };
 
-// ===== MOCK DATA =====
+// ===== INDICADORES =====
+// Calculados a partir das avaliações carregadas da API (BUG-012: antes eram números fixos).
 
-const mockStats: ReviewStats = {
-  totalReviews: 847,
-  averageRating: 4.6,
-  pendingResponses: 12,
-  reviewsThisMonth: 42,
-  npsScore: 72,
-  topRatedProfessional: {
-    professionalId: "1",
-    professionalName: "Ana Silva",
-    rating: 4.9,
-  },
+const NOTAS = [1, 2, 3, 4, 5] as const;
+
+const media = (lista: Review[]) =>
+  lista.length ? lista.reduce((soma, r) => soma + r.rating, 0) / lista.length : 0;
+
+/** NPS na escala de 5 estrelas: 5 = promotor, 4 = neutro, 1–3 = detrator. */
+const nps = (lista: Review[]) => {
+  if (!lista.length) return 0;
+  const promotores = lista.filter((r) => r.rating === 5).length;
+  const detratores = lista.filter((r) => r.rating <= 3).length;
+  return Math.round(((promotores - detratores) / lista.length) * 100);
 };
 
-const mockProfessionalsRanking: ProfessionalRatingSummary[] = [
-  {
-    professionalId: "1",
-    professionalName: "Ana Silva",
-    averageRating: 4.9,
-    totalReviews: 156,
-    ratingDistribution: { 1: 2, 2: 3, 3: 8, 4: 28, 5: 115 },
-    recentReviews: [],
-    trend: { currentPeriod: 4.9, previousPeriod: 4.8, change: 0.1, direction: "up" },
-    promoters: 85,
-    passives: 10,
-    detractors: 5,
-    npsScore: 80,
-  },
-  {
-    professionalId: "2",
-    professionalName: "Carlos Souza",
-    averageRating: 4.7,
-    totalReviews: 203,
-    ratingDistribution: { 1: 5, 2: 8, 3: 15, 4: 45, 5: 130 },
-    recentReviews: [],
-    trend: { currentPeriod: 4.7, previousPeriod: 4.6, change: 0.1, direction: "up" },
-    promoters: 78,
-    passives: 15,
-    detractors: 7,
-    npsScore: 71,
-  },
-  {
-    professionalId: "3",
-    professionalName: "Mariana Costa",
-    averageRating: 4.6,
-    totalReviews: 178,
-    ratingDistribution: { 1: 4, 2: 6, 3: 18, 4: 50, 5: 100 },
-    recentReviews: [],
-    trend: { currentPeriod: 4.6, previousPeriod: 4.7, change: -0.1, direction: "down" },
-    promoters: 72,
-    passives: 18,
-    detractors: 10,
-    npsScore: 62,
-  },
-  {
-    professionalId: "4",
-    professionalName: "Pedro Lima",
-    averageRating: 4.5,
-    totalReviews: 142,
-    ratingDistribution: { 1: 3, 2: 7, 3: 20, 4: 52, 5: 60 },
-    recentReviews: [],
-    trend: { currentPeriod: 4.5, previousPeriod: 4.5, change: 0, direction: "stable" },
-    promoters: 65,
-    passives: 22,
-    detractors: 13,
-    npsScore: 52,
-  },
-  {
-    professionalId: "5",
-    professionalName: "Julia Santos",
-    averageRating: 4.4,
-    totalReviews: 98,
-    ratingDistribution: { 1: 2, 2: 5, 3: 15, 4: 38, 5: 38 },
-    recentReviews: [],
-    trend: { currentPeriod: 4.4, previousPeriod: 4.2, change: 0.2, direction: "up" },
-    promoters: 60,
-    passives: 25,
-    detractors: 15,
-    npsScore: 45,
-  },
-];
+function calcularRanking(reviews: Review[]): ProfessionalRatingSummary[] {
+  const porProfissional = new Map<string, Review[]>();
+  reviews.forEach((r) => {
+    const chave = String(r.professionalId);
+    porProfissional.set(chave, [...(porProfissional.get(chave) ?? []), r]);
+  });
+  return Array.from(porProfissional.values())
+    .map((lista) => {
+      const distribuicao = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      NOTAS.forEach((n) => (distribuicao[n] = lista.filter((r) => r.rating === n).length));
+      return {
+        professionalId: lista[0].professionalId,
+        professionalName: lista[0].professionalName,
+        averageRating: media(lista),
+        totalReviews: lista.length,
+        ratingDistribution: distribuicao,
+        recentReviews: [...lista]
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 5),
+        trend: { currentPeriod: 0, previousPeriod: 0, change: 0, direction: "stable" as const },
+        promoters: distribuicao[5],
+        passives: distribuicao[4],
+        detractors: distribuicao[1] + distribuicao[2] + distribuicao[3],
+        npsScore: nps(lista),
+      };
+    })
+    .sort((a, b) => b.averageRating - a.averageRating || b.totalReviews - a.totalReviews);
+}
 
-const mockReviews: Review[] = [
-  {
-    id: "1",
-    clientId: "c1",
-    clientName: "Maria Fernanda",
-    professionalId: "1",
-    professionalName: "Ana Silva",
-    appointmentId: "a1",
-    serviceIds: ["s1"],
-    serviceNames: ["Corte Feminino"],
-    rating: 5,
-    comment: "Atendimento maravilhoso! A Ana é muito atenciosa e fez exatamente o corte que eu queria. Super recomendo!",
-    status: "published",
-    isVerified: true,
-    source: "online",
-    unitId: "u1",
-    createdAt: new Date("2024-01-15"),
-    updatedAt: new Date("2024-01-15"),
-    response: "Muito obrigada, Maria! Foi um prazer atender você. Volte sempre!",
-    respondedAt: new Date("2024-01-15"),
-  },
-  {
-    id: "2",
-    clientId: "c2",
-    clientName: "João Paulo",
-    professionalId: "2",
-    professionalName: "Carlos Souza",
-    appointmentId: "a2",
-    serviceIds: ["s2", "s3"],
-    serviceNames: ["Corte Masculino", "Barba"],
-    rating: 4,
-    comment: "Bom atendimento, só achei que demorou um pouco mais que o esperado.",
-    status: "published",
-    isVerified: true,
-    source: "online",
-    unitId: "u1",
-    createdAt: new Date("2024-01-14"),
-    updatedAt: new Date("2024-01-14"),
-  },
-  {
-    id: "3",
-    clientId: "c3",
-    clientName: "Patricia Lima",
-    professionalId: "3",
-    professionalName: "Mariana Costa",
-    appointmentId: "a3",
-    serviceIds: ["s4"],
-    serviceNames: ["Coloração"],
-    rating: 5,
-    comment: "A cor ficou perfeita! Mariana é uma artista. Já agendei o próximo retoque.",
-    status: "pending",
-    isVerified: true,
-    source: "online",
-    unitId: "u1",
-    createdAt: new Date("2024-01-16"),
-    updatedAt: new Date("2024-01-16"),
-  },
-  {
-    id: "4",
-    clientId: "c4",
-    clientName: "Roberto Alves",
-    professionalId: "2",
-    professionalName: "Carlos Souza",
-    appointmentId: "a4",
-    serviceIds: ["s2"],
-    serviceNames: ["Corte Masculino"],
-    rating: 3,
-    comment: "O corte ficou ok, mas esperava mais pelo preço cobrado.",
-    status: "published",
-    isVerified: true,
-    source: "online",
-    unitId: "u1",
-    createdAt: new Date("2024-01-13"),
-    updatedAt: new Date("2024-01-13"),
-  },
-  {
-    id: "5",
-    clientId: "c5",
-    clientName: "Camila Mendes",
-    professionalId: "1",
-    professionalName: "Ana Silva",
-    appointmentId: "a5",
-    serviceIds: ["s1", "s5"],
-    serviceNames: ["Corte Feminino", "Escova"],
-    rating: 5,
-    comment: "Sempre saio daqui linda! Ana conhece meu cabelo e sempre acerta no corte.",
-    status: "pending",
-    isVerified: true,
-    source: "online",
-    unitId: "u1",
-    createdAt: new Date("2024-01-16"),
-    updatedAt: new Date("2024-01-16"),
-  },
-];
+function calcularEstatisticas(reviews: Review[], ranking: ProfessionalRatingSummary[]): ReviewStats {
+  const agora = new Date();
+  const melhor = ranking[0];
+  return {
+    totalReviews: reviews.length,
+    averageRating: media(reviews),
+    pendingResponses: reviews.filter((r) => !r.response).length,
+    reviewsThisMonth: reviews.filter((r) => {
+      const d = new Date(r.createdAt);
+      return d.getMonth() === agora.getMonth() && d.getFullYear() === agora.getFullYear();
+    }).length,
+    npsScore: nps(reviews),
+    topRatedProfessional: melhor
+      ? { professionalId: melhor.professionalId, professionalName: melhor.professionalName, rating: melhor.averageRating }
+      : undefined,
+  };
+}
 
 // ===== PÁGINA PRINCIPAL =====
 
@@ -705,6 +590,9 @@ export default function ReviewsPage() {
   }, [loadReviews]);
 
   // Filtrar reviews por busca, status e rating (isolamento já garantido pela API)
+  const ranking = useMemo(() => calcularRanking(reviews), [reviews]);
+  const stats = useMemo(() => calcularEstatisticas(reviews, ranking), [reviews, ranking]);
+
   const filteredReviews = useMemo(() => {
     return reviews.filter((review) => {
       const matchesSearch =
@@ -800,34 +688,28 @@ export default function ReviewsPage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatsCard
                 title="Total de Avaliações"
-                value={mockStats.totalReviews.toLocaleString()}
+                value={stats.totalReviews.toLocaleString()}
                 icon={MessageSquare}
-                trend="up"
-                trendValue="+12%"
                 color="primary"
               />
               <StatsCard
                 title="Nota Média"
-                value={mockStats.averageRating.toFixed(1)}
+                value={stats.averageRating.toFixed(1)}
                 icon={Star}
-                trend="up"
-                trendValue="+0.2"
                 color="warning"
                 subtitle="de 5.0"
               />
               <StatsCard
                 title="Pendentes de Resposta"
-                value={mockStats.pendingResponses.toString()}
+                value={stats.pendingResponses.toString()}
                 icon={Clock}
                 color="info"
                 subtitle="aguardando"
               />
               <StatsCard
                 title="Este Mês"
-                value={mockStats.reviewsThisMonth.toString()}
+                value={stats.reviewsThisMonth.toString()}
                 icon={Calendar}
-                trend="up"
-                trendValue="+8"
                 color="success"
               />
             </div>
@@ -843,7 +725,7 @@ export default function ReviewsPage() {
                   Net Promoter Score
                 </p>
                 <div className="mt-6 flex justify-center">
-                  <NPSGauge score={mockStats.npsScore} />
+                  <NPSGauge score={stats.npsScore} />
                 </div>
                 <div className="mt-6 flex justify-around">
                   <div className="text-center">
@@ -883,19 +765,19 @@ export default function ReviewsPage() {
                     <Trophy className="h-8 w-8 text-white" />
                   </div>
                   <p className="mt-4 text-xl font-bold text-gray-900 dark:text-white">
-                    {mockStats.topRatedProfessional?.professionalName}
+                    {stats.topRatedProfessional?.professionalName}
                   </p>
                   <div className="mt-2 flex items-center gap-2">
                     <StarRating
-                      rating={mockStats.topRatedProfessional?.rating || 0}
+                      rating={stats.topRatedProfessional?.rating || 0}
                       size="md"
                     />
                     <span className="text-lg font-semibold text-yellow-500">
-                      {mockStats.topRatedProfessional?.rating.toFixed(1)}
+                      {stats.topRatedProfessional?.rating.toFixed(1)}
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    156 avaliações
+                    {ranking[0]?.totalReviews ?? 0} avaliações
                   </p>
                 </div>
               </div>
@@ -906,12 +788,12 @@ export default function ReviewsPage() {
                   Distribuição de Notas
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Últimos 30 dias
+                  Todas as avaliações
                 </p>
                 <div className="mt-6 space-y-3">
                   {[5, 4, 3, 2, 1].map((rating) => {
-                    const percentages = { 5: 72, 4: 18, 3: 6, 2: 3, 1: 1 };
-                    const percent = percentages[rating as 1 | 2 | 3 | 4 | 5];
+                    const quantidade = reviews.filter((r) => r.rating === rating).length;
+                    const percent = reviews.length ? Math.round((quantidade / reviews.length) * 100) : 0;
                     return (
                       <div key={rating} className="flex items-center gap-3">
                         <div className="flex items-center gap-1 w-12">
@@ -1049,7 +931,7 @@ export default function ReviewsPage() {
                 Classificação por nota média de avaliações
               </p>
               <div className="space-y-3">
-                {mockProfessionalsRanking.map((professional, index) => (
+                {ranking.map((professional, index) => (
                   <ProfessionalRankCard
                     key={professional.professionalId}
                     professional={professional}

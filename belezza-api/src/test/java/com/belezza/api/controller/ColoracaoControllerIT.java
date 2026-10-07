@@ -140,4 +140,16 @@ class ColoracaoControllerIT {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.salonId").value(salaoA.getId()));
     }
+
+    @Test
+    @DisplayName("BUG-012: a lista de fichas traz só as do salão do token")
+    void listaFichasDoProprioSalao() throws Exception {
+        mockMvc.perform(get("/api/coloracao/fichas").header("Authorization", "Bearer " + fx.tokenAdmin(salaoB)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].clienteId").value(clienteB.getId()));
+        mockMvc.perform(get("/api/coloracao/fichas").header("Authorization", "Bearer " + fx.tokenAdmin(salaoA)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+    }
 }

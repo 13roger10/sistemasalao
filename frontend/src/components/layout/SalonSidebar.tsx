@@ -11,7 +11,6 @@ import {
   CalendarDays,
   DollarSign,
   Percent,
-  Gift,
   Package,
   Star,
   Building2,
@@ -182,13 +181,6 @@ const MENU_SECTIONS: MenuSection[] = [
         href: "/admin/dashboard",
         icon: Share2,
         roles: ["ADMIN"],
-      },
-      {
-        label: "Promoções",
-        href: "/salon/promotions",
-        icon: Gift,
-        permission: "promotions.view",
-        roles: ["ADMIN", "RECEPCIONIST"],
       },
       {
         label: "Fidelidade",
