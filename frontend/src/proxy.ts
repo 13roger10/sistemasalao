@@ -35,6 +35,16 @@ const staffRoutes = [
   '/salon/notifications',
 ];
 
+// Configuração do salão: só o ADMIN. As gravações já eram negadas pela API, mas a tela abria para
+// qualquer um que digitasse a URL (BUG-028)
+const salonAdminRoutes = [
+  '/salon/schedule',
+  '/salon/settings',
+  '/salon/units',
+  '/salon/users',
+  '/salon/profile',
+];
+
 // Rotas admin (sistema antigo)
 const adminProtectedRoutes = ["/admin"];
 
@@ -134,7 +144,11 @@ export default function proxy(request: NextRequest) {
 
   // ===== ADMIN ROUTES =====
   if (pathname.startsWith('/admin') || pathname === '/login') {
-    const adminToken = request.cookies.get("auth_token")?.value;
+    // Admin que entrou pelo /salon usa a mesma sessão no Social Studio, sem segundo login (BUG-027)
+    const salonCookie = request.cookies.get('salon_auth_token')?.value;
+    const salonPayload = salonCookie ? decodeJwtPayload(salonCookie) : null;
+    const adminDoSalao = normalizeRole(salonPayload?.role) === 'ADMIN' ? salonCookie : undefined;
+    const adminToken = request.cookies.get("auth_token")?.value || adminDoSalao;
 
     // Se o usuário já estiver autenticado e tentar acessar login
     if (pathname === "/login" && adminToken) {
@@ -222,6 +236,17 @@ export default function proxy(request: NextRequest) {
     const userRole = normalizeRole(payload.role);
     log(`User role: ${payload.role} -> normalized: ${userRole}`);
 
+    const corresponde = (route: string) => pathname === route || pathname.startsWith(route + '/');
+
+    if (salonAdminRoutes.some(corresponde)) {
+      if (userRole !== 'ADMIN') {
+        log("Non-admin trying to access salon configuration, redirecting");
+        const destino = userRole === 'CLIENT' ? '/salon/book' : '/salon';
+        return addSecurityHeaders(NextResponse.redirect(new URL(destino, request.url)));
+      }
+      return addSecurityHeaders(NextResponse.next());
+    }
+
     // IMPORTANTE: Verificar staffRoutes PRIMEIRO porque /salon/clients
     // não deve ser confundido com /salon/client (área do cliente)
     // Verifica acesso às áreas de funcionários
@@ -242,7 +267,12 @@ export default function proxy(request: NextRequest) {
       return addSecurityHeaders(NextResponse.next());
     }
 
-    // Para qualquer outra rota /salon, permite se autenticado
+    // Qualquer outra rota /salon é da equipe (agenda, tarefas, metas, coloração...). O cliente só
+    // usa a própria área e o agendamento; o /salon raiz o encaminha para o lugar certo.
+    if (userRole === 'CLIENT' && pathname !== '/salon') {
+      log("Client trying to access staff page outside the list, redirecting to /salon/book");
+      return addSecurityHeaders(NextResponse.redirect(new URL('/salon/book', request.url)));
+    }
     return addSecurityHeaders(NextResponse.next());
   }
 

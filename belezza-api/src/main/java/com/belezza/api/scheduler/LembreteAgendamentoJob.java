@@ -2,8 +2,10 @@ package com.belezza.api.scheduler;
 
 import com.belezza.api.entity.Agendamento;
 import com.belezza.api.entity.Cliente;
+import com.belezza.api.entity.ConfiguracaoLembretesSalon;
 import com.belezza.api.integration.WhatsAppService;
 import com.belezza.api.repository.AgendamentoRepository;
+import com.belezza.api.repository.ConfiguracaoLembretesSalonRepository;
 import com.belezza.api.service.NotificacaoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +32,7 @@ public class LembreteAgendamentoJob {
     private final AgendamentoRepository agendamentoRepository;
     private final WhatsAppService whatsAppService;
     private final NotificacaoService notificacaoService;
+    private final ConfiguracaoLembretesSalonRepository configuracaoLembretesRepository;
 
     @Value("${app.frontend-url:http://localhost:3000}")
     private String frontendUrl;
@@ -55,7 +58,10 @@ public class LembreteAgendamentoJob {
         LocalDateTime start = LocalDateTime.now().plusHours(24).minusMinutes(15);
         LocalDateTime end = LocalDateTime.now().plusHours(24).plusMinutes(15);
 
-        List<Agendamento> agendamentos = agendamentoRepository.findNeedingReminder24h(start, end);
+        // Só os salões que deixaram o lembrete de 24 h ligado (BUG-026)
+        List<Agendamento> agendamentos = agendamentoRepository.findNeedingReminder24h(start, end).stream()
+                .filter(a -> configuracaoDoSalao(a).envia24h())
+                .toList();
 
         if (agendamentos.isEmpty()) {
             return;
@@ -101,7 +107,10 @@ public class LembreteAgendamentoJob {
         LocalDateTime start = LocalDateTime.now().plusHours(2).minusMinutes(7);
         LocalDateTime end = LocalDateTime.now().plusHours(2).plusMinutes(7);
 
-        List<Agendamento> agendamentos = agendamentoRepository.findNeedingReminder2h(start, end);
+        // Só os salões que deixaram o lembrete de 2 h ligado (BUG-026)
+        List<Agendamento> agendamentos = agendamentoRepository.findNeedingReminder2h(start, end).stream()
+                .filter(a -> configuracaoDoSalao(a).envia2h())
+                .toList();
 
         if (agendamentos.isEmpty()) {
             return;
@@ -130,6 +139,16 @@ public class LembreteAgendamentoJob {
         }
 
         log.info("Lembretes de 2h processados: {} enviados", agendamentos.size());
+    }
+
+    /** Configuração de lembretes do salão do agendamento; sem registro, o padrão (tudo ligado). */
+    private ConfiguracaoLembretesSalon configuracaoDoSalao(Agendamento agendamento) {
+        Long salonId = agendamento.getSalon() != null ? agendamento.getSalon().getId() : null;
+        if (salonId == null) {
+            return ConfiguracaoLembretesSalon.padrao(null);
+        }
+        return configuracaoLembretesRepository.findById(salonId)
+                .orElseGet(() -> ConfiguracaoLembretesSalon.padrao(salonId));
     }
 
     /**

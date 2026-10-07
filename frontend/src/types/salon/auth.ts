@@ -117,7 +117,6 @@ export const AUTH_ROLE_PERMISSIONS: Record<AuthUserRole, AuthPermission[]> = {
     'appointments.view', 'appointments.view_all', 'appointments.create', 'appointments.edit', 'appointments.cancel', 'appointments.confirm', 'appointments.complete', 'appointments.manage_waitlist',
     // Financeiro restrito: acessa o caixa mas vê apenas as próprias movimentações (backend filtra)
     'finance.view', 'finance.view_own', 'finance.register_payment', 'finance.manage_cash',
-    'promotions.view',
   ],
   PROFESSIONAL: [
     'clients.view', 'clients.view_history',

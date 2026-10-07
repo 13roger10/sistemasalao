@@ -177,7 +177,7 @@ public class EquipeStudioService {
 
         FuncaoStudio funcao = getFuncao(salonId, email);
         if (funcao == null || !funcao.temAcesso(funcaoMinima)) {
-            throw new BusinessException(
+            throw new AccessDeniedException(
                     String.format("Acesso negado. Função mínima necessária: %s.", funcaoMinima.name()));
         }
     }
@@ -193,7 +193,7 @@ public class EquipeStudioService {
 
         FuncaoStudio funcao = getFuncao(salonId, requesterEmail);
         if (funcao != FuncaoStudio.PROPRIETARIO) {
-            throw new BusinessException("Apenas o Proprietário pode gerenciar a equipe.");
+            throw new AccessDeniedException("Apenas o Proprietário pode gerenciar a equipe.");
         }
     }
 

@@ -2,6 +2,8 @@ package com.belezza.api.controller;
 
 import com.belezza.api.config.TestContainersConfiguration;
 import com.belezza.api.entity.PlataformaSocial;
+import com.belezza.api.entity.Role;
+import com.belezza.api.entity.Usuario;
 import com.belezza.api.entity.Post;
 import com.belezza.api.entity.Salon;
 import com.belezza.api.entity.StatusPost;
@@ -80,6 +82,16 @@ class PostIsolamentoIT {
                 .andExpect(status().is4xxClientError());
 
         assertThat(postRepository.findById(postB.getId())).isPresent();
+    }
+
+    @Test
+    @DisplayName("BUG-030: equipe sem função no Studio recebe 403, e não 400")
+    void semFuncaoNoStudioRecebe403() throws Exception {
+        Usuario recepcionista = fx.usuario(Role.RECEPCIONISTA, salaoB);
+
+        mockMvc.perform(get("/api/posts").param("salonId", salaoB.getId().toString())
+                        .header("Authorization", "Bearer " + fx.token(recepcionista, salaoB.getId())))
+                .andExpect(status().isForbidden());
     }
 
     @Test

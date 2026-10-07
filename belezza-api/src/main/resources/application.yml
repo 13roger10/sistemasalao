@@ -154,6 +154,9 @@ management:
       enabled: true
     diskspace:
       enabled: true
+    # Sem SMTP configurado, a checagem de e-mail derrubava o /actuator/health inteiro (BUG-029)
+    mail:
+      enabled: ${MAIL_ENABLED:false}
   metrics:
     distribution:
       percentiles-histogram:
