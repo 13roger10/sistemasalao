@@ -2,13 +2,16 @@ package com.belezza.api.security;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.List;
 
 /**
  * SEC-017: verifica a assinatura HMAC (X-Hub-Signature-256) dos webhooks da Meta
@@ -18,18 +21,38 @@ import java.util.HexFormat;
  * <p>A assinatura é o HMAC-SHA256 do corpo BRUTO usando o App Secret da Meta como
  * chave, no formato {@code sha256=<hex>}. A comparação é feita em tempo constante.
  *
- * <p>Quando o App Secret não está configurado (ambiente de desenvolvimento), a
- * verificação é ignorada com um aviso — em produção o segredo deve estar definido.
+ * <p>SEC-A02: quando o App Secret não está configurado o comportamento depende do
+ * ambiente. Em dev/local/test a verificação é ignorada com um aviso (conveniência).
+ * Em produção (perfis prod/staging) a verificação FALHA FECHADA — o webhook é
+ * rejeitado em vez de aceito —, para que um terceiro não consiga forjar eventos
+ * caso o segredo tenha sido esquecido no deploy.
  */
 @Component
 @Slf4j
 public class WebhookSignatureVerifier {
 
+    private static final List<String> PRODUCTION_PROFILES = Arrays.asList("prod", "staging");
+
+    private final Environment environment;
+
     @Value("${belezza.meta.app-secret:}")
     private String appSecret;
 
+    public WebhookSignatureVerifier(Environment environment) {
+        this.environment = environment;
+    }
+
+    private boolean isProduction() {
+        return Arrays.stream(environment.getActiveProfiles()).anyMatch(PRODUCTION_PROFILES::contains);
+    }
+
     public boolean isValid(String rawBody, String signatureHeader) {
         if (appSecret == null || appSecret.isBlank()) {
+            if (isProduction()) {
+                log.error("Webhook REJEITADO: META_APP_SECRET não configurado em produção — "
+                        + "não é possível verificar a assinatura. Defina o segredo para habilitar os webhooks.");
+                return false;
+            }
             log.warn("Webhook: META_APP_SECRET não configurado — assinatura NÃO verificada (ok apenas em dev).");
             return true;
         }

@@ -40,22 +40,28 @@ public class JwtService {
 
     @PostConstruct
     public void init() {
+        // SEC-B03: deriva a chave a partir do segredo exigindo no mínimo 256 bits de material.
+        // Antes, um segredo curto era "preenchido" com zeros até 32 bytes — isso mascarava um
+        // segredo fraco com entropia artificial (bytes previsíveis). Agora um segredo curto
+        // demais faz o boot FALHAR, em vez de rodar com uma chave enfraquecida.
+        byte[] keyBytes = decodeKeyBytes(jwtSecret);
+        if (keyBytes.length < 32) {
+            throw new IllegalStateException(
+                    "belezza.jwt.secret precisa ter no mínimo 256 bits (32 bytes) de material. "
+                    + "Gere um segredo forte, por exemplo: openssl rand -base64 48");
+        }
+        this.signingKey = Keys.hmacShaKeyFor(keyBytes);
+    }
+
+    /**
+     * Interpreta o segredo como Base64 quando possível; caso contrário usa os bytes UTF-8 crus.
+     * Não preenche nem trunca: o tamanho resultante é validado por quem chama.
+     */
+    private static byte[] decodeKeyBytes(String secret) {
         try {
-            // Try to decode as Base64 first
-            byte[] keyBytes = Decoders.BASE64.decode(jwtSecret);
-            this.signingKey = Keys.hmacShaKeyFor(keyBytes);
+            return Decoders.BASE64.decode(secret);
         } catch (Exception e) {
-            // If not valid Base64, use the secret directly as bytes
-            // Ensure minimum 256 bits (32 bytes) for HMAC-SHA256
-            byte[] keyBytes = jwtSecret.getBytes();
-            if (keyBytes.length < 32) {
-                // Pad the key if too short
-                byte[] paddedKey = new byte[32];
-                System.arraycopy(keyBytes, 0, paddedKey, 0, keyBytes.length);
-                this.signingKey = Keys.hmacShaKeyFor(paddedKey);
-            } else {
-                this.signingKey = Keys.hmacShaKeyFor(keyBytes);
-            }
+            return secret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         }
     }
 
