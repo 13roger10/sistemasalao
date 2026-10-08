@@ -41,8 +41,22 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
+        List<String> origins = Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
+
+        // SEC-B05: curinga de origem ("*") junto com allowCredentials=true é uma combinação
+        // perigosa — qualquer site poderia fazer chamadas autenticadas à API. Falha fechado
+        // na inicialização em vez de subir com CORS inseguro.
+        if (allowCredentials && origins.stream().anyMatch(o -> o.equals("*") || o.equals("*/*"))) {
+            throw new IllegalStateException(
+                    "[SEC-B05] CORS inseguro: belezza.cors.allowed-origins não pode conter '*' "
+                    + "quando allow-credentials=true. Liste as origens explicitamente.");
+        }
+
         // Set allowed origins
-        configuration.setAllowedOriginPatterns(Arrays.asList(allowedOrigins.split(",")));
+        configuration.setAllowedOriginPatterns(origins);
 
         // Set allowed methods
         configuration.setAllowedMethods(Arrays.asList(allowedMethods.split(",")));
