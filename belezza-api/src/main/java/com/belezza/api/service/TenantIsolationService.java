@@ -1,5 +1,7 @@
 package com.belezza.api.service;
 
+import com.belezza.api.entity.Role;
+import com.belezza.api.entity.Usuario;
 import com.belezza.api.security.TenantContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
@@ -49,6 +51,27 @@ public class TenantIsolationService {
         if (currentTenant == null || salonId == null || !currentTenant.equals(salonId)) {
             log.warn("Tenant isolation violation (staff): current={}, entity={}", currentTenant, salonId);
             throw new AccessDeniedException("Acesso negado: recurso pertence a outro estabelecimento");
+        }
+    }
+
+    /**
+     * BUG-E2E-001: variante ciente do papel para rotas que servem tanto a equipe quanto o público
+     * (ex.: listar profissionais de um salão, usada no agendamento online).
+     *
+     * <ul>
+     *   <li><b>Equipe</b> (ADMIN/PROFISSIONAL/RECEPCIONISTA): {@link #assertStaffTenant} — precisa
+     *       de um salão no token e só acessa o próprio. Fecha o furo em que um token de equipe sem
+     *       {@code salonId} (ex.: admin antes de criar o salão) lia qualquer salão pelo ID.</li>
+     *   <li><b>Cliente/anônimo</b>: {@link #assertCurrentTenant} (lenient) — pode ver o subconjunto
+     *       público; os dados sensíveis (contato) já são ocultados na resposta pelo controller.</li>
+     * </ul>
+     */
+    public void assertStaffRequestedSalon(Long salonId, Usuario quem) {
+        boolean equipe = quem != null && quem.getRole() != Role.CLIENTE;
+        if (equipe) {
+            assertStaffTenant(salonId);
+        } else {
+            assertCurrentTenant(salonId);
         }
     }
 }

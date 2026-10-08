@@ -184,6 +184,7 @@ ADMIN cria profissional/serviço/preço/comissão → agenda criada → **PENDEN
 
 ## BUG-E2E-001 — Isolamento multi-tenant "falha-aberto" nas listagens por `salonId`
 
+**Status:** ✅ CORRIGIDO (verificado em ambiente local + 65 testes unitários). `GET /api/agendamentos/salon/{id}` passou a usar `enforceStaffTenant` (fail-closed); as listagens de profissionais por salão usam a nova `TenantIsolationService.assertStaffRequestedSalon(salonId, quem)` — fecha a equipe sem salão vinculado e mantém o agendamento público do cliente (contato já ocultado). Regressão: token de equipe sem `salonId` agora recebe 403; salão próprio continua 200; cliente continua listando profissionais sem contato.
 **Severidade:** 🟠 ALTA
 **Perfil:** ADMIN / RECEPCIONISTA / PROFISSIONAL com token **sem** `salonId` (ex.: admin recém-criado, antes de criar o salão)
 **Módulo:** Segurança / multi-tenant

@@ -226,7 +226,9 @@ class AgendamentoServiceTest {
 
             // Then
             assertThat(result.getContent()).hasSize(1);
-            verify(tenantIsolationService).assertRequestedSalon(1L);
+            // BUG-E2E-001: listagem de equipe passou a exigir tenant (enforceStaffTenant ->
+            // assertCurrentTenant), fechando o acesso com token sem salonId.
+            verify(tenantIsolationService).assertCurrentTenant(1L);
             verify(agendamentoRepository).findBySalonId(1L, pageable);
         }
 

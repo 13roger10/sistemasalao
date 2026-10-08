@@ -365,7 +365,11 @@ public class AgendamentoService {
     @Transactional(readOnly = true)
     public Page<AgendamentoResponse> listarPorSalon(Long salonId, LocalDate de, LocalDate ate, Pageable pageable,
                                                     boolean restrictSensitiveData, Usuario operador) {
-        tenantIsolationService.assertRequestedSalon(salonId);
+        // BUG-E2E-001: rota exclusiva de equipe (ADMIN/PROFISSIONAL/RECEPCIONISTA) e que expõe
+        // PII do cliente — exige salão no token e nega acesso a outro estabelecimento. Antes usava
+        // assertRequestedSalon (no-op com tenant nulo), deixando um token de equipe sem salonId
+        // ler a agenda de qualquer salão pelo ID.
+        enforceStaffTenant(salonId);
         Page<Agendamento> pagina;
         if (de != null || ate != null) {
             LocalDateTime inicio = (de != null ? de : LocalDate.of(1970, 1, 1)).atStartOfDay();

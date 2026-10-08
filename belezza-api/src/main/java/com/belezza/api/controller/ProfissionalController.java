@@ -78,7 +78,7 @@ public class ProfissionalController {
             @PathVariable CategoriaProfissional categoria,
             @RequestParam(required = false, defaultValue = "true") Boolean ativo,
             @AuthenticationPrincipal Usuario quem) {
-        tenantIsolationService.assertRequestedSalon(salonId);
+        tenantIsolationService.assertStaffRequestedSalon(salonId, quem);
         List<ProfissionalResponse> response = profissionalService.listarPorCategoria(salonId, categoria, ativo);
         return ResponseEntity.ok(paraQuemPede(response, quem));
     }
@@ -106,7 +106,7 @@ public class ProfissionalController {
             @PathVariable Long salonId,
             @RequestParam(required = false) Boolean ativo,
             @AuthenticationPrincipal Usuario quem) {
-        tenantIsolationService.assertRequestedSalon(salonId);
+        tenantIsolationService.assertStaffRequestedSalon(salonId, quem);
         List<ProfissionalResponse> response = profissionalService.listarPorSalon(salonId, ativo);
         return ResponseEntity.ok(paraQuemPede(response, quem));
     }
@@ -123,7 +123,7 @@ public class ProfissionalController {
     @Operation(summary = "Listar disponíveis online", description = "Lista profissionais que aceitam agendamento online")
     public ResponseEntity<List<ProfissionalResponse>> listarDisponiveisOnline(@PathVariable Long salonId,
                                                                               @AuthenticationPrincipal Usuario quem) {
-        tenantIsolationService.assertRequestedSalon(salonId);
+        tenantIsolationService.assertStaffRequestedSalon(salonId, quem);
         List<ProfissionalResponse> response = profissionalService.listarDisponiveisOnline(salonId);
         return ResponseEntity.ok(paraQuemPede(response, quem));
     }
