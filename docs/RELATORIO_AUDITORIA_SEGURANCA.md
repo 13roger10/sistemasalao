@@ -250,3 +250,32 @@ login inexistente   -> 401 "Email ou senha inválidos"
 login senha errada  -> 401 "Email ou senha inválidos"   (idêntico)
 forgot-password     -> 200 "Se o email existir, você receberá instruções..." (idêntico nos dois casos)
 ```
+
+---
+
+## 13. Adendo de correção (08/10/2026)
+
+Após a auditoria, foram implementadas as correções abaixo (todas em `main`), verificadas no ambiente local. Duas pendências foram **formalmente aceitas** como risco (não corrigidas agora), por decisão do proprietário.
+
+### Corrigido
+
+| ID | Correção | Commit | Verificação |
+|---|---|---|---|
+| SEC-A02 | Webhook da Meta passa a **falhar fechado** em prod/staging quando `META_APP_SECRET` não está definido (dev continua aceitando). Teste unitário adicionado. | `7d508db` | teste unitário |
+| SEC-B03 | `JwtService` **recusa** no boot um segredo < 256 bits em vez de completá-lo com zeros. | `7d508db` | compila; perfis usam segredo ≥32 bytes |
+| SEC-B01 | Backend roda como **usuário não-root** (uid 1001) no container; logs em `/tmp/logs`. | `cd03722` | live: `PID1 uid=1001`, health 200 |
+| SEC-B02 | `securityContext` nos pods k8s (backend/frontend/redis): `runAsNonRoot`, `allowPrivilegeEscalation=false`, `drop ALL`, seccomp `RuntimeDefault`; backend com `readOnlyRootFilesystem` + emptyDir `/tmp`. | `cd03722` | YAML validado (js-yaml) |
+| SEC-A04 | Actuator com **exposição mínima** no perfil default (`health,info,metrics,prometheus`); `env`/`heapdump`/`threaddump`/`loggers` e JMX `*` deixam de ser expostos. | `cd03722` | live: "Exposing 4 endpoints"; `env`/`beans` → 401 |
+| SEC-B04 | `k8s/secrets.yaml` sai do versionamento (vira `secrets.example.yaml` + `.gitignore`); `deploy.sh`/`kustomization` orientam criar o arquivo real. | `cd03722` | — |
+| SEC-CI | Novo workflow **na raiz** `.github/workflows/security.yml`: gitleaks, `npm audit`, OWASP Dependency-Check e CodeQL (Java+TS). Os workflows antigos em `frontend/.github` nunca eram executados pelo GitHub. | `cd03722` | `npm audit` local: **0 high/critical** |
+| SEC-B05 | CORS **falha fechado** se `allowed-origins` contiver `*` com `allow-credentials=true`. | `f706b5f` | compila |
+| SEC-B06 | **Já estava coberto** (SEC-019): `ImageService.validateFile` decodifica o conteúdo (`ImageIO.read`) e sanitiza o nome do arquivo — não era pendência. | — | revisão de código |
+
+### Achado adicional (durante a correção)
+
+- **Redis do k8s sem autenticação:** `k8s/redis/deployment.yaml` sobe o Redis **sem `--requirepass`**. Exposição limitada à rede interna do cluster, mas sem defesa em profundidade. Correção vinculada ao SEC-A03 (exige encadear o secret e `REDIS_PASSWORD` no backend).
+
+### Pendências aceitas como risco (decisão do proprietário, 08/10/2026)
+
+- **SEC-A01** (token em cookie não-HttpOnly/`localStorage` + CSP com `unsafe-inline`/`unsafe-eval`): **não corrigido agora**. Risco residual baixo hoje (sem XSS conhecido; React escapa a saída). Reavaliar antes de expor a aplicação a conteúdo de terceiros.
+- **SEC-A03** (rate limit em memória por instância, sem expurgo; + Redis do k8s sem senha): **não corrigido agora**. Mitigação existente: limite por IP funcionando e bloqueio de conta por tentativas (`V48`). Necessário antes de escalar para múltiplas réplicas em produção.
