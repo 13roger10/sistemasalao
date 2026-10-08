@@ -34,12 +34,29 @@ spec:
             capabilities:
               drop:
                 - ALL
+          # SEC-A03: Redis passa a exigir senha (--requirepass). Antes aceitava qualquer
+          # comando de qualquer pod que alcançasse a porta, sem autenticação.
           command:
             - redis-server
             - "--save"
             - "60 1"         # snapshot every 60s if ≥1 key changed
             - "--loglevel"
             - "warning"
+            - "--requirepass"
+            - "$(REDIS_PASSWORD)"
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: belezza-app-secret
+                  key: REDIS_PASSWORD
+            # redis-cli (probes) autentica via variável de ambiente, sem expor a senha
+            # na linha de comando do processo.
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: belezza-app-secret
+                  key: REDIS_PASSWORD
           ports:
             - containerPort: 6379
               name: redis
