@@ -21,8 +21,18 @@ WORKDIR /app
 # Add curl for healthcheck
 RUN apk add --no-cache curl
 
-# Copy the built jar
-COPY --from=build /app/target/*.jar app.jar
+# SEC-B01: roda como usuário não-root. Antes o processo subia como root dentro do
+# container, ampliando o impacto de uma eventual execução de código.
+RUN addgroup -S belezza && adduser -S -G belezza -u 1001 belezza
+
+# Logs em /tmp (sempre gravável, inclusive com readOnlyRootFilesystem no k8s, onde
+# /tmp é um emptyDir). Evita depender da posse de /app pelo usuário não-root.
+ENV LOG_PATH=/tmp/logs
+
+# Copy the built jar (owned by the non-root user)
+COPY --from=build --chown=belezza:belezza /app/target/*.jar app.jar
+
+USER belezza
 
 # Expose port
 EXPOSE 8080

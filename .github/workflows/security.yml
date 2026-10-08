@@ -1,0 +1,109 @@
+# Belezza — CI de segurança
+# Roda a cada PR/push em main e develop. Fica na RAIZ do repositório porque o GitHub
+# Actions só executa workflows em <repo>/.github/workflows (os antigos em frontend/.github
+# nunca eram executados).
+name: Security CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # varredura semanal (pega CVEs novas em dependências que não mudaram)
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write   # para publicar SARIF (CodeQL/gitleaks) na aba Security
+
+jobs:
+  # ── Segredos vazados no histórico/código ──────────────────────────────────
+  gitleaks:
+    name: Segredos (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+  # ── Dependências do frontend (npm audit) ──────────────────────────────────
+  npm-audit:
+    name: Dependências frontend (npm audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      # Falha o job se houver vulnerabilidade de severidade alta ou crítica.
+      - name: npm audit (high+)
+        run: npm audit --audit-level=high
+
+  # ── Dependências do backend (OWASP Dependency-Check via Maven) ─────────────
+  dependency-check:
+    name: Dependências backend (OWASP Dependency-Check)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: belezza-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      # Usa o plugin do OWASP Dependency-Check. CVSS >= 8 (alto/crítico) falha o build.
+      # Requer NVD_API_KEY nos secrets do repositório para evitar rate limit da base NVD.
+      - name: OWASP Dependency-Check
+        run: >
+          mvn -B org.owasp:dependency-check-maven:check
+          -DfailBuildOnCVSS=8
+          -DnvdApiKey=${{ secrets.NVD_API_KEY }}
+        continue-on-error: true   # enquanto a NVD_API_KEY não estiver configurada, não bloqueia
+      - name: Publicar relatório
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: belezza-api/target/dependency-check-report.html
+          if-no-files-found: ignore
+
+  # ── SAST (CodeQL para Java e JavaScript/TypeScript) ───────────────────────
+  codeql:
+    name: SAST (CodeQL)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [java-kotlin, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+      - uses: actions/setup-java@v4
+        if: matrix.language == 'java-kotlin'
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Build Java (autobuild)
+        if: matrix.language == 'java-kotlin'
+        working-directory: belezza-api
+        run: mvn -B -DskipTests package
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

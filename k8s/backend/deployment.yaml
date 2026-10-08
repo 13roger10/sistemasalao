@@ -23,6 +23,19 @@ spec:
         app: belezza-api
     spec:
       terminationGracePeriodSeconds: 30
+      # SEC-B02: hardening de pod — processo não-root, sem escalonamento de privilégio.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        # /tmp gravável para o Tomcat/Spring e para os logs (LOG_PATH=/tmp/logs),
+        # já que o rootfs é somente-leitura.
+        - name: tmp
+          emptyDir: {}
       # Wait for postgres to be reachable before starting
       initContainers:
         - name: wait-for-postgres
@@ -41,6 +54,16 @@ spec:
           # image: ghcr.io/<org>/belezza-api:latest
           image: belezza/api:latest
           imagePullPolicy: Always
+          # SEC-B02: hardening de container.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           ports:
             - containerPort: 8080
               name: http

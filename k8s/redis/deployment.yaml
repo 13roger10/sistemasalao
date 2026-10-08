@@ -16,9 +16,24 @@ spec:
       labels:
         app: redis
     spec:
+      # SEC-B02: hardening de pod (a imagem redis usa o usuário redis, uid 999).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: redis
           image: redis:7-alpine
+          # SEC-B02: hardening de container (o volume /data é gravável).
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           command:
             - redis-server
             - "--save"

@@ -79,3 +79,6 @@ nul
 
 # Claude settings
 .claude/
+
+# SEC-B04: manifesto real de secrets nunca versionado (use secrets.example.yaml como modelo)
+k8s/secrets.yaml

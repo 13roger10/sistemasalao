@@ -51,6 +51,12 @@ patch_images() {
 deploy_all() {
   log "Applying namespace and infrastructure..."
   kubectl apply -f "${SCRIPT_DIR}/namespace.yaml" ${DRY_RUN}
+  # SEC-B04: secrets.yaml NÃO é versionado. Crie-o a partir do modelo e preencha com
+  # valores reais (ou, de preferência, use Sealed Secrets/Vault/External Secrets).
+  if [ ! -f "${SCRIPT_DIR}/secrets.yaml" ]; then
+    echo "ERRO: ${SCRIPT_DIR}/secrets.yaml não existe. Copie de secrets.example.yaml e preencha os valores." >&2
+    exit 1
+  fi
   kubectl apply -f "${SCRIPT_DIR}/secrets.yaml"   ${DRY_RUN}
   kubectl apply -f "${SCRIPT_DIR}/configmap.yaml" ${DRY_RUN}
 

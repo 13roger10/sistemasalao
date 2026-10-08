@@ -23,12 +23,26 @@ spec:
         app: belezza-frontend
     spec:
       terminationGracePeriodSeconds: 30
+      # SEC-B02: hardening de pod — a imagem do frontend já roda como usuário nextjs (uid 1001).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: belezza-frontend
           # Replace with your actual registry image:
           # image: ghcr.io/<org>/belezza-frontend:latest
           image: belezza/frontend:latest
           imagePullPolicy: Always
+          # SEC-B02: hardening de container. readOnlyRootFilesystem fica desligado no frontend
+          # porque o Next.js (standalone) grava em .next/cache em runtime.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - containerPort: 3000
               name: http

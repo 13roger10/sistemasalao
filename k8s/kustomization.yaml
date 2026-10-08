@@ -7,6 +7,8 @@ namespace: belezza
 
 resources:
   - namespace.yaml
+  # SEC-B04: secrets.yaml não é versionado — crie-o a partir de secrets.example.yaml
+  # (ou gere via Sealed Secrets/Vault) antes de aplicar o stack.
   - secrets.yaml
   - configmap.yaml
   # Infrastructure

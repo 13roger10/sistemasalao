@@ -122,12 +122,18 @@ server:
 management:
   endpoints:
     web:
+      # SEC-A04: exposição mínima por padrão. Endpoints sensíveis (env, heapdump,
+      # threaddump, loggers, beans...) NÃO são expostos no perfil default/local —
+      # antes só não vazavam por um efeito colateral do filtro JWT. Ambientes que
+      # precisarem de mais (ex.: observabilidade interna) habilitam via
+      # MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE, atrás de rede/porta protegida.
       exposure:
-        include: health,info,metrics,prometheus,env,loggers,httptrace,threaddump,heapdump
+        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info,metrics,prometheus}
       base-path: /actuator
     jmx:
+      # SEC-A04: não expor todos os endpoints via JMX ("*"). JMX desligado por padrão.
       exposure:
-        include: "*"
+        include: ${MANAGEMENT_ENDPOINTS_JMX_EXPOSURE_INCLUDE:}
   endpoint:
     health:
       show-details: when_authorized
