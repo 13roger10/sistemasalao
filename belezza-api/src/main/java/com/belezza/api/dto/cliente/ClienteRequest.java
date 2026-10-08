@@ -3,6 +3,7 @@ package com.belezza.api.dto.cliente;
 import com.belezza.api.validation.Telefone;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -31,10 +32,15 @@ public class ClienteRequest {
     @Size(max = 255, message = "Email deve ter no máximo 255 caracteres")
     private String email;
 
+    // BUG-E2E-003: WhatsApp e data de aniversário são exigidos pelo serviço (criar e editar);
+    // marcá-los aqui alinha o contrato/Swagger e devolve erro por campo (VALIDATION_ERROR) em vez
+    // do 400 genérico de regra de negócio.
+    @NotBlank(message = "WhatsApp é obrigatório")
     @Size(max = 20, message = "WhatsApp deve ter no máximo 20 caracteres")
     @Telefone(message = "WhatsApp inválido: informe o DDD e o número (10 ou 11 dígitos)")
     private String whatsapp;
 
+    @NotNull(message = "Data de aniversário é obrigatória")
     @Past(message = "Data de nascimento deve estar no passado")
     private LocalDate birthDate;
 

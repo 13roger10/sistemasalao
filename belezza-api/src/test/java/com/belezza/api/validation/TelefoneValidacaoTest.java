@@ -22,7 +22,10 @@ class TelefoneValidacaoTest {
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
     private ClienteRequest cliente(String telefone) {
-        return ClienteRequest.builder().name("Cliente Teste").phone(telefone).build();
+        // BUG-E2E-003: WhatsApp e data de aniversário passaram a ser obrigatórios no contrato;
+        // a base válida os inclui para que os casos isolem o campo em teste (telefone/nascimento).
+        return ClienteRequest.builder().name("Cliente Teste").phone(telefone)
+                .whatsapp("11962035710").birthDate(LocalDate.of(1990, 5, 20)).build();
     }
 
     private Set<String> camposInvalidos(Object request) {

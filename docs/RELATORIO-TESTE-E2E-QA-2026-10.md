@@ -224,6 +224,7 @@ ADMIN cria profissional/serviço/preço/comissão → agenda criada → **PENDEN
 
 ## BUG-E2E-003 — Contrato divergente em criação de cliente
 
+**Status:** ✅ CORRIGIDO (verificado local). `ClienteRequest` passou a marcar `whatsapp` (`@NotBlank`) e `birthDate` (`@NotNull`). Agora o campo faltante retorna `VALIDATION_ERROR` com `fieldErrors` (ex.: `whatsapp`, `birthDate`) em vez do 400 genérico de regra de negócio, e o Swagger reflete os campos obrigatórios. Comportamento preservado (já eram exigidos no serviço, em criação e edição). A exigência de e-mail **apenas na edição** permanece como regra do serviço.
 **Severidade:** 🔵 BAIXA (cosmético / contrato de API)
 **Endpoint:** `POST /api/clientes`
 **Descrição:** o DTO `ClienteRequest` anota apenas `name` e `phone` como obrigatórios (Swagger sugere `whatsapp`/`birthDate` opcionais), mas o serviço rejeita com 400 *"Preencha os campos obrigatórios: WhatsApp, data de aniversário"*. A regra do servidor é legítima, porém a documentação/anotações do DTO não refletem isso.
