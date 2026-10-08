@@ -97,6 +97,10 @@ public class ProfissionalController {
     @Operation(summary = "Buscar profissional", description = "Busca um profissional por ID")
     public ResponseEntity<ProfissionalResponse> buscarPorId(@PathVariable Long id, @AuthenticationPrincipal Usuario quem) {
         ProfissionalResponse response = profissionalService.buscarPorId(id);
+        // BUG-E2E-002: a equipe só consulta profissional do próprio salão (antes qualquer token
+        // válido via nome/e-mail/telefone de outro estabelecimento pelo ID). Cliente/público segue
+        // vendo o subconjunto público (contato ocultado por paraQuemPede) para o agendamento online.
+        tenantIsolationService.assertStaffRequestedSalon(response.getSalonId(), quem);
         return ResponseEntity.ok(paraQuemPede(response, quem));
     }
 

@@ -212,6 +212,7 @@ ADMIN cria profissional/serviço/preço/comissão → agenda criada → **PENDEN
 
 ## BUG-E2E-002 — Detalhe de profissional sem verificação de tenant
 
+**Status:** ✅ CORRIGIDO (verificado local). `GET /api/profissionais/{id}` passou a chamar `assertStaffRequestedSalon(response.getSalonId(), quem)`: equipe de outro salão recebe 403; admin do próprio salão continua vendo contato; cliente/público mantém o perfil para agendamento com contato ocultado.
 **Severidade:** 🟡 MÉDIA
 **Endpoint:** `GET /api/profissionais/{id}`
 **Descrição:** retorna o profissional de **outro** salão por ID (nome, e-mail interno, telefone) **mesmo com um token de tenant válido e diferente** — diferente das demais rotas, não chama `assertRequestedSalon`/`assertStaffTenant`. Vazamento de PII de equipe entre estabelecimentos.
